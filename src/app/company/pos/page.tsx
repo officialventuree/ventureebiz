@@ -1,26 +1,29 @@
+
 'use client';
 
 import { useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Trash2, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { recordSaleAction } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore } from '@/firebase';
+import { collection, doc, setDoc } from 'firebase/firestore';
 
 const PRODUCTS = [
-  { id: '1', name: 'Premium Matcha Powder', price: 24.99 },
-  { id: '2', name: 'Sage Green Teapot', price: 45.00 },
-  { id: '3', name: 'Bamboo Whisk', price: 12.50 },
-  { id: '4', name: 'Ceramic Bowl', price: 32.00 },
-  { id: '5', name: 'Organic Green Tea', price: 18.00 },
+  { id: '1', name: 'Premium Matcha Powder', price: 24.99, cost: 12.00 },
+  { id: '2', name: 'Sage Green Teapot', price: 45.00, cost: 20.00 },
+  { id: '3', name: 'Bamboo Whisk', price: 12.50, cost: 5.00 },
+  { id: '4', name: 'Ceramic Bowl', price: 32.00, cost: 15.00 },
+  { id: '5', name: 'Organic Green Tea', price: 18.00, cost: 8.00 },
 ];
 
 export default function POSPage() {
-  const [cart, setCart] = useState<{ id: string, name: string, price: number, quantity: number }[]>([]);
+  const [cart, setCart] = useState<{ id: string, name: string, price: number, cost: number, quantity: number }[]>([]);
   const { user } = useAuth();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -48,21 +51,47 @@ export default function POSPage() {
   };
 
   const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const profit = cart.reduce((acc, item) => acc + (item.price - item.cost) * item.quantity, 0);
 
   const handleCheckout = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || !firestore || !user?.companyId) return;
     setIsProcessing(true);
     
-    const result = await recordSaleAction(user?.companyId || '', cart);
-    
-    if (result.success) {
+    try {
+      const transactionId = crypto.randomUUID();
+      const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
+      
+      const transactionData = {
+        id: transactionId,
+        companyId: user.companyId,
+        module: 'mart',
+        totalAmount: total,
+        profit: profit,
+        timestamp: new Date().toISOString(),
+        items: cart.map(item => ({
+          name: item.name,
+          price: item.price,
+          cost: item.cost,
+          quantity: item.quantity
+        }))
+      };
+
+      await setDoc(transactionRef, transactionData);
+      await recordSaleAction(user.companyId, cart);
+
       toast({
         title: "Sale Completed",
         description: `Total amount: $${total.toFixed(2)}`,
       });
       setCart([]);
+    } catch (e) {
+      toast({
+        title: "Checkout failed",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   return (

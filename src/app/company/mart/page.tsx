@@ -9,10 +9,11 @@ import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Trash2, Search, Package, Receipt } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Product } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export default function MartPage() {
   const { user } = useAuth();
@@ -88,10 +89,8 @@ export default function MartPage() {
         }))
       };
 
-      // Record the sale
-      setDoc(transactionRef, transactionData);
+      await setDoc(transactionRef, transactionData);
 
-      // Update inventory (non-blocking in UI feel, but we loop for each)
       cart.forEach(item => {
         const productRef = doc(firestore, 'companies', user.companyId!, 'products', item.product.id);
         setDoc(productRef, { 
@@ -284,7 +283,6 @@ function InventoryManager({ companyId }: { companyId?: string }) {
     } catch (e) {
       toast({ title: "Failed to add product", variant: "destructive" });
     } finally {
-      setIsAdding(true);
       setIsAdding(false);
     }
   };
