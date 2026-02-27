@@ -23,7 +23,10 @@ import {
   Plus,
   Settings2,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  User,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -69,6 +72,13 @@ export default function LaundryPage() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleLevel, setScheduleLevel] = useState<string>('');
 
+  // Payable States
+  const [payableName, setPayableName] = useState('');
+  const [payableAmount, setPayableAmount] = useState<number | string>('');
+  const [payablePaymentMethod, setPayablePaymentMethod] = useState<PaymentMethod>('cash');
+  const [payableCashReceived, setPayableCashReceived] = useState<number | string>('');
+  const [payableRef, setPayableRef] = useState('');
+
   // Queries
   const studentsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -108,6 +118,7 @@ export default function LaundryPage() {
   const { data: companyDoc } = useDoc<Company>(companyRef);
 
   const studentSoap = inventoryItems?.find(i => i.id === 'student_soap');
+  const payableSoap = inventoryItems?.find(i => i.id === 'payable_soap');
 
   const mlPerWash = 50;
   const defaultWashRate = 5.00;
@@ -129,7 +140,8 @@ export default function LaundryPage() {
     return students?.find(s => s.matrixNumber === topUpMatrix);
   }, [students, topUpMatrix]);
 
-  const changeAmount = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
+  const topUpChange = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
+  const payableChange = payablePaymentMethod === 'cash' ? Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)) : 0;
 
   // Handlers
   const handleRegisterStudent = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -259,6 +271,53 @@ export default function LaundryPage() {
     }
   };
 
+  const handlePayableWash = async () => {
+    if (!firestore || !user?.companyId || !payableName || !payableAmount) return;
+    
+    if (!payableSoap || payableSoap.soapStockMl < mlPerWash) {
+      toast({ title: "Soap Stock Error", description: "Insufficient soap stock for payable services. Please restock 'Payable Soap'.", variant: "destructive" });
+      return;
+    }
+
+    const amount = Number(payableAmount);
+    if (payablePaymentMethod === 'cash' && (Number(payableCashReceived) || 0) < amount) {
+      toast({ title: "Payment Error", description: "Amount received is less than total price.", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap'), { soapStockMl: increment(-mlPerWash) });
+      
+      const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
+      const profit = amount - soapCost;
+
+      await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
+        id: crypto.randomUUID(),
+        companyId: user.companyId,
+        module: 'laundry',
+        totalAmount: amount,
+        profit: profit,
+        timestamp: new Date().toISOString(),
+        customerName: payableName,
+        paymentMethod: payablePaymentMethod,
+        referenceNumber: payableRef || undefined,
+        status: 'completed',
+        items: [{ name: 'Payable Service Wash', price: amount, quantity: 1, soapUsedMl: mlPerWash }]
+      });
+
+      toast({ title: "Service Complete", description: `Recorded $${amount.toFixed(2)} for ${payableName}.` });
+      setPayableName('');
+      setPayableAmount('');
+      setPayableCashReceived('');
+      setPayableRef('');
+    } catch (e) {
+      toast({ title: "Operation failed", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleConfirmTopUp = async () => {
     if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
     setIsProcessing(true);
@@ -358,7 +417,7 @@ export default function LaundryPage() {
                       {topUpPaymentMethod === 'cash' && (
                         <div className="p-6 bg-secondary/10 rounded-3xl space-y-4">
                            <Input type="number" placeholder="Amount Received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className="h-12 rounded-xl font-bold" />
-                           <div className="flex justify-between font-black text-sm uppercase px-2"><span>Change:</span> <span>${changeAmount.toFixed(2)}</span></div>
+                           <div className="flex justify-between font-black text-sm uppercase px-2"><span>Change:</span> <span>${topUpChange.toFixed(2)}</span></div>
                         </div>
                       )}
                       <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handleConfirmTopUp} disabled={isProcessing || !topUpAmount}>
@@ -375,6 +434,7 @@ export default function LaundryPage() {
         <Tabs defaultValue="pos" className="space-y-6">
           <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm">
             <TabsTrigger value="pos" className="rounded-lg gap-2">POS Terminal</TabsTrigger>
+            <TabsTrigger value="payable" className="rounded-lg gap-2">Payable Laundry</TabsTrigger>
             <TabsTrigger value="students" className="rounded-lg gap-2">Subscribers</TabsTrigger>
             <TabsTrigger value="schedule" className="rounded-lg gap-2">Schedule</TabsTrigger>
             <TabsTrigger value="consumables" className="rounded-lg gap-2">Inventory</TabsTrigger>
@@ -487,6 +547,104 @@ export default function LaundryPage() {
                 </div>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="payable" className="max-w-4xl mx-auto space-y-8">
+            <Card className="border-none shadow-xl bg-white rounded-[40px] overflow-hidden">
+               <div className="bg-primary p-12 text-primary-foreground text-center">
+                  <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">Walk-in Services</p>
+                  <h2 className="text-5xl font-black tracking-tighter">Payable Laundry Recording</h2>
+               </div>
+               <div className="p-12 space-y-10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                     <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Customer Name</Label>
+                        <Input 
+                          placeholder="John Smith" 
+                          className="h-14 rounded-2xl font-black text-lg bg-secondary/10 border-none px-6"
+                          value={payableName}
+                          onChange={(e) => setPayableName(e.target.value)}
+                        />
+                     </div>
+                     <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Total Price ($)</Label>
+                        <Input 
+                          type="number"
+                          placeholder="10.00" 
+                          className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6 text-primary"
+                          value={payableAmount}
+                          onChange={(e) => setPayableAmount(e.target.value)}
+                        />
+                     </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-6">
+                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Method</Label>
+                     <RadioGroup value={payablePaymentMethod} onValueChange={(v) => setPayablePaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-4">
+                        <PaymentOption value="cash" label="Cash Settlement" icon={Banknote} id="payable_cash" />
+                        <PaymentOption value="card" label="Card Terminal" icon={CreditCard} id="payable_card" />
+                        <PaymentOption value="duitnow" label="DuitNow Digital" icon={QrCode} id="payable_qr" />
+                     </RadioGroup>
+                  </div>
+
+                  {payablePaymentMethod === 'cash' && (
+                    <div className="p-10 bg-secondary/5 rounded-[32px] space-y-6 animate-in fade-in slide-in-from-top-2">
+                       <div className="flex justify-between items-end mb-4">
+                          <p className="text-sm font-black uppercase tracking-widest text-muted-foreground">Cash Verification</p>
+                          <p className="text-xl font-black text-foreground">Total: ${Number(payableAmount || 0).toFixed(2)}</p>
+                       </div>
+                       <Input 
+                         type="number" 
+                         placeholder="Amount Received" 
+                         className="h-16 rounded-2xl text-3xl font-black px-6"
+                         value={payableCashReceived}
+                         onChange={(e) => setPayableCashReceived(e.target.value)}
+                       />
+                       <div className="bg-primary/5 p-6 rounded-2xl flex justify-between items-center border-2 border-primary/10">
+                          <span className="font-black text-xs uppercase text-primary">Balance to Return</span>
+                          <span className="text-4xl font-black">${payableChange.toFixed(2)}</span>
+                       </div>
+                    </div>
+                  )}
+
+                  {(payablePaymentMethod === 'card' || payablePaymentMethod === 'duitnow') && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
+                       {payablePaymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                         <div className="flex flex-col items-center p-8 bg-secondary/5 rounded-[32px] border-2 border-dashed border-primary/20">
+                            <Image src={companyDoc.duitNowQr} alt="QR" width={200} height={200} className="rounded-3xl shadow-xl mb-4 border-4 border-white" />
+                            <p className="text-[10px] font-black text-primary uppercase tracking-widest">Scan for digital settlement</p>
+                         </div>
+                       )}
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction Reference / Trace ID</Label>
+                          <Input 
+                            placeholder="Enter Ref Number" 
+                            className="h-14 rounded-2xl font-black text-lg bg-secondary/10 border-none px-6"
+                            value={payableRef}
+                            onChange={(e) => setPayableRef(e.target.value)}
+                          />
+                       </div>
+                    </div>
+                  )}
+
+                  <div className="pt-6">
+                     <Button 
+                       className="w-full h-20 rounded-[32px] text-2xl font-black shadow-2xl flex gap-3" 
+                       onClick={handlePayableWash}
+                       disabled={isProcessing || !payableName || !payableAmount}
+                     >
+                       {isProcessing ? "Recording..." : (
+                         <>Record Payable Wash <ArrowRight className="w-6 h-6" /></>
+                       )}
+                     </Button>
+                     <p className="text-[10px] text-center mt-6 font-bold text-muted-foreground uppercase tracking-widest">
+                       Soap inventory will be automatically deducted upon recording.
+                     </p>
+                  </div>
+               </div>
+            </Card>
           </TabsContent>
 
           <TabsContent value="students" className="space-y-8">
@@ -697,8 +855,8 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="consumables">
-             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <Card className="border-none shadow-sm rounded-3xl bg-white p-8">
                   <CardHeader className="p-0 mb-6">
                     <CardTitle className="text-xl font-black">Restock Chemical Supply</CardTitle>
                     <CardDescription className="font-bold">Inventory replenishment terminal</CardDescription>
@@ -707,14 +865,15 @@ export default function LaundryPage() {
                     e.preventDefault();
                     if (!firestore || !user?.companyId) return;
                     const formData = new FormData(e.currentTarget);
+                    const category = formData.get('category') as 'student' | 'payable';
                     const bottles = Number(formData.get('bottles'));
                     const volPerBottle = Number(formData.get('volPerBottle'));
                     const costPerBottle = Number(formData.get('costPerBottle'));
                     const amountMl = bottles * volPerBottle * 1000;
                     const totalCost = bottles * costPerBottle;
-                    const docId = 'student_soap';
+                    const docId = `${category}_soap`;
 
-                    const existing = studentSoap;
+                    const existing = inventoryItems?.find(i => i.id === docId);
                     if (!existing) {
                       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
                         id: docId,
@@ -722,7 +881,7 @@ export default function LaundryPage() {
                         soapStockMl: amountMl,
                         soapCostPerLitre: totalCost / (bottles * volPerBottle),
                         capacityMl: 50000,
-                        category: 'student'
+                        category: category
                       });
                     } else {
                       await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
@@ -734,26 +893,56 @@ export default function LaundryPage() {
                       id: crypto.randomUUID(),
                       companyId: user.companyId,
                       amount: totalCost,
-                      description: `Soap Restock`,
+                      description: `${category.toUpperCase()} Soap Restock`,
                       timestamp: new Date().toISOString()
                     });
                     toast({ title: "Inventory Replenished" });
                     (e.target as HTMLFormElement).reset();
                   }} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                       <Input name="bottles" type="number" placeholder="Bottles" required className="rounded-xl" />
-                       <Input name="volPerBottle" type="number" step="0.1" placeholder="Litres/Btl" required className="rounded-xl" />
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase px-1">Designated Usage</Label>
+                      <Select name="category" defaultValue="student">
+                        <SelectTrigger className="h-12 rounded-xl font-bold"><SelectValue placeholder="Category" /></SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                          <SelectItem value="student">Student Usage Pool</SelectItem>
+                          <SelectItem value="payable">Payable / Walk-in Pool</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Input name="costPerBottle" type="number" step="0.01" placeholder="Cost per Bottle ($)" required className="rounded-xl" />
-                    <Button type="submit" className="w-full h-12 font-black rounded-xl">Add to Stock</Button>
+                    <div className="grid grid-cols-2 gap-2">
+                       <Input name="bottles" type="number" placeholder="Bottles" required className="rounded-xl h-12" />
+                       <Input name="volPerBottle" type="number" step="0.1" placeholder="Litres/Btl" required className="rounded-xl h-12" />
+                    </div>
+                    <Input name="costPerBottle" type="number" step="0.01" placeholder="Cost per Bottle ($)" required className="rounded-xl h-12" />
+                    <Button type="submit" className="w-full h-14 font-black rounded-2xl shadow-lg">Confirm Procurement</Button>
                   </form>
                 </Card>
 
-                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
-                   <Card className="p-10 border-none shadow-sm bg-primary text-primary-foreground rounded-[40px]">
+                <div className="grid grid-cols-1 gap-6">
+                   <Card className="p-10 border-none shadow-sm bg-primary text-primary-foreground rounded-[40px] relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform"><Droplet className="w-32 h-32" /></div>
                       <p className="text-[10px] font-black uppercase opacity-60 mb-2">Student Chemical Pool</p>
                       <h4 className="text-6xl font-black tracking-tighter">{studentSoap ? (studentSoap.soapStockMl / 1000).toFixed(2) : 0}L</h4>
-                      <Progress value={studentSoap ? (studentSoap.soapStockMl / studentSoap.capacityMl) * 100 : 0} className="h-2 bg-white/20 mt-6" />
+                      <div className="mt-6 space-y-2">
+                        <div className="flex justify-between text-[10px] font-black uppercase">
+                          <span>Usage Capacity</span>
+                          <span>{studentSoap ? ((studentSoap.soapStockMl / studentSoap.capacityMl) * 100).toFixed(0) : 0}%</span>
+                        </div>
+                        <Progress value={studentSoap ? (studentSoap.soapStockMl / studentSoap.capacityMl) * 100 : 0} className="h-2 bg-white/20" />
+                      </div>
+                   </Card>
+
+                   <Card className="p-10 border-none shadow-sm bg-accent text-accent-foreground rounded-[40px] relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform"><Zap className="w-32 h-32" /></div>
+                      <p className="text-[10px] font-black uppercase opacity-60 mb-2">Payable Service Pool</p>
+                      <h4 className="text-6xl font-black tracking-tighter">{payableSoap ? (payableSoap.soapStockMl / 1000).toFixed(2) : 0}L</h4>
+                      <div className="mt-6 space-y-2">
+                        <div className="flex justify-between text-[10px] font-black uppercase">
+                          <span>Usage Capacity</span>
+                          <span>{payableSoap ? ((payableSoap.soapStockMl / payableSoap.capacityMl) * 100).toFixed(0) : 0}%</span>
+                        </div>
+                        <Progress value={payableSoap ? (payableSoap.soapStockMl / payableSoap.capacityMl) * 100 : 0} className="h-2 bg-white/20" />
+                      </div>
                    </Card>
                 </div>
              </div>
@@ -860,9 +1049,9 @@ export default function LaundryPage() {
 
 function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
-    <div>
+    <div className="flex-1">
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28">
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center">
         <Icon className="mb-2 h-7 w-7 text-primary" />
         <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
