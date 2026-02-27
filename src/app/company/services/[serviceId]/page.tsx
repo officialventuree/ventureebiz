@@ -34,7 +34,8 @@ import {
   User,
   Building2,
   Wallet,
-  Calculator
+  Calculator,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -46,13 +47,14 @@ import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMetho
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const UNITS = ['pc', 'ml', 'litre', 'mm', 'cm', 'meter', 'kg', 'g', 'set'];
 
@@ -74,7 +76,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const [referenceNumber, setReferenceNumber] = useState('');
   const [cashReceived, setCashReceived] = useState<number | string>('');
 
-  // Material Form State (Advanced)
+  // Material Form State (Advanced Procurement)
   const [matQuantity, setMatQuantity] = useState<string>('1');
   const [matMeasure, setMatMeasure] = useState<string>('');
   const [matUnit, setMatUnit] = useState<string>('pc');
@@ -119,37 +121,38 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     completed: transactions?.filter(t => t.status === 'completed') || []
   };
 
-  const handlePlaceOrder = async () => {
+  const handlePlaceOrder = () => {
     if (!firestore || !user?.companyId || !customerName || !selectedBundle) return;
-    setIsProcessing(true);
+    
+    const transactionId = crypto.randomUUID();
+    const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
+    const transactionData: SaleTransaction = {
+      id: transactionId,
+      companyId: user.companyId,
+      module: 'services',
+      serviceTypeId: serviceId,
+      totalAmount: selectedBundle.price,
+      profit: selectedBundle.estimatedProfit,
+      timestamp: new Date().toISOString(),
+      customerName,
+      customerCompany: customerCompany || undefined,
+      paymentMethod,
+      referenceNumber: referenceNumber || undefined,
+      items: [{ name: selectedBundle.name, price: selectedBundle.price, quantity: 1 }],
+      status: 'pending'
+    };
 
-    try {
-      const transactionId = crypto.randomUUID();
-      const transactionData: SaleTransaction = {
-        id: transactionId,
-        companyId: user.companyId,
-        module: 'services',
-        serviceTypeId: serviceId,
-        totalAmount: selectedBundle.price,
-        profit: selectedBundle.estimatedProfit,
-        timestamp: new Date().toISOString(),
-        customerName,
-        customerCompany: customerCompany || undefined,
-        paymentMethod,
-        referenceNumber: referenceNumber || undefined,
-        items: [{ name: selectedBundle.name, price: selectedBundle.price, quantity: 1 }],
-        status: 'pending'
-      };
+    setDoc(transactionRef, transactionData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: transactionRef.path,
+        operation: 'create',
+        requestResourceData: transactionData
+      }));
+    });
 
-      await setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transactionId), transactionData);
-      toast({ title: "Booking Confirmed", description: `Pending order created for ${customerName}.` });
-      setIsBookingOpen(false);
-      resetBookingForm();
-    } catch (e) {
-      toast({ title: "Order failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    toast({ title: "Booking Logged", description: `Order for ${customerName} added to pipeline.` });
+    setIsBookingOpen(false);
+    resetBookingForm();
   };
 
   const resetBookingForm = () => {
@@ -161,41 +164,46 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     setSelectedBundle(null);
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
+  const handleUpdateStatus = (id: string, newStatus: string) => {
     if (!firestore || !user?.companyId) return;
-    try {
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'transactions', id), { status: newStatus });
-      toast({ title: "Pipeline Updated", description: `Order is now ${newStatus}.` });
-    } catch (e) {
-      toast({ title: "Update failed", variant: "destructive" });
-    }
+    const docRef = doc(firestore, 'companies', user.companyId, 'transactions', id);
+    updateDoc(docRef, { status: newStatus }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: docRef.path,
+        operation: 'update',
+        requestResourceData: { status: newStatus }
+      }));
+    });
+    toast({ title: "Pipeline Updated", description: `Service status is now ${newStatus}.` });
   };
 
-  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !firestore || !user?.companyId) return;
 
     const reader = new FileReader();
-    reader.onloadend = async () => {
+    reader.onloadend = () => {
       const base64String = reader.result as string;
-      try {
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId), {
-          duitNowQr: base64String
-        });
-        toast({ title: "Billing QR Updated", description: "Payment gateway is now active for this department." });
-      } catch (err: any) {
-        toast({ title: "Upload failed", description: err.message, variant: "destructive" });
-      }
+      const docRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId);
+      updateDoc(docRef, { duitNowQr: base64String }).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: { duitNowQr: '[IMAGE_DATA]' }
+        }));
+      });
+      toast({ title: "Billing QR Updated" });
     };
     reader.readAsDataURL(file);
   };
 
-  const handleCreateBundle = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateBundle = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
     const bundleId = crypto.randomUUID();
     
+    const bundleRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', bundleId);
     const newBundle: ServicePriceBundle = {
       id: bundleId,
       serviceTypeId: serviceId,
@@ -205,16 +213,19 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       estimatedProfit: Number(formData.get('profit'))
     };
 
-    try {
-      await setDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', bundleId), newBundle);
-      toast({ title: "Package Added", description: `${newBundle.name} is now in your catalog.` });
-      (e.target as HTMLFormElement).reset();
-    } catch (e) {
-      toast({ title: "Creation failed", variant: "destructive" });
-    }
+    setDoc(bundleRef, newBundle).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: bundleRef.path,
+        operation: 'create',
+        requestResourceData: newBundle
+      }));
+    });
+
+    toast({ title: "Package Added" });
+    (e.target as HTMLFormElement).reset();
   };
 
-  const handleAddMaterial = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddMaterial = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
@@ -228,37 +239,47 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     const totalExpenditure = qty * costPerItem;
     const costPerUnit = totalExpenditure / totalVolume;
 
+    const productRef = doc(firestore, 'companies', user.companyId, 'products', id);
     const material: Product = {
       id,
       companyId: user.companyId,
       serviceTypeId: serviceId,
       name: formData.get('name') as string,
-      costPrice: costPerUnit, // Store cost per basic measurement unit (ml, pc, etc.)
+      costPrice: costPerUnit,
       sellingPrice: costPerUnit * 1.5,
       stock: totalVolume,
       unit: matUnit
     };
 
-    try {
-      await setDoc(doc(firestore, 'companies', user.companyId, 'products', id), material);
-      
-      // Log the purchase
-      await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), {
-        id: crypto.randomUUID(),
-        companyId: user.companyId,
-        amount: totalExpenditure,
-        description: `Service Material: ${qty}x ${material.name} (${measure}${matUnit})`,
-        timestamp: new Date().toISOString()
-      });
+    setDoc(productRef, material).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: productRef.path,
+        operation: 'create',
+        requestResourceData: material
+      }));
+    });
+    
+    const purchaseData = {
+      id: crypto.randomUUID(),
+      companyId: user.companyId,
+      amount: totalExpenditure,
+      description: `Replenishment: ${qty}x ${material.name} (${measure}${matUnit})`,
+      timestamp: new Date().toISOString()
+    };
 
-      toast({ title: "Material Registered", description: "Added to service inventory and logged as purchase." });
-      (e.target as HTMLFormElement).reset();
-      setMatQuantity('1');
-      setMatMeasure('');
-      setMatCostPerItem('');
-    } catch (e) {
-      toast({ title: "Failed to add material", variant: "destructive" });
-    }
+    addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), purchaseData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: `companies/${user.companyId}/purchases`,
+        operation: 'create',
+        requestResourceData: purchaseData
+      }));
+    });
+
+    toast({ title: "Inventory Updated", description: `Added ${totalVolume.toFixed(1)}${matUnit} to registry.` });
+    (e.target as HTMLFormElement).reset();
+    setMatQuantity('1');
+    setMatMeasure('');
+    setMatCostPerItem('');
   };
 
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
@@ -266,7 +287,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - (selectedBundle?.price || 0)) : 0;
 
-  // Derived Values for Material Form
+  // Real-time derived values for form
   const totalMatVolume = (Number(matQuantity) || 0) * (Number(matMeasure) || 0);
   const totalMatCost = (Number(matQuantity) || 0) * (Number(matCostPerItem) || 0);
 
@@ -327,7 +348,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                     <Input name="name" placeholder="Bundle Name" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                     <Input name="price" type="number" step="0.01" placeholder="Selling Price ($)" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                     <Input name="profit" type="number" step="0.01" placeholder="Est. Profit ($)" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
-                    <Button type="submit" className="w-full h-14 rounded-2xl font-black">Add Package</Button>
+                    <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg">Add Package</Button>
                   </form>
                </Card>
 
@@ -339,9 +360,16 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                           <CardTitle className="text-xl font-black">{bundle.name}</CardTitle>
                           <p className="text-3xl font-black text-primary mt-2">${bundle.price.toFixed(2)}</p>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={async () => {
+                        <Button variant="ghost" size="icon" onClick={() => {
                           if (confirm("Delete price bundle?")) {
-                            await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id));
+                            const bundleRef = doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id);
+                            deleteDoc(bundleRef).catch(async (err) => {
+                              errorEmitter.emit('permission-error', new FirestorePermissionError({
+                                path: bundleRef.path,
+                                operation: 'delete'
+                              }));
+                            });
+                            toast({ title: "Package Removed" });
                           }
                         }} className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></Button>
                       </CardHeader>
@@ -368,17 +396,17 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                     <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                       <Calculator className="w-5 h-5" />
                     </div>
-                    <h3 className="text-xl font-black">Material Entry</h3>
+                    <h3 className="text-xl font-black">Procurement Entry</h3>
                   </div>
                   <form onSubmit={handleAddMaterial} className="space-y-5">
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Material Name</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Material/Item Name</Label>
                       <Input name="name" placeholder="Item/Chemical Name" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-[10px] font-black uppercase tracking-widest px-1">Quantity (Items)</Label>
+                        <Label className="text-[10px] font-black uppercase tracking-widest px-1">Qty (Items)</Label>
                         <Input 
                           type="number" 
                           min="1" 
@@ -403,7 +431,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Amount per Item ({matUnit})</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Measure per Item ({matUnit})</Label>
                       <Input 
                         type="number" 
                         step="0.1" 
@@ -416,7 +444,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Cost per Item ($)</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Cost per Unit/Item ($)</Label>
                       <Input 
                         type="number" 
                         step="0.01" 
@@ -430,8 +458,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
                     <div className="bg-primary/5 rounded-2xl p-4 space-y-2 border border-primary/10">
                        <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
-                          <span>Stock to Add</span>
-                          <span className="text-foreground">{totalMatVolume.toFixed(1)} {matUnit}</span>
+                          <span>Total Stock Added</span>
+                          <span className="text-foreground font-black">{totalMatVolume.toFixed(1)} {matUnit}</span>
                        </div>
                        <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
                           <span>Total Expenditure</span>
@@ -439,7 +467,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                        </div>
                     </div>
 
-                    <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg">Register Stock</Button>
+                    <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-xl">Confirm Procurement</Button>
                   </form>
                </Card>
 
@@ -449,9 +477,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                       <thead className="bg-secondary/10 border-b">
                         <tr>
                           <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Material Identity</th>
-                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Current Stock</th>
-                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Inventory Value</th>
-                          <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Actions</th>
+                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Available Stock</th>
+                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-right">Value (Cost)</th>
+                          <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -461,11 +489,18 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                             <td className="p-6">
                                <Badge variant={m.stock < 10 ? "destructive" : "secondary"} className="font-black px-3 rounded-lg">{m.stock.toFixed(1)} {m.unit}</Badge>
                             </td>
-                            <td className="p-6 font-black text-primary text-lg">${(m.stock * m.costPrice).toFixed(2)}</td>
+                            <td className="p-6 font-black text-primary text-lg text-right">${(m.stock * m.costPrice).toFixed(2)}</td>
                             <td className="p-6 text-center">
-                               <Button variant="ghost" size="icon" onClick={async () => {
-                                 if (confirm("Remove material?")) {
-                                   await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', m.id));
+                               <Button variant="ghost" size="icon" onClick={() => {
+                                 if (confirm("Remove material record?")) {
+                                   const matRef = doc(firestore!, 'companies', user!.companyId!, 'products', m.id);
+                                   deleteDoc(matRef).catch(async (err) => {
+                                     errorEmitter.emit('permission-error', new FirestorePermissionError({
+                                       path: matRef.path,
+                                       operation: 'delete'
+                                     }));
+                                   });
+                                   toast({ title: "Material Removed" });
                                  }
                                }} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
                             </td>
@@ -602,8 +637,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
           </div>
 
           <div className="p-10 pt-0">
-             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handlePlaceOrder} disabled={isProcessing || !customerName}>
-                {isProcessing ? "Finalizing Booking..." : "Log & Authorize Service"}
+             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handlePlaceOrder} disabled={!customerName}>
+                Log & Authorize Service
              </Button>
           </div>
         </DialogContent>
