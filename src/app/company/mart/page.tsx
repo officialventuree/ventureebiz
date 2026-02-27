@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -5,7 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
@@ -286,7 +287,7 @@ export default function MartPage() {
                         </div>
                         <div className="text-right">
                            <Badge variant={product.stock > 10 ? "secondary" : "destructive"} className="mb-2 uppercase font-black text-[10px] tracking-tighter px-3 py-1">
-                             {product.stock} Units
+                             {product.stock} {product.unit || 'Units'}
                            </Badge>
                         </div>
                       </CardContent>
@@ -635,6 +636,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
   const { toast } = useToast();
   const [isAdding, setIsAdding] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !companyId) return null;
@@ -692,11 +694,13 @@ function InventoryManager({ companyId }: { companyId?: string }) {
       costPrice: Number(formData.get('cost')),
       sellingPrice: Number(formData.get('price')),
       stock: Number(formData.get('stock')),
+      unit: formData.get('unit') as string,
     };
 
     try {
       await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
       toast({ title: "Catalog Entry Saved" });
+      setIsAddDialogOpen(false);
       (e.target as HTMLFormElement).reset();
     } catch (err) {
       toast({ title: "Entry failed", variant: "destructive" });
@@ -706,13 +710,14 @@ function InventoryManager({ companyId }: { companyId?: string }) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-8">
-      <div className="space-y-6">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-8">
+      <div className="lg:col-span-1 space-y-6">
         <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden">
           <CardHeader className="bg-primary/5 p-8">
             <CardTitle className="text-xl font-black flex items-center gap-3">
                <Truck className="w-6 h-6" /> Batch Replenishment
             </CardTitle>
+            <CardDescription className="font-bold">Replenish existing stock items</CardDescription>
           </CardHeader>
           <CardContent className="p-8">
              {selectedProduct ? (
@@ -723,11 +728,11 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Units</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Units to Add</label>
                         <Input name="quantity" type="number" required className="rounded-xl h-12 font-bold" />
                      </div>
                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Total Cost ($)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Batch Cost ($)</label>
                         <Input name="cost" type="number" step="0.01" required className="rounded-xl h-12 font-bold" />
                      </div>
                   </div>
@@ -738,40 +743,69 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                </form>
              ) : (
                <div className="py-16 text-center text-muted-foreground bg-secondary/5 rounded-3xl border-4 border-dashed border-secondary/20">
-                  <p className="text-sm font-black uppercase tracking-widest opacity-60">Ready for Selection</p>
-                  <p className="text-xs font-bold mt-2">Pick an item from the registry</p>
+                  <Package className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                  <p className="text-sm font-black uppercase tracking-widest opacity-60">Inventory Guard</p>
+                  <p className="text-[10px] font-bold mt-2 px-4">Select an item from the registry table to replenish stock.</p>
                </div>
              )}
           </CardContent>
         </Card>
-
-        <Card className="border-none shadow-sm rounded-3xl bg-white">
-          <CardHeader className="p-8">
-            <CardTitle className="text-xl font-black">Product Registration</CardTitle>
-          </CardHeader>
-          <CardContent className="p-8 pt-0">
-             <form onSubmit={handleAddNew} className="space-y-4">
-                <Input name="name" placeholder="Legal Product Name" required className="h-12 rounded-xl font-bold" />
-                <Input name="sku" placeholder="EAN / SKU Barcode" className="h-12 rounded-xl font-bold" />
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase tracking-widest px-2">Cost Price</label>
-                      <Input name="cost" type="number" placeholder="0.00" step="0.01" required className="h-12 rounded-xl font-bold" />
-                   </div>
-                   <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase tracking-widest px-2">Sale Price</label>
-                      <Input name="price" type="number" placeholder="0.00" step="0.01" required className="h-12 rounded-xl font-bold" />
-                   </div>
-                </div>
-                <Input name="stock" type="number" placeholder="Opening Stock Level" required className="h-12 rounded-xl font-bold" />
-                <Button type="submit" className="w-full h-14 rounded-xl font-black shadow-xl" disabled={isAdding}>Save Entry</Button>
-             </form>
-          </CardContent>
-        </Card>
       </div>
 
-      <div className="lg:col-span-2">
-        <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden">
+      <div className="lg:col-span-3 space-y-4">
+        <div className="flex justify-between items-center mb-2">
+           <h3 className="text-xl font-black tracking-tight">Active Asset Registry</h3>
+           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+             <DialogTrigger asChild>
+                <Button className="rounded-xl font-black h-11 px-6 shadow-lg flex items-center gap-2">
+                  <Plus className="w-4 h-4" /> Register New Product
+                </Button>
+             </DialogTrigger>
+             <DialogContent className="rounded-[32px] max-w-lg border-none bg-white p-0 overflow-hidden shadow-2xl">
+                <DialogHeader className="bg-primary p-8 text-primary-foreground">
+                   <DialogTitle className="text-2xl font-black">Product Registration</DialogTitle>
+                   <DialogDescription className="text-primary-foreground/80 font-bold">Define new items for the business catalog</DialogDescription>
+                </DialogHeader>
+                <div className="p-8">
+                  <form onSubmit={handleAddNew} className="space-y-6">
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase tracking-widest px-1">Product Identity</label>
+                       <Input name="name" placeholder="Item Name (e.g. Arabica Beans)" required className="h-12 rounded-xl font-bold border-secondary" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase tracking-widest px-1">Measurement Unit</label>
+                          <Input name="unit" placeholder="e.g. piece, kg, ml" required className="h-12 rounded-xl font-bold border-secondary" />
+                       </div>
+                       <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase tracking-widest px-1">SKU / Barcode</label>
+                          <Input name="sku" placeholder="Optional" className="h-12 rounded-xl font-bold border-secondary" />
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase tracking-widest px-1">Opening Cost ($)</label>
+                          <Input name="cost" type="number" step="0.01" placeholder="0.00" required className="h-12 rounded-xl font-bold border-secondary" />
+                       </div>
+                       <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase tracking-widest px-1">Sale Price ($)</label>
+                          <Input name="price" type="number" step="0.01" placeholder="0.00" required className="h-12 rounded-xl font-bold border-secondary" />
+                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase tracking-widest px-1">Initial Stock Level</label>
+                       <Input name="stock" type="number" placeholder="Total available units" required className="h-12 rounded-xl font-bold border-secondary" />
+                    </div>
+                    <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl" disabled={isAdding}>
+                      {isAdding ? "Saving Item..." : "Confirm Catalog Entry"}
+                    </Button>
+                  </form>
+                </div>
+             </DialogContent>
+           </Dialog>
+        </div>
+
+        <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
           <table className="w-full text-sm text-left">
             <thead className="bg-secondary/20 border-b">
               <tr>
@@ -789,9 +823,11 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                     <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {p.sku || 'N/A'}</p>
                   </td>
                   <td className="p-6">
-                    <Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-black uppercase text-[10px] px-3 py-1">
-                      {p.stock} Units
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-black uppercase text-[10px] px-3 py-1">
+                        {p.stock} {p.unit || 'Units'}
+                      </Badge>
+                    </div>
                   </td>
                   <td className="p-6 font-black text-primary text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
                   <td className="p-6 text-center">
@@ -801,6 +837,15 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                   </td>
                 </tr>
               ))}
+              {(!products || products.length === 0) && (
+                <tr>
+                  <td colSpan={4} className="p-20 text-center opacity-30">
+                    <Package className="w-16 h-16 mx-auto mb-4" />
+                    <p className="font-black uppercase tracking-widest">Registry Empty</p>
+                    <p className="text-xs font-bold mt-1">Register your first product to begin tracking</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

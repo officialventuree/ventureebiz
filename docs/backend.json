@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Company": {
@@ -41,7 +42,8 @@
         "costPrice": { "type": "number" },
         "sellingPrice": { "type": "number" },
         "stock": { "type": "number" },
-        "sku": { "type": "string" }
+        "sku": { "type": "string" },
+        "unit": { "type": "string", "description": "Measurement unit (e.g. piece, kg, box)" }
       }
     },
     "Coupon": {
