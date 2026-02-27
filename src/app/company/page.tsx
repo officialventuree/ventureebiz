@@ -7,8 +7,9 @@ import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { TrendingUp, DollarSign, ShoppingBag, Users, ArrowUpRight, Wallet, Waves, AlertTriangle } from 'lucide-react';
-import { SaleTransaction, CapitalPurchase } from '@/lib/types';
+import { TrendingUp, DollarSign, ShoppingBag, Users, ArrowUpRight, Wallet, Waves, AlertTriangle, Package } from 'lucide-react';
+import { SaleTransaction, CapitalPurchase, Product } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export default function CompanyDashboard() {
   const { user } = useAuth();
@@ -24,12 +25,20 @@ export default function CompanyDashboard() {
     return collection(firestore, 'companies', user.companyId, 'purchases');
   }, [firestore, user?.companyId]);
 
+  const productsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'products');
+  }, [firestore, user?.companyId]);
+
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+  const { data: products } = useCollection<Product>(productsQuery);
 
   const totalRevenue = transactions?.reduce((acc, s) => acc + s.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, s) => acc + s.profit, 0) || 0;
   const totalCapitalUsed = purchases?.reduce((acc, p) => acc + p.amount, 0) || 0;
+  const inventoryValue = products?.reduce((acc, p) => acc + (p.stock * p.costPrice), 0) || 0;
+  
   const capitalLimit = 10000; // Mock limit until settings implemented
 
   // Mock daily stats
@@ -62,8 +71,8 @@ export default function CompanyDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatsCard icon={DollarSign} label="Gross Revenue" value={`$${totalRevenue.toFixed(2)}`} trend="+12.5%" />
             <StatsCard icon={TrendingUp} label="Net Profit" value={`$${totalProfit.toFixed(2)}`} trend="+8.2%" color="text-green-600" />
+            <StatsCard icon={Package} label="Inventory Value" value={`$${inventoryValue.toFixed(2)}`} trend="Live Stock" color="text-blue-600" />
             <StatsCard icon={Wallet} label="Capital Remaining" value={`$${(capitalLimit - totalCapitalUsed).toFixed(2)}`} trend="Limit: $10k" color="text-amber-600" />
-            <StatsCard icon={ShoppingBag} label="Transactions" value={transactions?.length.toString() || '0'} trend="+5.2%" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -106,9 +115,9 @@ export default function CompanyDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <AlertItem label="Low Stock: Matcha Powder" value="3 items left" />
-                  <AlertItem label="Capital Limit" value="72% utilized" />
-                  <AlertItem label="Mandatory Laundry" value="12 students pending" />
+                  <AlertItem label="Low Stock Alert" value={`${products?.filter(p => p.stock < 10).length || 0} items low`} />
+                  <AlertItem label="Capital Limit" value={`${((totalCapitalUsed / capitalLimit) * 100).toFixed(1)}% utilized`} />
+                  <AlertItem label="Total Transactions" value={`${transactions?.length || 0} processed`} />
                 </CardContent>
               </Card>
 
