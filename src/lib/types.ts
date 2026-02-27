@@ -1,4 +1,3 @@
-
 export type Role = 'admin' | 'company' | 'viewer';
 export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
@@ -29,6 +28,7 @@ export interface Company {
 }
 
 export interface SaleItem {
+  productId?: string;
   name: string;
   price: number;
   quantity: number;

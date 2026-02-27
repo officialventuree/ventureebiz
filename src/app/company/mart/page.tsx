@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -6,10 +5,10 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod, LuckyDrawEvent } from '@/lib/types';
@@ -21,6 +20,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function MartPage() {
   const { user } = useAuth();
@@ -66,11 +66,17 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'luckyDrawEvents');
   }, [firestore, user?.companyId]);
 
+  const luckyDrawsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'luckyDraws');
+  }, [firestore, user?.companyId]);
+
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
   const { data: events } = useCollection<LuckyDrawEvent>(eventsQuery);
+  const { data: luckyDraws } = useCollection<LuckyDrawEntry>(luckyDrawsQuery);
 
   // Auto-focus barcode scanner on load and after checkout
   useEffect(() => {
@@ -209,6 +215,7 @@ export default function MartPage() {
         status: 'completed',
         luckyDrawEventId: qualifyingEvent?.id,
         items: cart.map(item => ({
+          productId: item.product.id,
           name: item.product.name,
           price: item.product.sellingPrice,
           cost: item.product.costPrice,
@@ -258,6 +265,40 @@ export default function MartPage() {
     }
   };
 
+  const handleCancelTransaction = async (transaction: SaleTransaction) => {
+    if (!firestore || !user?.companyId) return;
+    
+    try {
+      // 1. Restore Inventory
+      for (const item of transaction.items) {
+        if (item.productId) {
+          const productRef = doc(firestore, 'companies', user.companyId, 'products', item.productId);
+          await updateDoc(productRef, { stock: increment(item.quantity) });
+        }
+      }
+
+      // 2. Remove associated Lucky Draw entries
+      const entriesToDelete = luckyDraws?.filter(e => e.transactionId === transaction.id) || [];
+      for (const entry of entriesToDelete) {
+        await deleteDoc(doc(firestore, 'companies', user.companyId, 'luckyDraws', entry.id));
+      }
+
+      // 3. Delete Transaction
+      await deleteDoc(doc(firestore, 'companies', user.companyId, 'transactions', transaction.id));
+
+      toast({ 
+        title: "Transaction Reversed", 
+        description: "Inventory quantities restored and all associated records removed successfully." 
+      });
+    } catch (e: any) {
+      toast({ 
+        title: "Reversal Failed", 
+        description: "Could not restore inventory or records.",
+        variant: "destructive" 
+      });
+    }
+  };
+
   const profitData = transactions?.filter(t => t.module === 'mart').slice(-7).map(t => ({
     date: new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' }),
     profit: t.profit,
@@ -292,6 +333,9 @@ export default function MartPage() {
           <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm">
             <TabsTrigger value="pos" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Receipt className="w-4 h-4" /> POS Terminal
+            </TabsTrigger>
+            <TabsTrigger value="history" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <History className="w-4 h-4" /> Sales History
             </TabsTrigger>
             <TabsTrigger value="inventory" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Package className="w-4 h-4" /> Stock Control
@@ -556,6 +600,79 @@ export default function MartPage() {
                 </div>
               </DialogContent>
             </Dialog>
+          </TabsContent>
+
+          <TabsContent value="history" className="flex-1 overflow-auto">
+             <div className="space-y-4">
+                <div className="flex justify-between items-end mb-2">
+                   <div>
+                      <h3 className="text-xl font-black text-foreground tracking-tight">Purchase Logs</h3>
+                      <p className="text-xs font-bold text-muted-foreground">Comprehensive Mart transaction history</p>
+                   </div>
+                </div>
+                <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-secondary/20 border-b">
+                       <tr>
+                         <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Reference / Date</th>
+                         <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Customer</th>
+                         <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Settlement</th>
+                         <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Items</th>
+                         <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Total</th>
+                         <th className="p-6 text-center font-black uppercase text-muted-foreground tracking-widest text-[10px]">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                        {transactions?.filter(t => t.module === 'mart').slice().reverse().map(t => (
+                          <tr key={t.id} className="hover:bg-secondary/5 transition-colors group">
+                            <td className="p-6">
+                               <p className="font-bold text-foreground font-mono text-xs">#{t.id.split('-')[0].toUpperCase()}</p>
+                               <p className="text-[10px] text-muted-foreground font-bold">{new Date(t.timestamp).toLocaleString()}</p>
+                            </td>
+                            <td className="p-6 font-bold">{t.customerName}</td>
+                            <td className="p-6">
+                               <div className="space-y-1">
+                                  <Badge variant="secondary" className="font-black uppercase text-[9px] tracking-widest">{t.paymentMethod}</Badge>
+                                  {t.referenceNumber && <p className="text-[10px] font-mono text-muted-foreground truncate max-w-[100px]">Ref: {t.referenceNumber}</p>}
+                               </div>
+                            </td>
+                            <td className="p-6">
+                               <div className="flex flex-wrap gap-1">
+                                  {t.items.map((item, idx) => (
+                                    <Badge key={idx} variant="outline" className="font-bold text-[9px] bg-secondary/10">
+                                      {item.quantity}x {item.name}
+                                    </Badge>
+                                  ))}
+                               </div>
+                            </td>
+                            <td className="p-6 font-black text-primary text-lg">${t.totalAmount.toFixed(2)}</td>
+                            <td className="p-6 text-center">
+                               <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                     <Button variant="ghost" size="icon" className="rounded-xl"><MoreVertical className="w-4 h-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="rounded-xl border-none shadow-xl">
+                                     <DropdownMenuItem className="text-destructive font-black gap-2 focus:bg-destructive/5" onClick={() => handleCancelTransaction(t)}>
+                                        <XCircle className="w-4 h-4" /> Reverse Transaction
+                                     </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                               </DropdownMenu>
+                            </td>
+                          </tr>
+                        ))}
+                        {(!transactions || transactions.filter(t => t.module === 'mart').length === 0) && (
+                          <tr>
+                            <td colSpan={6} className="p-20 text-center opacity-30">
+                              <History className="w-16 h-16 mx-auto mb-4" />
+                              <p className="font-black uppercase tracking-widest">No Sales Found</p>
+                              <p className="text-xs font-bold mt-1">Transactions will appear here once finalized.</p>
+                            </td>
+                          </tr>
+                        )}
+                     </tbody>
+                   </table>
+                </div>
+             </div>
           </TabsContent>
 
           <TabsContent value="inventory">
