@@ -6,7 +6,7 @@ import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { BarChart3, TrendingUp, DollarSign, Download, Calendar, Filter, PieChart as PieChartIcon, Search, ListFilter, ShieldCheck, Trophy } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Download, Calendar, Filter, PieChart as PieChartIcon, Search, ListFilter, ShieldCheck, Trophy, CreditCard } from 'lucide-react';
 import { SaleTransaction, CapitalPurchase, Product, LuckyDrawEntry } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -46,17 +46,21 @@ export default function ReportsPage() {
   const filteredTransactions = transactions?.filter(t => 
     t.items[0].name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.module.toLowerCase().includes(searchTerm.toLowerCase())
+    t.module.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.paymentMethod?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) || [];
 
   const handleExportCSV = () => {
     if (!filteredTransactions.length) return;
-    const headers = ['Date', 'Module', 'Item', 'Customer', 'Total', 'Profit', 'Status'];
+    const headers = ['Date', 'Module', 'Item', 'Customer', 'Method', 'Ref#', 'Total', 'Profit', 'Status'];
     const rows = filteredTransactions.map(t => [
       new Date(t.timestamp).toLocaleString(),
       t.module,
       t.items[0].name,
       t.customerName || 'N/A',
+      t.paymentMethod || 'Cash',
+      t.referenceNumber || 'N/A',
       t.totalAmount,
       t.profit,
       t.status || 'Completed'
@@ -151,7 +155,7 @@ export default function ReportsPage() {
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Search transactions..." 
+                      placeholder="Search transactions, customers, references..." 
                       className="pl-10 h-12 rounded-xl bg-white border-none shadow-sm font-bold"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -162,8 +166,8 @@ export default function ReportsPage() {
                    <table className="w-full text-sm text-left">
                      <thead className="bg-secondary/20 border-b">
                        <tr>
-                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Event</th>
-                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Sector</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Event / Date</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter text-center">Payment</th>
                          <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Revenue</th>
                          <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Status</th>
                        </tr>
@@ -177,8 +181,15 @@ export default function ReportsPage() {
                                  {t.customerName || 'Walk-in'} | {new Date(t.timestamp).toLocaleDateString()}
                                </div>
                             </td>
-                            <td className="p-4">
-                               <Badge variant="outline" className="font-black uppercase text-[9px] tracking-widest">{t.module}</Badge>
+                            <td className="p-4 text-center">
+                               <div className="flex flex-col items-center">
+                                 <Badge variant="secondary" className="font-black uppercase text-[9px] mb-1">
+                                   {t.paymentMethod || 'cash'}
+                                 </Badge>
+                                 {t.referenceNumber && (
+                                   <span className="text-[10px] font-mono text-muted-foreground">#{t.referenceNumber}</span>
+                                 )}
+                               </div>
                             </td>
                             <td className="p-4 font-black text-foreground">${t.totalAmount.toFixed(2)}</td>
                             <td className="p-4">

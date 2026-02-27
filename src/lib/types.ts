@@ -4,7 +4,7 @@ export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
 export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
 export type CouponStatus = 'unused' | 'used';
-export type PaymentMethod = 'cash' | 'duitnow';
+export type PaymentMethod = 'cash' | 'card' | 'duitnow' | 'coupon';
 
 export interface User {
   id: string;
@@ -50,6 +50,7 @@ export interface SaleTransaction {
   couponCode?: string;
   discountApplied?: number;
   paymentMethod?: PaymentMethod;
+  referenceNumber?: string;
 }
 
 export interface Product {

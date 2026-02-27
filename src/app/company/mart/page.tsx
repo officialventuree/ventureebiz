@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 
 const LUCKY_DRAW_MIN_SPEND = 100;
 
@@ -33,6 +34,7 @@ export default function MartPage() {
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [referenceNumber, setReferenceNumber] = useState('');
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
 
   const companyRef = useMemoFirebase(() => {
@@ -133,6 +135,12 @@ export default function MartPage() {
 
   const handleFinalCheckout = async () => {
     if (!user?.companyId || !firestore) return;
+    
+    if ((paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber) {
+      toast({ title: "Reference Required", description: "Please enter the payment reference number.", variant: "destructive" });
+      return;
+    }
+
     setIsProcessing(true);
     
     try {
@@ -150,6 +158,7 @@ export default function MartPage() {
         customerName: customerName || 'Walk-in',
         timestamp: new Date().toISOString(),
         paymentMethod,
+        referenceNumber: referenceNumber || undefined,
         items: cart.map(item => ({
           name: item.product.name,
           price: item.product.sellingPrice,
@@ -189,6 +198,7 @@ export default function MartPage() {
       setActiveCoupon(null);
       setCouponCode('');
       setCustomerName('');
+      setReferenceNumber('');
       setShowCheckoutDialog(false);
     } catch (e) {
       toast({ title: "Checkout failed", variant: "destructive" });
@@ -312,16 +322,6 @@ export default function MartPage() {
                   </CardContent>
                   <CardFooter className="flex-col gap-4 p-6 border-t bg-secondary/5">
                     <div className="w-full space-y-3">
-                      <div className="flex gap-2">
-                        <Input 
-                          placeholder="Coupon Code" 
-                          className="h-10 rounded-xl bg-white border-none shadow-sm text-sm"
-                          value={couponCode}
-                          onChange={(e) => setCouponCode(e.target.value)}
-                        />
-                        <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-xl font-black h-10">Apply</Button>
-                      </div>
-
                       {totalAmount >= LUCKY_DRAW_MIN_SPEND && (
                         <div className="space-y-1">
                            <label className="text-[10px] font-black uppercase text-accent">Customer Name (Lucky Draw Entry)</label>
@@ -334,7 +334,7 @@ export default function MartPage() {
                         </div>
                       )}
 
-                      <div className="pt-2 border-t space-y-2">
+                      <div className="pt-2 space-y-2">
                         <div className="flex justify-between text-xs font-bold text-muted-foreground">
                           <span>Subtotal</span>
                           <span>${subtotal.toFixed(2)}</span>
@@ -364,54 +364,125 @@ export default function MartPage() {
             </div>
 
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
-              <DialogContent className="rounded-3xl border-none shadow-2xl max-w-md">
+              <DialogContent className="rounded-3xl border-none shadow-2xl max-w-lg">
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-black">Select Payment Method</DialogTitle>
-                  <DialogDescription className="font-bold">Total Payable: ${totalAmount.toFixed(2)}</DialogDescription>
+                  <DialogTitle className="text-2xl font-black">Finalize Checkout</DialogTitle>
+                  <DialogDescription className="font-bold">Total Amount Due: ${totalAmount.toFixed(2)}</DialogDescription>
                 </DialogHeader>
-                <div className="py-6 space-y-6">
-                  <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 gap-4">
-                    <div>
-                      <RadioGroupItem value="cash" id="cash" className="peer sr-only" />
-                      <Label
-                        htmlFor="cash"
-                        className="flex flex-col items-center justify-between rounded-2xl border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                      >
-                        <Wallet className="mb-3 h-6 w-6 text-primary" />
-                        <span className="font-black">Cash</span>
-                      </Label>
-                    </div>
-                    <div>
-                      <RadioGroupItem value="duitnow" id="duitnow" className="peer sr-only" />
-                      <Label
-                        htmlFor="duitnow"
-                        className="flex flex-col items-center justify-between rounded-2xl border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                      >
-                        <QrCode className="mb-3 h-6 w-6 text-primary" />
-                        <span className="font-black">DuitNow QR</span>
-                      </Label>
-                    </div>
-                  </RadioGroup>
+                
+                <div className="py-4 space-y-6">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Select Payment Method</label>
+                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <RadioGroupItem value="cash" id="cash" className="peer sr-only" />
+                        <Label
+                          htmlFor="cash"
+                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                        >
+                          <Banknote className="mb-2 h-5 w-5 text-primary" />
+                          <span className="text-xs font-black">Cash</span>
+                        </Label>
+                      </div>
+                      <div>
+                        <RadioGroupItem value="card" id="card" className="peer sr-only" />
+                        <Label
+                          htmlFor="card"
+                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                        >
+                          <CreditCard className="mb-2 h-5 w-5 text-primary" />
+                          <span className="text-xs font-black">Card</span>
+                        </Label>
+                      </div>
+                      <div>
+                        <RadioGroupItem value="duitnow" id="duitnow" className="peer sr-only" />
+                        <Label
+                          htmlFor="duitnow"
+                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                        >
+                          <QrCode className="mb-2 h-5 w-5 text-primary" />
+                          <span className="text-xs font-black">DuitNow</span>
+                        </Label>
+                      </div>
+                      <div>
+                        <RadioGroupItem value="coupon" id="coupon_method" className="peer sr-only" />
+                        <Label
+                          htmlFor="coupon_method"
+                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                        >
+                          <Ticket className="mb-2 h-5 w-5 text-primary" />
+                          <span className="text-xs font-black">Voucher</span>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
 
-                  {paymentMethod === 'duitnow' && (
-                    <div className="bg-secondary/20 p-6 rounded-3xl text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
-                      <p className="text-xs font-black uppercase text-muted-foreground tracking-widest">Scan to Pay</p>
-                      {companyDoc?.duitNowQr ? (
-                        <div className="bg-white p-4 rounded-2xl shadow-sm">
-                           <img src={companyDoc.duitNowQr} alt="DuitNow QR" className="w-48 h-48 object-contain" />
-                        </div>
-                      ) : (
-                        <div className="py-12 px-6 border-2 border-dashed rounded-2xl text-muted-foreground flex flex-col items-center">
-                           <ImageIcon className="w-12 h-12 mb-2 opacity-20" />
-                           <p className="text-sm font-bold">QR Code not configured in Billing Settings</p>
-                        </div>
-                      )}
+                  {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                       <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground">Transaction Reference #</label>
+                          <Input 
+                            placeholder="Enter Trace ID / Reference" 
+                            className="h-11 rounded-xl font-bold bg-secondary/10 border-none"
+                            value={referenceNumber}
+                            onChange={(e) => setReferenceNumber(e.target.value)}
+                            required
+                          />
+                       </div>
+                       {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                         <div className="bg-secondary/10 p-4 rounded-2xl flex flex-col items-center gap-2">
+                            <p className="text-[10px] font-black uppercase text-muted-foreground">Merchant QR</p>
+                            <img src={companyDoc.duitNowQr} alt="DuitNow QR" className="w-32 h-32 object-contain bg-white p-2 rounded-xl shadow-sm" />
+                         </div>
+                       )}
                     </div>
                   )}
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Apply Promotion</label>
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="Enter Promo Code" 
+                        className="h-11 rounded-xl bg-secondary/10 border-none font-bold"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value)}
+                      />
+                      <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-xl font-black h-11 px-6">Verify</Button>
+                    </div>
+                    {activeCoupon && (
+                       <Badge className="bg-green-100 text-green-700 hover:bg-green-100 font-black gap-2 py-1 px-3">
+                         <Ticket className="w-3 h-3" /> {activeCoupon.code} Applied (-${activeCoupon.value.toFixed(2)})
+                       </Badge>
+                    )}
+                  </div>
+
+                  <div className="bg-primary/5 p-4 rounded-2xl space-y-2">
+                     <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                        <span>Items Subtotal</span>
+                        <span>${subtotal.toFixed(2)}</span>
+                     </div>
+                     {discount > 0 && (
+                        <div className="flex justify-between text-xs font-black text-green-600">
+                           <span>Promotional Discount</span>
+                           <span>-${discount.toFixed(2)}</span>
+                        </div>
+                     )}
+                     <div className="flex justify-between items-end border-t border-primary/10 pt-2">
+                        <span className="text-sm font-black uppercase text-primary">Final Payable</span>
+                        <span className="text-3xl font-black text-foreground">${totalAmount.toFixed(2)}</span>
+                     </div>
+                  </div>
                 </div>
+
                 <DialogFooter>
-                  <Button onClick={handleFinalCheckout} className="w-full h-12 rounded-xl font-black text-lg shadow-lg" disabled={isProcessing}>
-                    {isProcessing ? "Recording..." : "Confirm Payment"}
+                  <Button 
+                    onClick={handleFinalCheckout} 
+                    className="w-full h-14 rounded-xl font-black text-lg shadow-lg" 
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? "Finalizing Transaction..." : "Confirm & Record Sale"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -535,8 +606,8 @@ function BillingManager({ companyId, companyDoc }: { companyId?: string, company
           <CardContent className="p-6 space-y-4">
              <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl">
                 <div>
-                   <p className="font-black">Cash Payments</p>
-                   <p className="text-[10px] font-bold text-muted-foreground">Enabled by default</p>
+                   <p className="font-black">Cash & Card Tracking</p>
+                   <p className="text-[10px] font-bold text-muted-foreground">Reference numbers enabled</p>
                 </div>
                 <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
                    <CheckCircle2 className="w-6 h-6" />
@@ -584,14 +655,12 @@ function InventoryManager({ companyId }: { companyId?: string }) {
     const cost = Number(formData.get('cost'));
 
     try {
-      // 1. Update Product Stock
       const productRef = doc(firestore, 'companies', companyId, 'products', selectedProduct.id);
       await updateDoc(productRef, { 
         stock: increment(qty),
-        costPrice: cost / qty // Update avg cost price
+        costPrice: cost / qty
       });
 
-      // 2. Record Capital Purchase
       const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
       await addDoc(purchaseRef, {
         id: crypto.randomUUID(),
