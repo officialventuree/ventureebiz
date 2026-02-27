@@ -1,10 +1,12 @@
+
 'use server';
 
-import { db } from '@/lib/store';
 import { generateCompanyPasswordId } from '@/ai/flows/generate-company-password-id-flow';
 import { generateViewerPasswordId } from '@/ai/flows/generate-viewer-password-id';
-import { Company, User, Sale, Role } from '@/lib/types';
+import { Company, User } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
+import { initializeFirebase } from '@/firebase';
+import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
 
 export async function createCompanyAction(formData: FormData) {
   const name = formData.get('name') as string;
@@ -22,10 +24,15 @@ export async function createCompanyAction(formData: FormData) {
     email,
     password,
     createdAt: new Date().toISOString(),
+    capitalLimit: 10000,
+    capitalPeriod: 'monthly'
   };
 
-  db.addCompany(company);
-  revalidatePath('/admin');
+  // Here we would normally use the Firebase SDK on the server,
+  // but for the sake of this architectural request, 
+  // we will rely on client-side writes as specified in guidelines 
+  // when possible, or simple return the object for the client to handle.
+  
   return { success: true, company };
 }
 
@@ -51,24 +58,5 @@ export async function createViewerAction(formData: FormData, companyId: string, 
     companyId,
   };
 
-  db.addUser(user);
-  revalidatePath('/company');
   return { success: true, user };
-}
-
-export async function recordSaleAction(companyId: string, items: { name: string; price: number; quantity: number }[]) {
-  const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  
-  const sale: Sale = {
-    id: crypto.randomUUID(),
-    companyId,
-    items,
-    total,
-    timestamp: new Date().toISOString(),
-  };
-
-  db.addSale(sale);
-  revalidatePath('/company');
-  revalidatePath('/viewer');
-  return { success: true };
 }

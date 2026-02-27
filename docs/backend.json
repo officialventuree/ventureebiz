@@ -1,465 +1,112 @@
+
 {
   "entities": {
     "Company": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Company",
       "type": "object",
-      "description": "Represents a registered company within the Venturee Biz SaaS platform. Each company has its own dedicated dashboard and associated users.",
+      "description": "Core company profile and login credentials.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Company entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The legal or common name of the company."
-        },
-        "companyEmail": {
-          "type": "string",
-          "description": "The auto-generated primary email address for the company's dashboard login (e.g., 'companyname@ventureebiz.com').",
-          "format": "email"
-        },
-        "companyPassword": {
-          "type": "string",
-          "description": "The auto-generated password for the company's dashboard login, consisting of 'companyname.venturee.uniqueid'. This is a system-generated credential."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the company was registered.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the company's information was last updated.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "capitalLimit": { "type": "number" },
+        "capitalPeriod": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] }
       },
-      "required": [
-        "id",
-        "name",
-        "companyEmail",
-        "companyPassword",
-        "createdAt"
-      ]
-    },
-    "CompanyUser": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "CompanyUser",
-      "type": "object",
-      "description": "Represents an individual user account associated with a specific company, such as a viewer role, with system-generated login credentials.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the CompanyUser entity."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "Reference to the Company this user belongs to. (Relationship: Company 1:N CompanyUser)"
-        },
-        "name": {
-          "type": "string",
-          "description": "The full name of the user."
-        },
-        "username": {
-          "type": "string",
-          "description": "A unique username for the user within their company."
-        },
-        "email": {
-          "type": "string",
-          "description": "The auto-generated email address for the user's login (e.g., 'username_companyname@ventureebiz.com').",
-          "format": "email"
-        },
-        "password": {
-          "type": "string",
-          "description": "The auto-generated password for the user's login, consisting of an 8-character unique ID. This is a system-generated credential."
-        },
-        "role": {
-          "type": "string",
-          "description": "The role of the user within the company (e.g., 'viewer')."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the user account was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the user's information was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "companyId",
-        "name",
-        "username",
-        "email",
-        "password",
-        "role",
-        "createdAt"
-      ]
+      "required": ["id", "name", "email", "createdAt"]
     },
     "Product": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Product",
       "type": "object",
-      "description": "Represents a product or service offered by a company within the POS system.",
+      "description": "Retail products for the Mart module.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Product entity."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "Reference to the Company that owns this product. (Relationship: Company 1:N Product)"
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the product."
-        },
-        "description": {
-          "type": "string",
-          "description": "A description of the product."
-        },
-        "price": {
-          "type": "number",
-          "description": "The selling price of the product."
-        },
-        "sku": {
-          "type": "string",
-          "description": "Stock Keeping Unit, a unique identifier for the product within the company's inventory."
-        },
-        "stockQuantity": {
-          "type": "number",
-          "description": "The current quantity of the product available in stock."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the product was added.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the product information was last updated.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "sku": { "type": "string" }
       },
-      "required": [
-        "id",
-        "companyId",
-        "name",
-        "price",
-        "stockQuantity",
-        "createdAt"
-      ]
+      "required": ["id", "companyId", "name", "costPrice", "sellingPrice", "stock"]
     },
-    "Customer": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Customer",
+    "LaundryStudent": {
+      "title": "LaundryStudent",
       "type": "object",
-      "description": "Represents a customer record within a company's POS system.",
+      "description": "Student records for the Mandatory Laundry system.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Customer entity."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "Reference to the Company that owns this customer record. (Relationship: Company 1:N Customer)"
-        },
-        "firstName": {
-          "type": "string",
-          "description": "The first name of the customer."
-        },
-        "lastName": {
-          "type": "string",
-          "description": "The last name of the customer."
-        },
-        "email": {
-          "type": "string",
-          "description": "The email address of the customer.",
-          "format": "email"
-        },
-        "phone": {
-          "type": "string",
-          "description": "The phone number of the customer."
-        },
-        "address": {
-          "type": "string",
-          "description": "The physical address of the customer."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the customer record was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the customer record was last updated.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "matrixNumber": { "type": "string" },
+        "balance": { "type": "number" }
       },
-      "required": [
-        "id",
-        "companyId",
-        "firstName",
-        "createdAt"
-      ]
+      "required": ["id", "companyId", "name", "matrixNumber", "balance"]
+    },
+    "LaundrySoap": {
+      "title": "LaundrySoap",
+      "type": "object",
+      "description": "Inventory for laundry consumables.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "totalVolumeMl": { "type": "number" },
+        "remainingVolumeMl": { "type": "number" },
+        "cost": { "type": "number" }
+      }
     },
     "SaleTransaction": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "SaleTransaction",
       "type": "object",
-      "description": "Represents a single sales transaction processed through a company's POS system.",
+      "description": "Unified transaction record for all modules.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the SaleTransaction entity."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "Reference to the Company where this transaction occurred. (Relationship: Company 1:N SaleTransaction)"
-        },
-        "transactionDate": {
-          "type": "string",
-          "description": "The date and time when the transaction was completed.",
-          "format": "date-time"
-        },
-        "customerId": {
-          "type": "string",
-          "description": "Optional reference to the Customer involved in this transaction. (Relationship: Customer 1:N SaleTransaction)"
-        },
-        "totalAmount": {
-          "type": "number",
-          "description": "The total monetary amount of the transaction."
-        },
-        "paymentMethod": {
-          "type": "string",
-          "description": "The method of payment used for the transaction (e.g., 'cash', 'card', 'bank transfer')."
-        },
-        "status": {
-          "type": "string",
-          "description": "The current status of the transaction (e.g., 'completed', 'pending', 'refunded')."
-        },
-        "processedByCompanyUserId": {
-          "type": "string",
-          "description": "Reference to the CompanyUser who processed this transaction. (Relationship: CompanyUser 1:N SaleTransaction)"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the transaction record was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the transaction record was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "companyId",
-        "transactionDate",
-        "totalAmount",
-        "paymentMethod",
-        "status",
-        "processedByCompanyUserId",
-        "createdAt"
-      ]
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "module": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] },
+        "totalAmount": { "type": "number" },
+        "profit": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "items": { "type": "array", "items": { "type": "object" } }
+      }
     },
-    "SaleItem": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SaleItem",
+    "CapitalPurchase": {
+      "title": "CapitalPurchase",
       "type": "object",
-      "description": "Represents a single item included within a SaleTransaction.",
+      "description": "Records of company spending that count against capital limits.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the SaleItem entity."
-        },
-        "saleTransactionId": {
-          "type": "string",
-          "description": "Reference to the SaleTransaction this item belongs to. (Relationship: SaleTransaction 1:N SaleItem)"
-        },
-        "productId": {
-          "type": "string",
-          "description": "Reference to the Product sold in this item. (Relationship: Product 1:N SaleItem)"
-        },
-        "quantity": {
-          "type": "number",
-          "description": "The quantity of the product sold in this item."
-        },
-        "unitPrice": {
-          "type": "number",
-          "description": "The price of a single unit of the product at the time of sale."
-        },
-        "subtotal": {
-          "type": "number",
-          "description": "The calculated subtotal for this item (quantity * unitPrice)."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the sale item record was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the sale item record was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "saleTransactionId",
-        "productId",
-        "quantity",
-        "unitPrice",
-        "subtotal",
-        "createdAt"
-      ]
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/platform_admins/{adminUid}",
-        "definition": {
-          "entityName": "PlatformAdmin",
-          "schema": {
-            "$ref": "#/backend/entities/PlatformAdmin"
-          },
-          "description": "A collection to store marker documents for global website administrators. The document ID (`adminUid`) corresponds to the Firebase Authentication UID of the administrator. Existence of a document here grants top-level administrative privileges for the Venturee Biz platform.",
-          "params": [
-            {
-              "name": "adminUid",
-              "description": "The unique identifier (Firebase Auth UID) of the platform administrator."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/companies/{companyId}",
-        "definition": {
-          "entityName": "Company",
-          "schema": {
-            "$ref": "#/backend/entities/Company"
-          },
-          "description": "Stores core information for each registered company. The document ID (`companyId`) is used as the Firebase Authentication UID for the company's owner/admin login. Includes system-generated `companyEmail` and `companyPassword`.",
-          "params": [
-            {
-              "name": "companyId",
-              "description": "The unique identifier for the company. This also serves as the Firebase Auth UID for the company owner."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/company_users/{companyUserId}",
-        "definition": {
-          "entityName": "CompanyUser",
-          "schema": {
-            "$ref": "#/backend/entities/CompanyUser"
-          },
-          "description": "A top-level collection storing individual user accounts (e.g., viewers) for all companies. The document ID (`companyUserId`) is the Firebase Authentication UID for this user. This document includes denormalized `companyId` (the company this user belongs to) and their `role` for authorization independence and simplified rules without hierarchical `get()` calls.",
-          "params": [
-            {
-              "name": "companyUserId",
-              "description": "The unique identifier (Firebase Auth UID) for the company user."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/companies/{companyId}/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "schema": {
-            "$ref": "#/backend/entities/Product"
-          },
-          "description": "Stores product and service offerings for a specific company. Each document includes denormalized `companyId` for authorization independence and efficient list queries within security rules.",
-          "params": [
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the parent company."
-            },
-            {
-              "name": "productId",
-              "description": "The unique identifier for the product."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/companies/{companyId}/customers/{customerId}",
-        "definition": {
-          "entityName": "Customer",
-          "schema": {
-            "$ref": "#/backend/entities/Customer"
-          },
-          "description": "Stores customer records associated with a specific company. Each document includes denormalized `companyId` for authorization independence and efficient list queries within security rules.",
-          "params": [
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the parent company."
-            },
-            {
-              "name": "customerId",
-              "description": "The unique identifier for the customer."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/companies/{companyId}/saleTransactions/{saleTransactionId}",
-        "definition": {
-          "entityName": "SaleTransaction",
-          "schema": {
-            "$ref": "#/backend/entities/SaleTransaction"
-          },
-          "description": "Stores details of sales transactions processed by a specific company. Each document includes denormalized `companyId` for authorization independence and efficient list queries within security rules.",
-          "params": [
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the parent company."
-            },
-            {
-              "name": "saleTransactionId",
-              "description": "The unique identifier for the sale transaction."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/companies/{companyId}/saleTransactions/{saleTransactionId}/saleItems/{saleItemId}",
-        "definition": {
-          "entityName": "SaleItem",
-          "schema": {
-            "$ref": "#/backend/entities/SaleItem"
-          },
-          "description": "Stores individual items within a specific sales transaction. Each document includes denormalized `companyId` (from the grandparent) and `saleTransactionId` (from the parent) for complete authorization independence and efficient list queries, avoiding any hierarchical `get()` calls.",
-          "params": [
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the grandparent company."
-            },
-            {
-              "name": "saleTransactionId",
-              "description": "The unique identifier of the parent sale transaction."
-            },
-            {
-              "name": "saleItemId",
-              "description": "The unique identifier for the individual sale item."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The Firestore structure is designed to rigorously adhere to the core principles of Authorization Independence, Structural Segregation, and DBAC (Database Access Control) without relying on custom claims or complex hierarchical `get()` operations in security rules. \n\n1.  **Platform Administration:** Global administrators of Venturee Biz are identified by their `uid` existing as a document in the `/platform_admins` collection. This allows for simple existence checks in rules (`exists(/platform_admins/$(request.auth.uid))`) for top-level permissions like creating new companies.\n\n2.  **Company-Centric Data:** All operational data for a company (products, customers, sales transactions) is organized hierarchically under its respective `Company` document (e.g., `/companies/{companyId}/products/{productId}`). This ensures a clear ownership model. Each document in these subcollections explicitly includes its `companyId` (and `saleTransactionId` for `SaleItem`s) as a field. This denormalization is critical for Authorization Independence, enabling direct checks of `resource.data.companyId` within security rules, eliminating the need to `get()` parent documents for authorization context.\n\n3.  **Company Owner Authorization:** For a company owner, their Firebase `request.auth.uid` is designed to be the `companyId` itself. This allows for extremely simple and robust authorization rules, where access to their company's data is granted if `request.auth.uid == companyId` (from the path wildcard) or `request.auth.uid == resource.data.companyId` (from the document field). This direct mapping ensures atomicity for operations involving parent and child documents.\n\n4.  **Company User Authorization (Viewer Role):** For individual company users (like 'viewers'), their `request.auth.uid` is their `companyUserId`. To avoid hierarchical `get()` calls for authorization, `CompanyUser` documents are stored in a top-level collection: `/company_users/{companyUserId}`. Each `CompanyUser` document explicitly contains its `companyId` and `role`. When a company user attempts to access company data (e.g., `/companies/{companyId}/products/{productId}`), the security rules perform a single, non-hierarchical `get()` on their *own user profile document* (`get(/company_users/$(request.auth.uid))`) to retrieve their associated `companyId` and `role`. This is a targeted self-lookup, not a traversal of parent data for authorization, and adheres to the spirit of Authorization Independence by not breaking atomic operations on the business data itself. The rule then checks if the `companyId` from their profile matches the `companyId` in the requested path, and if their `role` permits the operation.\n\n5.  **QAPs (Rules are not Filters):** The structural segregation and consistent denormalization of `companyId` (and `saleTransactionId` for `SaleItem`s) directly support QAPs. For `list` operations, security rules can effectively filter by `companyId` because it's available as a field in every relevant document. For company owners, the path-based authorization (`/companies/{request.auth.uid}/products`) intrinsically enforces security. For company users, after retrieving their `companyId` from their user profile, a `list` operation on `/companies/{companyId}/products` can be secured by checking that the `companyId` in the path matches the `companyId` from the user's profile (`resource.data.companyId == userProfile.data.companyId`), allowing Firestore's query-time filtering to enforce security without needing to retrieve unauthorized data.\n\nThis architecture minimizes complexity, enhances debuggability, and scales efficiently by leveraging path-based authorization and strategic denormalization, while carefully managing the constraints of DBAC and avoiding problematic `get()` calls."
+    "/companies/{companyId}": {
+      "schema": "Company",
+      "description": "Root company data."
+    },
+    "/companies/{companyId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Mart retail inventory."
+    },
+    "/companies/{companyId}/laundryStudents/{studentId}": {
+      "schema": "LaundryStudent",
+      "description": "Students registered for laundry."
+    },
+    "/companies/{companyId}/transactions/{transactionId}": {
+      "schema": "SaleTransaction",
+      "description": "All sales history."
+    },
+    "/companies/{companyId}/purchases/{purchaseId}": {
+      "schema": "CapitalPurchase",
+      "description": "Capital spending logs."
+    }
   }
 }

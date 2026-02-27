@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -7,28 +8,56 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus, Building2, Mail, Key, Search } from 'lucide-react';
 import { createCompanyAction } from '@/app/actions';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Company } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, setDoc } from 'firebase/firestore';
 
 export default function AdminDashboard() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
+  const firestore = useFirestore();
   const { toast } = useToast();
+  const [isCreating, setIsCreating] = useState(false);
+
+  const companiesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'companies');
+  }, [firestore]);
+
+  const { data: companies, isLoading: loadingCompanies } = useCollection<Company>(companiesQuery);
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!firestore) return;
     setIsCreating(true);
+    
     const formData = new FormData(e.currentTarget);
     const result = await createCompanyAction(formData);
     
     if (result.success && result.company) {
-      setCompanies([...companies, result.company]);
-      toast({
-        title: "Company Registered",
-        description: `Credentials for ${result.company.name} generated successfully.`,
-      });
-      (e.target as HTMLFormElement).reset();
+      try {
+        // Save to real Firestore
+        await setDoc(doc(firestore, 'companies', result.company.id), result.company);
+        
+        // Also create the user login document
+        const userRef = doc(firestore, 'company_users', result.company.id);
+        await setDoc(userRef, {
+          id: result.company.id,
+          name: result.company.name,
+          email: result.company.email,
+          password: result.company.password,
+          role: 'company',
+          companyId: result.company.id
+        });
+
+        toast({
+          title: "Company Registered",
+          description: `Credentials for ${result.company.name} saved to database.`,
+        });
+        (e.target as HTMLFormElement).reset();
+      } catch (e) {
+        toast({ title: "Database error", variant: "destructive" });
+      }
     }
     setIsCreating(false);
   };
@@ -47,7 +76,7 @@ export default function AdminDashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
-              <Card className="shadow-sm border-none">
+              <Card className="shadow-sm border-none bg-white">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Plus className="w-5 h-5 text-primary" />
@@ -74,7 +103,7 @@ export default function AdminDashboard() {
                 <Search className="text-muted-foreground w-5 h-5" />
                 <input 
                   placeholder="Search registered companies..." 
-                  className="flex-1 bg-transparent border-none outline-none text-sm"
+                  className="flex-1 bg-transparent border-none outline-none text-sm h-10"
                 />
               </div>
 
@@ -84,10 +113,12 @@ export default function AdminDashboard() {
                   Registered Companies
                 </h3>
                 
-                {companies.length === 0 ? (
+                {loadingCompanies ? (
+                  <p className="text-center py-10 text-muted-foreground">Loading database...</p>
+                ) : !companies || companies.length === 0 ? (
                   <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center">
                     <Building2 className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                    <p className="text-muted-foreground">No companies registered yet. Start by adding one!</p>
+                    <p className="text-muted-foreground">No companies registered yet.</p>
                   </div>
                 ) : (
                   <div className="grid gap-4">
@@ -97,7 +128,7 @@ export default function AdminDashboard() {
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <h4 className="font-bold text-xl">{company.name}</h4>
-                              <p className="text-xs text-muted-foreground">ID: {company.id.slice(0, 8)}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">DB_ID: {company.id}</p>
                             </div>
                             <div className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase">
                               Active Partner
