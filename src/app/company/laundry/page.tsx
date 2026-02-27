@@ -163,12 +163,14 @@ export default function LaundryPage() {
       return;
     }
 
+    const initialBalance = Number(formData.get('initialBalance')) || 0;
+
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: Number(formData.get('initialBalance')) || 0,
+      balance: initialBalance,
       level: Number(selectedLevel),
       class: selectedClass,
     };
@@ -494,14 +496,14 @@ export default function LaundryPage() {
             <TabsTrigger value="pos" className="rounded-lg gap-2">
               <CreditCard className="w-4 h-4" /> Laundry POS
             </TabsTrigger>
+            <TabsTrigger value="students" className="rounded-lg gap-2">
+              <UserPlus className="w-4 h-4" /> Students
+            </TabsTrigger>
             <TabsTrigger value="schedule" className="rounded-lg gap-2">
               <CalendarDays className="w-4 h-4" /> Schedule
             </TabsTrigger>
             <TabsTrigger value="walkin" className="rounded-lg gap-2">
-              <Banknote className="w-4 h-4" /> Payable Laundry
-            </TabsTrigger>
-            <TabsTrigger value="students" className="rounded-lg gap-2">
-              <UserPlus className="w-4 h-4" /> Students
+              <Banknote className="w-4 h-4" /> Walk-In
             </TabsTrigger>
             <TabsTrigger value="consumables" className="rounded-lg gap-2">
               <Droplet className="w-4 h-4" /> Consumables
@@ -510,7 +512,7 @@ export default function LaundryPage() {
               <TrendingUp className="w-4 h-4" /> Profits
             </TabsTrigger>
             <TabsTrigger value="billing" className="rounded-lg gap-2">
-              <ShieldCheck className="w-4 h-4" /> Billing
+              <Settings2 className="w-4 h-4" /> Billing
             </TabsTrigger>
           </TabsList>
 
@@ -519,7 +521,7 @@ export default function LaundryPage() {
               <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
                 <CardHeader className="bg-secondary/10 p-8">
                   <CardTitle className="text-xl font-black">Usage Terminal (Student)</CardTitle>
-                  <CardTitle className="text-sm font-bold mt-1">Verify student identity and check schedule authorization</CardTitle>
+                  <CardDescription className="font-bold">Verify student identity and check schedule authorization</CardDescription>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
                   <div className="flex gap-2">
@@ -628,105 +630,231 @@ export default function LaundryPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="schedule" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-             <Card className="lg:col-span-1 border-none shadow-sm bg-white rounded-[32px] p-8 h-fit">
-                <CardHeader className="p-0 mb-6">
-                   <CardTitle className="text-xl font-black">Level Config</CardTitle>
-                   <CardDescription className="font-bold">Set subscription fees and quotas</CardDescription>
-                </CardHeader>
-                <div className="space-y-6">
-                   {LEVELS.map(lv => {
-                     const config = levelConfigs?.find(c => c.level === lv);
-                     return (
-                       <form key={lv} onSubmit={(e) => handleUpdateLevelConfig(e, lv)} className="space-y-3 p-4 bg-secondary/10 rounded-2xl border-2 border-transparent hover:border-primary/20 transition-all">
-                          <div className="flex justify-between items-center mb-1">
-                             <p className="text-xs font-black uppercase text-primary">Level {lv}</p>
-                             {config && (
-                               <Badge variant="outline" className="text-[9px] font-black">
-                                 Rate: ${(config.subscriptionFee / (config.totalWashesAllowed || 1)).toFixed(2)}
-                               </Badge>
-                             )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                             <div className="space-y-1">
-                                <Label className="text-[9px] font-black uppercase text-muted-foreground px-1">Fee ($)</Label>
-                                <Input name="fee" type="number" defaultValue={config?.subscriptionFee} placeholder="50.00" className="h-9 text-xs font-bold" />
-                             </div>
-                             <div className="space-y-1">
-                                <Label className="text-[9px] font-black uppercase text-muted-foreground px-1">Quota (qty)</Label>
-                                <Input name="quota" type="number" defaultValue={config?.totalWashesAllowed} placeholder="10" className="h-9 text-xs font-bold" />
-                             </div>
-                          </div>
-                          <Button size="sm" type="submit" className="w-full h-8 font-black text-[10px] uppercase">Sync Level {lv}</Button>
-                       </form>
-                     );
-                   })}
-                </div>
-             </Card>
+          <TabsContent value="students" className="space-y-8">
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+               <Card className="lg:col-span-1 h-fit border-none shadow-sm rounded-3xl bg-white p-8">
+                 <CardHeader className="px-0 pt-0">
+                   <CardTitle className="text-xl font-black">Enroll Student</CardTitle>
+                   <CardDescription className="font-bold">Institutional laundry registry</CardDescription>
+                 </CardHeader>
+                 <CardContent className="px-0 pb-0">
+                   <form onSubmit={handleRegisterStudent} className="space-y-5">
+                     <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Full Name</label>
+                       <Input name="name" placeholder="Alice Smith" required className="h-12 rounded-xl font-bold" />
+                     </div>
+                     <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Matrix No.</label>
+                       <Input name="matrix" placeholder="2024-001" required className="h-12 rounded-xl font-bold" />
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Level</label>
+                          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                            <SelectTrigger className="h-12 rounded-xl font-bold">
+                              <SelectValue placeholder="Lv" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {LEVELS.map(lv => (
+                                <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Class</label>
+                          <Select value={selectedClass} onValueChange={setSelectedClass}>
+                            <SelectTrigger className="h-12 rounded-xl font-bold">
+                              <SelectValue placeholder="Class" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {CLASSES.map(cls => (
+                                <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                     </div>
 
-             <div className="lg:col-span-3 space-y-6">
-                <div className="flex justify-between items-center">
-                   <h3 className="text-2xl font-black">Usage Calendar</h3>
-                   <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
-                      <DialogTrigger asChild>
-                         <Button className="rounded-xl font-black shadow-lg gap-2">
-                            <Plus className="w-4 h-4" /> Add Usage Date
-                         </Button>
-                      </DialogTrigger>
-                      <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden bg-white">
-                         <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-xl font-black">Assign Usage Date</DialogTitle></div>
-                         <form onSubmit={handleAddSchedule} className="p-10 space-y-6">
-                            <div className="space-y-2">
-                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Target Date</Label>
-                               <Input name="date" type="date" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                     <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Initial Balance ($)</label>
+                       <Input name="initialBalance" type="number" placeholder="50.00" className="h-12 rounded-xl font-bold" />
+                     </div>
+                     <Button type="submit" className="w-full h-14 font-black rounded-2xl shadow-xl">Confirm Enrollment</Button>
+                   </form>
+                 </CardContent>
+               </Card>
+
+               <div className="lg:col-span-3 space-y-6">
+                 <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                   <CardHeader className="bg-secondary/10 p-6">
+                     <CardTitle className="text-lg font-black flex items-center gap-2">
+                       <Settings2 className="w-5 h-5 text-primary" /> Level Quota Configuration
+                     </CardTitle>
+                     <CardDescription className="font-bold">Set "Required Fee" and "Usage Limit" per student level to auto-calculate service fees.</CardDescription>
+                   </CardHeader>
+                   <CardContent className="p-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+                     {LEVELS.map(lv => {
+                       const config = levelConfigs?.find(c => c.level === lv);
+                       return (
+                         <form key={lv} onSubmit={(e) => handleUpdateLevelConfig(e, lv)} className="space-y-3 p-4 bg-secondary/10 rounded-2xl border-2 border-transparent hover:border-primary/20 transition-all flex flex-col justify-between">
+                            <div>
+                               <p className="text-xs font-black uppercase text-primary mb-2">Level {lv}</p>
+                               <div className="space-y-2">
+                                  <div className="space-y-1">
+                                     <Label className="text-[9px] font-black uppercase text-muted-foreground px-1">Required Fee ($)</Label>
+                                     <Input name="fee" type="number" step="0.01" defaultValue={config?.subscriptionFee} placeholder="50.00" className="h-8 text-xs font-bold" />
+                                  </div>
+                                  <div className="space-y-1">
+                                     <Label className="text-[9px] font-black uppercase text-muted-foreground px-1">Usage Limit (qty)</Label>
+                                     <Input name="quota" type="number" defaultValue={config?.totalWashesAllowed} placeholder="10" className="h-8 text-xs font-bold" />
+                                  </div>
+                               </div>
                             </div>
-                            <div className="space-y-2">
-                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorized Level</Label>
-                               <Select value={scheduleLevel} onValueChange={setScheduleLevel}>
-                                  <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none">
-                                     <SelectValue placeholder="Select Level" />
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-xl font-bold">
-                                     {LEVELS.map(lv => (
-                                       <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
-                                     ))}
-                                  </SelectContent>
-                               </Select>
-                            </div>
-                            <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl">Confirm Schedule</Button>
+                            <Button size="sm" type="submit" className="w-full h-8 font-black text-[10px] uppercase mt-4">Update Lv{lv}</Button>
                          </form>
-                      </DialogContent>
-                   </Dialog>
-                </div>
+                       );
+                     })}
+                   </CardContent>
+                 </Card>
 
-                <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+                 <div className="rounded-[32px] bg-white border shadow-sm overflow-hidden">
+                   <div className="p-6 border-b flex justify-between items-center bg-secondary/5">
+                      <h3 className="font-black text-lg">Laundry Accounts List</h3>
+                      <Badge variant="outline" className="font-black">{students?.length || 0} Records</Badge>
+                   </div>
                    <table className="w-full text-sm text-left">
-                      <thead className="bg-secondary/20 border-b">
-                         <tr>
-                            <th className="p-6 font-black uppercase text-[10px] tracking-widest">Date</th>
-                            <th className="p-6 font-black uppercase text-[10px] tracking-widest text-center">Assigned Level</th>
-                            <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest">Actions</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                         {schedules?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(s => (
+                     <thead className="bg-secondary/10 border-b">
+                       <tr>
+                         <th className="p-4 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Subscriber</th>
+                         <th className="p-4 font-black uppercase text-[10px] text-muted-foreground tracking-widest text-center">Group</th>
+                         <th className="p-4 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Fee / Service</th>
+                         <th className="p-4 text-right font-black uppercase text-[10px] text-muted-foreground tracking-widest">Balance Info</th>
+                         <th className="p-4 text-center font-black uppercase text-[10px] text-muted-foreground tracking-widest">Actions</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                       {students?.map(s => {
+                         const washRate = getWashRateForLevel(s.level);
+                         const washesLeft = washRate > 0 ? Math.floor(s.balance / washRate) : 0;
+                         return (
                            <tr key={s.id} className="hover:bg-secondary/5 transition-colors">
-                              <td className="p-6 font-black text-lg">{new Date(s.date).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
-                              <td className="p-6 text-center">
-                                 <Badge className="font-black px-4 py-1">Level {s.level}</Badge>
-                              </td>
-                              <td className="p-6 text-center">
-                                 <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => {
-                                   if (confirm("Remove this scheduled date?")) {
-                                     await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundrySchedules', s.id));
-                                   }
-                                 }}><Trash2 className="w-5 h-5" /></Button>
-                              </td>
+                             <td className="p-4">
+                                <p className="font-black text-foreground">{s.name}</p>
+                                <p className="text-[10px] text-muted-foreground font-bold">Matrix: {s.matrixNumber}</p>
+                             </td>
+                             <td className="p-4 text-center">
+                                <Badge variant="outline" className="font-black text-[9px] uppercase">Level {s.level} • {s.class}</Badge>
+                             </td>
+                             <td className="p-4">
+                                <p className="font-black text-primary">${washRate.toFixed(2)}</p>
+                                <p className="text-[9px] text-muted-foreground font-bold uppercase">Calculated</p>
+                             </td>
+                             <td className="p-4 text-right">
+                                <p className="font-black text-lg">${s.balance.toFixed(2)}</p>
+                                <p className={cn("text-[9px] font-black uppercase", washesLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
+                                   {washesLeft} washes remaining
+                                </p>
+                             </td>
+                             <td className="p-4 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => {
+                                    setEditingStudent(s);
+                                    setEditLevel(s.level.toString());
+                                    setEditClass(s.class);
+                                    setIsEditStudentOpen(true);
+                                  }}><Edit2 className="w-4 h-4" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={async () => {
+                                    if (confirm("Remove this student account?")) {
+                                      await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
+                                    }
+                                  }}><Trash2 className="w-4 h-4" /></Button>
+                                </div>
+                             </td>
                            </tr>
-                         ))}
-                      </tbody>
+                         );
+                       })}
+                     </tbody>
                    </table>
+                 </div>
+               </div>
+             </div>
+          </TabsContent>
+
+          <TabsContent value="schedule" className="space-y-6">
+             <div className="flex justify-between items-center">
+                <div>
+                   <h3 className="text-2xl font-black">Institutional Schedule</h3>
+                   <p className="text-sm text-muted-foreground font-medium">Designate authorized usage days per level.</p>
                 </div>
+                <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+                   <DialogTrigger asChild>
+                      <Button className="rounded-xl font-black shadow-lg gap-2 h-12 px-6">
+                         <Plus className="w-4 h-4" /> Add Usage Date
+                      </Button>
+                   </DialogTrigger>
+                   <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden bg-white">
+                      <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-xl font-black">Assign Usage Date</DialogTitle></div>
+                      <form onSubmit={handleAddSchedule} className="p-10 space-y-6">
+                         <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Target Date</Label>
+                            <Input name="date" type="date" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                         </div>
+                         <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorized Level</Label>
+                            <Select value={scheduleLevel} onValueChange={setScheduleLevel}>
+                               <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none">
+                                  <SelectValue placeholder="Select Level" />
+                               </SelectTrigger>
+                               <SelectContent className="rounded-xl font-bold">
+                                  {LEVELS.map(lv => (
+                                    <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
+                                  ))}
+                               </SelectContent>
+                            </Select>
+                         </div>
+                         <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl">Confirm Schedule</Button>
+                      </form>
+                   </DialogContent>
+                </Dialog>
+             </div>
+
+             <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+                <table className="w-full text-sm text-left">
+                   <thead className="bg-secondary/10 border-b">
+                      <tr>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest">Date</th>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-center">Authorized Level</th>
+                         <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest">Actions</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y">
+                      {schedules?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(s => (
+                        <tr key={s.id} className="hover:bg-secondary/5 transition-colors">
+                           <td className="p-6 font-black text-lg">{new Date(s.date).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                           <td className="p-6 text-center">
+                              <Badge className="font-black px-4 py-1 h-8 rounded-lg">Level {s.level}</Badge>
+                           </td>
+                           <td className="p-6 text-center">
+                              <Button variant="ghost" size="icon" className="text-destructive h-10 w-10" onClick={async () => {
+                                if (confirm("Remove this scheduled date?")) {
+                                  await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundrySchedules', s.id));
+                                }
+                              }}><Trash2 className="w-5 h-5" /></Button>
+                           </td>
+                        </tr>
+                      ))}
+                      {(!schedules || schedules.length === 0) && (
+                        <tr>
+                           <td colSpan={3} className="py-24 text-center opacity-30">
+                              <CalendarDays className="w-16 h-16 mx-auto mb-4" />
+                              <p className="font-black uppercase tracking-widest">No dates scheduled</p>
+                           </td>
+                        </tr>
+                      )}
+                   </tbody>
+                </table>
              </div>
           </TabsContent>
 
@@ -808,108 +936,6 @@ export default function LaundryPage() {
                   </div>
                </Card>
             </div>
-          </TabsContent>
-
-          <TabsContent value="students">
-             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-               <Card className="lg:col-span-1 h-fit border-none shadow-sm rounded-3xl bg-white p-8">
-                 <CardHeader className="px-0 pt-0">
-                   <CardTitle className="text-xl font-black">Enroll Student</CardTitle>
-                   <CardDescription className="font-bold">Institutional laundry registry</CardDescription>
-                 </CardHeader>
-                 <CardContent className="px-0 pb-0">
-                   <form onSubmit={handleRegisterStudent} className="space-y-5">
-                     <div className="space-y-1.5">
-                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Full Name</label>
-                       <Input name="name" placeholder="Alice Smith" required className="h-12 rounded-xl font-bold" />
-                     </div>
-                     <div className="space-y-1.5">
-                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Matrix No.</label>
-                       <Input name="matrix" placeholder="2024-001" required className="h-12 rounded-xl font-bold" />
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Level</label>
-                          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-                            <SelectTrigger className="h-12 rounded-xl font-bold">
-                              <SelectValue placeholder="Lv" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                              {LEVELS.map(lv => (
-                                <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Class</label>
-                          <Select value={selectedClass} onValueChange={setSelectedClass}>
-                            <SelectTrigger className="h-12 rounded-xl font-bold">
-                              <SelectValue placeholder="Class" />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                              {CLASSES.map(cls => (
-                                <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                     </div>
-
-                     <div className="space-y-1.5">
-                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Initial Deposit ($)</label>
-                       <Input name="initialBalance" type="number" placeholder="50.00" className="h-12 rounded-xl font-bold" />
-                     </div>
-                     <Button type="submit" className="w-full h-14 font-black rounded-2xl shadow-xl">Confirm Enrollment</Button>
-                   </form>
-                 </CardContent>
-               </Card>
-
-               <div className="lg:col-span-3 space-y-4">
-                 <div className="rounded-[32px] bg-white border shadow-sm overflow-hidden">
-                   <table className="w-full text-sm text-left">
-                     <thead className="bg-secondary/20 border-b">
-                       <tr>
-                         <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Subscriber Identity</th>
-                         <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest text-center">Group</th>
-                         <th className="p-6 text-right font-black uppercase text-[10px] text-muted-foreground tracking-widest">Balance</th>
-                         <th className="p-6 text-center font-black uppercase text-[10px] text-muted-foreground tracking-widest">Actions</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y">
-                       {students?.map(s => (
-                         <tr key={s.id} className="hover:bg-secondary/5 transition-colors">
-                           <td className="p-6">
-                              <p className="font-black text-foreground text-lg">{s.name}</p>
-                              <p className="text-[10px] text-muted-foreground font-bold">Matrix: {s.matrixNumber}</p>
-                           </td>
-                           <td className="p-6 text-center">
-                              <Badge variant="outline" className="font-black text-[9px] uppercase">Level {s.level} • {s.class}</Badge>
-                           </td>
-                           <td className="p-6 text-right font-black text-xl">${s.balance.toFixed(2)}</td>
-                           <td className="p-6 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <Button variant="ghost" size="icon" className="text-primary" onClick={() => {
-                                  setEditingStudent(s);
-                                  setEditLevel(s.level.toString());
-                                  setEditClass(s.class);
-                                  setIsEditStudentOpen(true);
-                                }}><Edit2 className="w-5 h-5" /></Button>
-                                <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => {
-                                  if (confirm("Remove this student account?")) {
-                                    await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
-                                  }
-                                }}><Trash2 className="w-5 h-5" /></Button>
-                              </div>
-                           </td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 </div>
-               </div>
-             </div>
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -1011,6 +1037,7 @@ export default function LaundryPage() {
                     <QrCode className="w-8 h-8" />
                  </div>
                  <h2 className="text-2xl font-black">Settlement Profile</h2>
+                 <p className="text-sm text-muted-foreground font-medium">Upload your business DuitNow QR to enable digital student top-ups.</p>
                  {companyDoc?.duitNowQr ? (
                    <div className="relative group mx-auto w-fit">
                      <Image src={companyDoc.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
