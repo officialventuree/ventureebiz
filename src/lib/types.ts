@@ -1,3 +1,4 @@
+
 export type Role = 'admin' | 'company' | 'viewer';
 export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
@@ -44,6 +45,7 @@ export interface SaleTransaction {
   id: string;
   companyId: string;
   module: ModuleType;
+  serviceTypeId?: string;
   totalAmount: number;
   profit: number;
   timestamp: string;
@@ -60,6 +62,7 @@ export interface SaleTransaction {
 export interface Product {
   id: string;
   companyId: string;
+  serviceTypeId?: string;
   name: string;
   costPrice: number;
   sellingPrice: number;
@@ -82,11 +85,19 @@ export interface RentalItem {
   status: RentalStatus;
 }
 
-export interface ServiceItem {
+export interface ServiceType {
   id: string;
   companyId: string;
   name: string;
-  basePrice: number;
+  description?: string;
+}
+
+export interface ServicePriceBundle {
+  id: string;
+  serviceTypeId: string;
+  companyId: string;
+  name: string;
+  price: number;
   estimatedProfit: number;
 }
 

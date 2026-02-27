@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Company": {
@@ -34,17 +35,42 @@
     "Product": {
       "title": "Product",
       "type": "object",
-      "description": "Retail products for the Mart module.",
+      "description": "Retail products or service materials.",
       "properties": {
         "id": { "type": "string" },
         "companyId": { "type": "string" },
+        "serviceTypeId": { "type": "string", "description": "Optional link to a service category." },
         "name": { "type": "string" },
         "costPrice": { "type": "number" },
         "sellingPrice": { "type": "number" },
         "stock": { "type": "number" },
         "sku": { "type": "string" },
         "barcode": { "type": "string" },
-        "unit": { "type": "string", "description": "Measurement unit (e.g. piece, kg, box)" }
+        "unit": { "type": "string" }
+      }
+    },
+    "ServiceType": {
+      "title": "ServiceType",
+      "type": "object",
+      "description": "Broad categories of services offered by the business.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "ServicePriceBundle": {
+      "title": "ServicePriceBundle",
+      "type": "object",
+      "description": "Standardized pricing packages within a service type.",
+      "properties": {
+        "id": { "type": "string" },
+        "serviceTypeId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "estimatedProfit": { "type": "number" }
       }
     },
     "LaundryInventory": {
@@ -154,7 +180,15 @@
     },
     "/companies/{companyId}/products/{productId}": {
       "schema": "Product",
-      "description": "Retail stock."
+      "description": "Retail stock and service materials."
+    },
+    "/companies/{companyId}/serviceTypes/{serviceId}": {
+      "schema": "ServiceType",
+      "description": "Service categories."
+    },
+    "/companies/{companyId}/serviceTypes/{serviceId}/priceBundles/{bundleId}": {
+      "schema": "ServicePriceBundle",
+      "description": "Fixed packages for a service."
     },
     "/companies/{companyId}/coupons/{couponId}": { "schema": "Coupon", "description": "Promotional codes." },
     "/companies/{companyId}/laundryStudents/{studentId}": { "schema": "LaundryStudent", "description": "Student laundry accounts." },
