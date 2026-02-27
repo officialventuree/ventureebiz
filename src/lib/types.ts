@@ -4,6 +4,7 @@ export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
 export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
 export type CouponStatus = 'unused' | 'used';
+export type PaymentMethod = 'cash' | 'duitnow';
 
 export interface User {
   id: string;
@@ -23,6 +24,7 @@ export interface Company {
   createdAt: string;
   capitalLimit?: number;
   capitalPeriod?: CapitalPeriod;
+  duitNowQr?: string;
 }
 
 export interface SaleItem {
@@ -47,6 +49,7 @@ export interface SaleTransaction {
   customerName?: string;
   couponCode?: string;
   discountApplied?: number;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface Product {

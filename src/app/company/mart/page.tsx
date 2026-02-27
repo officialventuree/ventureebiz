@@ -5,15 +5,19 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction, Coupon, LuckyDrawEntry } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 
 const LUCKY_DRAW_MIN_SPEND = 100;
 
@@ -28,6 +32,13 @@ export default function MartPage() {
   const [couponCode, setCouponCode] = useState('');
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [customerName, setCustomerName] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+
+  const companyRef = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return doc(firestore, 'companies', user.companyId);
+  }, [firestore, user?.companyId]);
 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -44,7 +55,8 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'coupons');
   }, [firestore, user?.companyId]);
 
-  const { data: products, isLoading: productsLoading } = useCollection<Product>(productsQuery);
+  const { data: companyDoc } = useDoc<Company>(companyRef);
+  const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
@@ -110,29 +122,34 @@ export default function MartPage() {
     }
   };
 
-  const handleCheckout = async () => {
+  const initiateCheckout = () => {
     if (cart.length === 0 || !user?.companyId || !firestore) return;
     if (totalAmount >= LUCKY_DRAW_MIN_SPEND && !customerName) {
       toast({ title: "Lucky Draw Eligible!", description: "Please enter customer name to proceed.", variant: "destructive" });
       return;
     }
+    setShowCheckoutDialog(true);
+  };
 
+  const handleFinalCheckout = async () => {
+    if (!user?.companyId || !firestore) return;
     setIsProcessing(true);
     
     try {
       const transactionId = crypto.randomUUID();
       const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
       
-      const transactionData = {
+      const transactionData: SaleTransaction = {
         id: transactionId,
         companyId: user.companyId,
         module: 'mart',
         totalAmount,
         profit: totalProfit,
         discountApplied: discount,
-        couponCode: activeCoupon?.code || null,
+        couponCode: activeCoupon?.code || undefined,
         customerName: customerName || 'Walk-in',
         timestamp: new Date().toISOString(),
+        paymentMethod,
         items: cart.map(item => ({
           name: item.product.name,
           price: item.product.sellingPrice,
@@ -167,11 +184,12 @@ export default function MartPage() {
         });
       }
 
-      toast({ title: "Sale Completed", description: `Order total: $${totalAmount.toFixed(2)}` });
+      toast({ title: "Sale Completed", description: `Order total: $${totalAmount.toFixed(2)} (${paymentMethod.toUpperCase()})` });
       setCart([]);
       setActiveCoupon(null);
       setCouponCode('');
       setCustomerName('');
+      setShowCheckoutDialog(false);
     } catch (e) {
       toast({ title: "Checkout failed", variant: "destructive" });
     } finally {
@@ -215,6 +233,9 @@ export default function MartPage() {
             </TabsTrigger>
             <TabsTrigger value="coupons" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Ticket className="w-4 h-4" /> Coupons
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <CreditCard className="w-4 h-4" /> Billing
             </TabsTrigger>
             <TabsTrigger value="profit" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <TrendingUp className="w-4 h-4" /> Analytics
@@ -333,7 +354,7 @@ export default function MartPage() {
                     <Button 
                       className="w-full h-14 text-lg font-black rounded-xl shadow-lg" 
                       disabled={cart.length === 0 || isProcessing}
-                      onClick={handleCheckout}
+                      onClick={initiateCheckout}
                     >
                       {isProcessing ? "Processing..." : "Complete Order"}
                     </Button>
@@ -341,6 +362,60 @@ export default function MartPage() {
                 </Card>
               </div>
             </div>
+
+            <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
+              <DialogContent className="rounded-3xl border-none shadow-2xl max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-black">Select Payment Method</DialogTitle>
+                  <DialogDescription className="font-bold">Total Payable: ${totalAmount.toFixed(2)}</DialogDescription>
+                </DialogHeader>
+                <div className="py-6 space-y-6">
+                  <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 gap-4">
+                    <div>
+                      <RadioGroupItem value="cash" id="cash" className="peer sr-only" />
+                      <Label
+                        htmlFor="cash"
+                        className="flex flex-col items-center justify-between rounded-2xl border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                      >
+                        <Wallet className="mb-3 h-6 w-6 text-primary" />
+                        <span className="font-black">Cash</span>
+                      </Label>
+                    </div>
+                    <div>
+                      <RadioGroupItem value="duitnow" id="duitnow" className="peer sr-only" />
+                      <Label
+                        htmlFor="duitnow"
+                        className="flex flex-col items-center justify-between rounded-2xl border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
+                      >
+                        <QrCode className="mb-3 h-6 w-6 text-primary" />
+                        <span className="font-black">DuitNow QR</span>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+
+                  {paymentMethod === 'duitnow' && (
+                    <div className="bg-secondary/20 p-6 rounded-3xl text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
+                      <p className="text-xs font-black uppercase text-muted-foreground tracking-widest">Scan to Pay</p>
+                      {companyDoc?.duitNowQr ? (
+                        <div className="bg-white p-4 rounded-2xl shadow-sm">
+                           <img src={companyDoc.duitNowQr} alt="DuitNow QR" className="w-48 h-48 object-contain" />
+                        </div>
+                      ) : (
+                        <div className="py-12 px-6 border-2 border-dashed rounded-2xl text-muted-foreground flex flex-col items-center">
+                           <ImageIcon className="w-12 h-12 mb-2 opacity-20" />
+                           <p className="text-sm font-bold">QR Code not configured in Billing Settings</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleFinalCheckout} className="w-full h-12 rounded-xl font-black text-lg shadow-lg" disabled={isProcessing}>
+                    {isProcessing ? "Recording..." : "Confirm Payment"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="inventory">
@@ -349,6 +424,10 @@ export default function MartPage() {
 
           <TabsContent value="coupons">
             <CouponManager companyId={user?.companyId} />
+          </TabsContent>
+
+          <TabsContent value="billing">
+            <BillingManager companyId={user?.companyId} companyDoc={companyDoc} />
           </TabsContent>
 
           <TabsContent value="profit" className="space-y-6 overflow-auto pb-8">
@@ -377,6 +456,107 @@ export default function MartPage() {
           </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function BillingManager({ companyId, companyDoc }: { companyId?: string, companyDoc: Company | null }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !companyId) return;
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      try {
+        await updateDoc(doc(firestore, 'companies', companyId), {
+          duitNowQr: base64String
+        });
+        toast({ title: "QR Code Updated", description: "Successfully saved to billing settings." });
+      } catch (err) {
+        toast({ title: "Upload failed", variant: "destructive" });
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <Card className="border-none shadow-sm rounded-3xl bg-white">
+        <CardHeader>
+          <CardTitle className="text-xl font-black flex items-center gap-2">
+            <QrCode className="w-5 h-5 text-primary" /> DuitNow QR Configuration
+          </CardTitle>
+          <CardDescription className="font-bold">Upload your business QR code for cashless POS payments</CardDescription>
+        </CardHeader>
+        <CardContent className="p-6 space-y-6">
+          <div className="p-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 bg-secondary/10 relative overflow-hidden">
+            {companyDoc?.duitNowQr ? (
+              <img src={companyDoc.duitNowQr} alt="Current QR" className="w-48 h-48 object-contain rounded-xl shadow-md bg-white p-2" />
+            ) : (
+              <ImageIcon className="w-16 h-16 text-muted-foreground opacity-20" />
+            )}
+            <div className="text-center">
+              <p className="font-black text-sm text-foreground">{companyDoc?.duitNowQr ? "Replace QR Code" : "No QR Configured"}</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Recommended size: 500x500px</p>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              onChange={handleImageUpload}
+              disabled={isUploading}
+            />
+          </div>
+          <div className="bg-primary/5 p-4 rounded-2xl flex items-start gap-3">
+             <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-4 h-4 text-primary" />
+             </div>
+             <div>
+                <p className="text-xs font-black text-foreground uppercase tracking-tighter">Automatic Integration</p>
+                <p className="text-[10px] font-bold text-muted-foreground leading-relaxed mt-1">Once uploaded, the "DuitNow QR" payment method will instantly display this image during the checkout process.</p>
+             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-6">
+        <Card className="border-none shadow-sm rounded-3xl bg-white">
+          <CardHeader>
+            <CardTitle className="text-lg font-black">Payment Audit Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 space-y-4">
+             <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl">
+                <div>
+                   <p className="font-black">Cash Payments</p>
+                   <p className="text-[10px] font-bold text-muted-foreground">Enabled by default</p>
+                </div>
+                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
+                   <CheckCircle2 className="w-6 h-6" />
+                </div>
+             </div>
+             <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl">
+                <div>
+                   <p className="font-black">DuitNow QR</p>
+                   <p className="text-[10px] font-bold text-muted-foreground">Requires QR upload</p>
+                </div>
+                <div className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center text-white",
+                  companyDoc?.duitNowQr ? "bg-green-500" : "bg-muted text-muted-foreground"
+                )}>
+                   <CheckCircle2 className="w-6 h-6" />
+                </div>
+             </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
