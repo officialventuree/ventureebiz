@@ -5,17 +5,41 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Waves, UserPlus, CreditCard, Droplet, Search, History, Trash2, ArrowRightLeft, Info, TrendingUp, DollarSign, Wallet } from 'lucide-react';
+import { 
+  Waves, 
+  UserPlus, 
+  CreditCard, 
+  Droplet, 
+  Search, 
+  History, 
+  Trash2, 
+  ArrowRightLeft, 
+  Info, 
+  TrendingUp, 
+  DollarSign, 
+  Wallet, 
+  QrCode, 
+  Upload, 
+  ShieldCheck, 
+  CheckCircle2, 
+  Banknote,
+  User
+} from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LaundryStudent, SaleTransaction, LaundryInventory } from '@/lib/types';
+import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Separator } from '@/components/ui/separator';
+import Image from 'next/image';
 
 const CLASSES = ['Biruni', 'Dinawari', 'Farabi', 'Ghazali', 'Khawarizmi', 'Razi'];
 const LEVELS = [1, 2, 3, 4, 5];
@@ -24,6 +48,7 @@ export default function LaundryPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
+  
   const [matrixSearch, setMatrixSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<LaundryStudent | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -31,6 +56,14 @@ export default function LaundryPage() {
   // Registration Form State
   const [selectedLevel, setSelectedLevel] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
+
+  // Top Up Dialog State
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [topUpMatrix, setTopUpMatrix] = useState('');
+  const [topUpAmount, setTopUpAmount] = useState<number | string>('');
+  const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
+  const [amountReceived, setAmountReceived] = useState<number | string>('');
+  const [transactionNo, setTransactionNo] = useState('');
 
   const studentsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -47,9 +80,15 @@ export default function LaundryPage() {
     return doc(firestore, 'companies', user.companyId, 'laundryInventory', 'soap');
   }, [firestore, user?.companyId]);
 
+  const companyRef = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return doc(firestore, 'companies', user.companyId);
+  }, [firestore, user?.companyId]);
+
   const { data: students } = useCollection<LaundryStudent>(studentsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: inventoryDoc } = useDoc<LaundryInventory>(inventoryRef);
+  const { data: companyDoc } = useDoc<Company>(companyRef);
 
   const mlPerWash = 50;
   const washRate = 5.00;
@@ -58,6 +97,12 @@ export default function LaundryPage() {
   const capacityMl = inventoryDoc?.capacityMl || 50000;
   const soapCostPerLitre = inventoryDoc?.soapCostPerLitre || 1.45;
   const soapUtilization = Math.min(100, (currentSoapMl / capacityMl) * 100);
+
+  const foundTopUpStudent = useMemo(() => {
+    return students?.find(s => s.matrixNumber === topUpMatrix);
+  }, [students, topUpMatrix]);
+
+  const changeAmount = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
 
   const handleRegisterStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -119,16 +164,13 @@ export default function LaundryPage() {
     }
 
     try {
-      // 1. Deduct Student Balance
       const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', selectedStudent.id);
       await updateDoc(studentRef, { balance: increment(-washRate) });
       
-      // 2. Deduct Soap Inventory
       if (inventoryRef) {
         await updateDoc(inventoryRef, { soapStockMl: increment(-mlPerWash) });
       }
 
-      // 3. Record Transaction
       const soapCost = (mlPerWash / 1000) * soapCostPerLitre;
       const profit = washRate - soapCost;
 
@@ -147,6 +189,45 @@ export default function LaundryPage() {
       setSelectedStudent({ ...selectedStudent, balance: selectedStudent.balance - washRate });
     } catch (e: any) {
       toast({ title: "Processing Error", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleConfirmTopUp = async () => {
+    if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
+    setIsProcessing(true);
+
+    try {
+      const amount = Number(topUpAmount);
+      const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', foundTopUpStudent.id);
+      await updateDoc(studentRef, { balance: increment(amount) });
+
+      const transactionRef = collection(firestore, 'companies', user.companyId, 'transactions');
+      await addDoc(transactionRef, {
+        id: crypto.randomUUID(),
+        companyId: user.companyId,
+        module: 'laundry',
+        totalAmount: amount,
+        profit: amount, // Top ups are 100% revenue/balance increase
+        timestamp: new Date().toISOString(),
+        customerName: foundTopUpStudent.name,
+        paymentMethod: topUpPaymentMethod,
+        referenceNumber: transactionNo || undefined,
+        status: 'completed',
+        items: [{ name: 'Student Top-Up', price: amount, quantity: 1 }]
+      });
+
+      toast({ title: "Top-Up Successful", description: `$${amount.toFixed(2)} added to ${foundTopUpStudent.name}'s balance.` });
+      
+      // Reset
+      setIsTopUpOpen(false);
+      setTopUpMatrix('');
+      setTopUpAmount('');
+      setAmountReceived('');
+      setTransactionNo('');
+    } catch (e: any) {
+      toast({ title: "Transaction Failed", variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
@@ -191,6 +272,25 @@ export default function LaundryPage() {
     }
   };
 
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !user?.companyId) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      try {
+        await updateDoc(doc(firestore, 'companies', user.companyId), {
+          duitNowQr: base64String
+        });
+        toast({ title: "QR Code Updated", description: "DuitNow QR has been saved to your profile." });
+      } catch (err: any) {
+        toast({ title: "Upload failed", variant: "destructive" });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleDeleteStudent = async (id: string) => {
     if (!firestore || !user?.companyId) return;
     try {
@@ -204,15 +304,145 @@ export default function LaundryPage() {
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
   const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
   const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
-  const totalSoapCost = totalRevenue - totalProfit;
+  const totalSoapCost = Math.max(0, totalRevenue - totalProfit);
 
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
       <main className="flex-1 overflow-auto p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Laundry Module</h1>
-          <p className="text-muted-foreground font-medium">Student Subscriptions & Chemical Logistics</p>
+        <div className="mb-8 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Laundry Module</h1>
+            <p className="text-muted-foreground font-medium">Student Subscriptions & Chemical Logistics</p>
+          </div>
+          <div className="flex gap-4">
+            <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
+              <DialogTrigger asChild>
+                <Button className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2">
+                  <CreditCard className="w-5 h-5" /> Student Payment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
+                <div className="bg-primary p-12 text-primary-foreground text-center relative overflow-hidden">
+                   <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Wallet className="w-24 h-24" /></div>
+                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Balance Top-Up</p>
+                   <h2 className="text-4xl font-black tracking-tighter relative z-10">Laundry Settlement</h2>
+                </div>
+
+                <div className="p-10 space-y-8">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Identify Student Matrix</Label>
+                    <Input 
+                      placeholder="ENTER MATRIX NO..." 
+                      className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6"
+                      value={topUpMatrix}
+                      onChange={(e) => setTopUpMatrix(e.target.value)}
+                    />
+                  </div>
+
+                  {foundTopUpStudent ? (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
+                      <div className="p-6 bg-primary/5 rounded-[32px] border-2 border-primary/20 flex justify-between items-center">
+                        <div>
+                          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Authenticated Account</p>
+                          <h4 className="text-2xl font-black text-foreground">{foundTopUpStudent.name}</h4>
+                          <p className="text-xs font-bold text-muted-foreground">Level {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Live Balance</p>
+                          <p className="text-3xl font-black text-foreground">${foundTopUpStudent.balance.toFixed(2)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Top-Up Amount ($)</Label>
+                          <Input 
+                            type="number" 
+                            placeholder="50.00" 
+                            className="h-16 rounded-2xl font-black text-3xl bg-secondary/10 border-none px-6"
+                            value={topUpAmount}
+                            onChange={(e) => setTopUpAmount(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-4">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Mode</Label>
+                          <RadioGroup value={topUpPaymentMethod} onValueChange={(v) => setTopUpPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
+                            <PaymentOption value="cash" label="Cash" icon={Banknote} id="topup_cash" />
+                            <PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" />
+                            <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="topup_qr" />
+                          </RadioGroup>
+                        </div>
+
+                        <Separator className="bg-secondary/50" />
+
+                        {topUpPaymentMethod === 'cash' && (
+                          <div className="space-y-6 animate-in slide-in-from-top-2">
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Amount Received ($)</Label>
+                              <Input 
+                                type="number" 
+                                className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6 text-center"
+                                value={amountReceived}
+                                onChange={(e) => setAmountReceived(e.target.value)}
+                              />
+                            </div>
+                            {Number(amountReceived) >= (Number(topUpAmount) || 0) && (
+                              <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/20 flex justify-between items-center">
+                                <p className="text-[10px] font-black uppercase text-primary">Change Balance</p>
+                                <p className="text-3xl font-black text-foreground">${changeAmount.toFixed(2)}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {(topUpPaymentMethod === 'card' || topUpPaymentMethod === 'duitnow') && (
+                          <div className="space-y-6 animate-in slide-in-from-top-2">
+                            {topUpPaymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                              <div className="flex flex-col items-center bg-secondary/5 p-8 rounded-[40px] border-2 border-dashed border-primary/10">
+                                <Image 
+                                  src={companyDoc.duitNowQr} 
+                                  alt="DuitNow QR" 
+                                  width={180} 
+                                  height={180} 
+                                  className="rounded-3xl shadow-xl border-4 border-white mb-4"
+                                />
+                                <p className="text-[10px] font-black text-primary uppercase tracking-widest">Scan to Pay Now</p>
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction No / Trace ID</Label>
+                              <Input 
+                                placeholder="TRX-XXXXXX" 
+                                className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6"
+                                value={transactionNo}
+                                onChange={(e) => setTransactionNo(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : topUpMatrix ? (
+                    <div className="py-12 text-center text-destructive font-black uppercase text-sm tracking-widest">
+                       Student not found. Verify Matrix No.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="p-10 pt-0">
+                  <Button 
+                    className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl"
+                    disabled={!foundTopUpStudent || !topUpAmount || isProcessing}
+                    onClick={handleConfirmTopUp}
+                  >
+                    {isProcessing ? "Processing..." : "Confirm & Update Balance"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <Tabs defaultValue="pos" className="space-y-6">
@@ -228,6 +458,9 @@ export default function LaundryPage() {
             </TabsTrigger>
             <TabsTrigger value="profits" className="rounded-lg gap-2">
               <TrendingUp className="w-4 h-4" /> Profits
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="rounded-lg gap-2">
+              <ShieldCheck className="w-4 h-4" /> Billing
             </TabsTrigger>
           </TabsList>
 
@@ -314,9 +547,6 @@ export default function LaundryPage() {
                         </div>
                       </div>
                     ))}
-                    {laundryTransactions.length === 0 && (
-                      <p className="text-center py-12 text-muted-foreground text-sm font-bold uppercase opacity-30">No usage recorded yet.</p>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -350,25 +580,6 @@ export default function LaundryPage() {
                       <p className="text-[10px] font-black opacity-60 uppercase mb-1 tracking-widest">Remaining</p>
                       <p className="text-2xl font-black">{Math.floor(currentSoapMl / mlPerWash)} <span className="text-xs">Washes</span></p>
                     </div>
-                  </div>
-                </CardContent>
-                <CardFooter className="bg-black/10 p-6">
-                   <Button variant="secondary" className="w-full h-12 font-black rounded-xl text-primary shadow-lg">Request Chemical Refill</Button>
-                </CardFooter>
-              </Card>
-
-              <Card className="border-none shadow-sm bg-white rounded-2xl">
-                <CardHeader className="p-6 pb-2">
-                  <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Chemical Efficiency</CardTitle>
-                </CardHeader>
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex justify-between items-center text-sm font-bold">
-                    <span className="text-muted-foreground">Current Cost/L</span>
-                    <span className="text-foreground">${soapCostPerLitre.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm font-bold">
-                    <span className="text-muted-foreground">Waste Factor</span>
-                    <span className="text-green-600">0.02% (Optimal)</span>
                   </div>
                 </CardContent>
               </Card>
@@ -469,9 +680,6 @@ export default function LaundryPage() {
                            </td>
                          </tr>
                        ))}
-                       {(!students || students.length === 0) && (
-                         <tr><td colSpan={4} className="py-24 text-center opacity-30 font-black uppercase text-xs tracking-widest">No active subscribers</td></tr>
-                       )}
                      </tbody>
                    </table>
                  </div>
@@ -521,18 +729,6 @@ export default function LaundryPage() {
                         <p className="mt-4 text-sm font-bold text-muted-foreground">Weighted average based on latest restocking logs.</p>
                      </Card>
                   </div>
-
-                  <div className="bg-white rounded-[32px] border p-10 flex items-center gap-8 shadow-sm">
-                     <div className="w-20 h-20 bg-secondary/30 rounded-3xl flex items-center justify-center text-primary">
-                        <Info className="w-10 h-10" />
-                     </div>
-                     <div className="flex-1">
-                        <h4 className="text-xl font-black">Logistics Insights</h4>
-                        <p className="text-sm font-bold text-muted-foreground leading-relaxed mt-1">
-                          System automatically deducts {mlPerWash}ml per wash. Based on current inventory, you have enough soap for {Math.floor(currentSoapMl / mlPerWash)} standard washes before a critical refill is required.
-                        </p>
-                     </div>
-                  </div>
                 </div>
              </div>
           </TabsContent>
@@ -570,44 +766,72 @@ export default function LaundryPage() {
                       <h4 className="text-5xl font-black tracking-tighter text-primary">${totalProfit.toFixed(2)}</h4>
                    </Card>
                 </div>
+             </div>
+          </TabsContent>
 
-                <Card className="border-none shadow-sm bg-white rounded-[32px] overflow-hidden">
-                   <CardHeader className="p-8 pb-0">
-                      <CardTitle className="text-xl font-black">Audit Ledger</CardTitle>
-                      <CardDescription className="font-bold">Precise profit breakdown per transaction</CardDescription>
-                   </CardHeader>
-                   <CardContent className="p-8">
-                      <div className="rounded-2xl border overflow-hidden">
-                         <table className="w-full text-sm">
-                            <thead className="bg-secondary/20">
-                               <tr>
-                                  <th className="p-4 text-left font-black uppercase text-[10px] tracking-widest">Date / Time</th>
-                                  <th className="p-4 text-right font-black uppercase text-[10px] tracking-widest">Revenue</th>
-                                  <th className="p-4 text-right font-black uppercase text-[10px] tracking-widest">Chemical Expense</th>
-                                  <th className="p-4 text-right font-black uppercase text-[10px] tracking-widest">Yield</th>
-                               </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                               {laundryTransactions.slice().reverse().map(t => (
-                                 <tr key={t.id} className="hover:bg-secondary/5">
-                                    <td className="p-4 font-bold">{new Date(t.timestamp).toLocaleString()}</td>
-                                    <td className="p-4 text-right font-black">${t.totalAmount.toFixed(2)}</td>
-                                    <td className="p-4 text-right font-bold text-destructive">-${(t.totalAmount - t.profit).toFixed(2)}</td>
-                                    <td className="p-4 text-right font-black text-primary">${t.profit.toFixed(2)}</td>
-                                 </tr>
-                               ))}
-                               {laundryTransactions.length === 0 && (
-                                 <tr><td colSpan={4} className="py-20 text-center text-muted-foreground opacity-30 font-black uppercase text-xs">Awaiting financial data</td></tr>
-                               )}
-                            </tbody>
-                         </table>
-                      </div>
-                   </CardContent>
-                </Card>
+          <TabsContent value="billing">
+            <div className="max-w-xl mx-auto space-y-8 py-12">
+               <div className="text-center">
+                 <h2 className="text-3xl font-black text-foreground">Laundry Billing Config</h2>
+                 <p className="text-muted-foreground mt-2">Manage digital payment collection QR</p>
+               </div>
+
+               <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden">
+                 <CardHeader className="bg-primary/10 p-8">
+                   <CardTitle className="text-lg font-black flex items-center gap-2">
+                     <QrCode className="w-5 h-5 text-primary" />
+                     DuitNow Settlement Profile
+                   </CardTitle>
+                 </CardHeader>
+                 <CardContent className="p-10 flex flex-col items-center gap-8">
+                   {companyDoc?.duitNowQr ? (
+                     <div className="relative group">
+                       <Image 
+                        src={companyDoc.duitNowQr} 
+                        alt="DuitNow QR" 
+                        width={250} 
+                        height={250} 
+                        className="rounded-3xl shadow-2xl border-4 border-white"
+                       />
+                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-3xl">
+                         <Button variant="secondary" className="rounded-xl font-black" asChild>
+                           <label className="cursor-pointer">
+                             <Upload className="w-4 h-4 mr-2" /> Replace QR
+                             <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                           </label>
+                         </Button>
+                       </div>
+                     </div>
+                   ) : (
+                     <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/20 transition-all gap-4">
+                       <div className="w-16 h-16 bg-secondary rounded-2xl flex items-center justify-center text-primary">
+                         <QrCode className="w-8 h-8" />
+                       </div>
+                       <p className="text-xs font-black uppercase text-muted-foreground tracking-widest">Upload Static QR</p>
+                       <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                     </label>
+                   )}
+                   <p className="text-xs text-center font-bold text-muted-foreground max-w-xs">
+                     This QR code will be shown to students during top-up sessions when they choose DuitNow as their payment method.
+                   </p>
+                 </CardContent>
+               </Card>
              </div>
           </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function PaymentOption({ value, label, icon: Icon, id }: any) {
+  return (
+    <div>
+      <RadioGroupItem value={value} id={id} className="peer sr-only" />
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28">
+        <Icon className="mb-2 h-7 w-7 text-primary" />
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      </Label>
     </div>
   );
 }
