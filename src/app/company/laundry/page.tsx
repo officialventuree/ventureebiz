@@ -26,12 +26,14 @@ import {
   ArrowRight,
   User,
   ShieldCheck,
-  Zap
+  Zap,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod, LaundryLevelConfig, LaundrySchedule } from '@/lib/types';
@@ -55,6 +57,7 @@ export default function LaundryPage() {
   const [matrixSearch, setMatrixSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<LaundryStudent | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [todayDate, setTodayDate] = useState<string | null>(null);
   
   // Form States
   const [selectedLevel, setSelectedLevel] = useState<string>('');
@@ -78,6 +81,11 @@ export default function LaundryPage() {
   const [payablePaymentMethod, setPayablePaymentMethod] = useState<PaymentMethod>('cash');
   const [payableCashReceived, setPayableCashReceived] = useState<number | string>('');
   const [payableRef, setPayableRef] = useState('');
+
+  // Hydration safety for date
+  useEffect(() => {
+    setTodayDate(new Date().toISOString().split('T')[0]);
+  }, []);
 
   // Queries
   const studentsQuery = useMemoFirebase(() => {
@@ -132,8 +140,8 @@ export default function LaundryPage() {
   };
 
   const isLevelAllowedToday = (level: number) => {
-    const today = new Date().toISOString().split('T')[0];
-    return schedules?.some(s => s.date === today && s.level === level);
+    if (!todayDate) return false;
+    return schedules?.some(s => s.date === todayDate && s.level === level);
   };
 
   const foundTopUpStudent = useMemo(() => {
@@ -155,19 +163,21 @@ export default function LaundryPage() {
       return;
     }
 
+    const initialDebt = Number(formData.get('amountDue')) || 0;
+
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: -(Number(formData.get('amountDue')) || 0), // Debt is recorded as negative balance
+      balance: -initialDebt, // Debt is recorded as negative balance
       level: Number(selectedLevel),
       class: selectedClass,
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student);
-      toast({ title: "Student Enrolled", description: `${student.name} is now registered with a pending fee.` });
+      toast({ title: "Student Enrolled", description: `${student.name} is now registered.` });
       (e.target as HTMLFormElement).reset();
       setSelectedLevel('');
       setSelectedClass('');
@@ -256,7 +266,7 @@ export default function LaundryPage() {
         items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
       });
 
-      toast({ title: "Wash Fulfilled", description: `Debited $${washRate.toFixed(2)} from ${selectedStudent.name}.` });
+      toast({ title: "Wash Fulfilled", description: `Recorded wash for ${selectedStudent.name}.` });
       setSelectedStudent(null);
       setMatrixSearch('');
     } catch (e: any) {
@@ -448,12 +458,22 @@ export default function LaundryPage() {
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
                   <div className="flex gap-2">
-                    <Input 
-                      placeholder="SCAN STUDENT MATRIX..." 
-                      className="h-16 rounded-2xl text-2xl font-black border-2 border-primary/20 bg-secondary/5"
-                      value={matrixSearch}
-                      onChange={(e) => setMatrixSearch(e.target.value)}
-                    />
+                    <div className="relative flex-1">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-6 h-6" />
+                      <Input 
+                        placeholder="SCAN STUDENT MATRIX..." 
+                        className="h-16 rounded-2xl text-2xl font-black border-2 border-primary/20 bg-secondary/5 pl-14"
+                        value={matrixSearch}
+                        onChange={(e) => setMatrixSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const found = students?.find(s => s.matrixNumber === matrixSearch);
+                            if (found) setSelectedStudent(found);
+                            else toast({ title: "Subscriber Not Found", variant: "destructive" });
+                          }
+                        }}
+                      />
+                    </div>
                     <Button onClick={() => {
                        const found = students?.find(s => s.matrixNumber === matrixSearch);
                        if (found) setSelectedStudent(found);
@@ -462,37 +482,59 @@ export default function LaundryPage() {
                   </div>
 
                   {selectedStudent ? (
-                    <div className="p-10 bg-primary/5 rounded-[32px] border-4 border-primary/10 space-y-8">
+                    <div className="p-10 bg-primary/5 rounded-[32px] border-4 border-primary/10 space-y-8 animate-in zoom-in-95 duration-300">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Subscriber Profile</p>
-                          <h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4>
-                          <p className="text-sm font-bold text-muted-foreground">Level {selectedStudent.level} • {selectedStudent.class}</p>
-                          {!isLevelAllowedToday(selectedStudent.level) && (
-                            <Badge variant="destructive" className="mt-4 font-black">Access Denied: Level {selectedStudent.level} not scheduled</Badge>
-                          )}
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Subscriber Identity</p>
+                            <h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4>
+                            <p className="text-sm font-bold text-muted-foreground flex items-center gap-2">
+                              <Badge variant="outline" className="font-bold">Level {selectedStudent.level}</Badge>
+                              <Badge variant="outline" className="font-bold">{selectedStudent.class}</Badge>
+                            </p>
+                          </div>
+                          
+                          <div className="pt-2">
+                            {isLevelAllowedToday(selectedStudent.level) ? (
+                              <Badge className="bg-green-600 hover:bg-green-600 h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
+                                <CheckCircle2 className="w-4 h-4" /> Turn Today
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
+                                <AlertCircle className="w-4 h-4" /> Not Turn Today: Level {selectedStudent.level} not scheduled
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Account Standing</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
                             selectedStudent.balance < 0 ? "text-destructive" : "text-primary"
                           )}>${selectedStudent.balance.toFixed(2)}</p>
-                          <Badge variant="outline" className="mt-2 font-black">${getWashRateForLevel(selectedStudent.level).toFixed(2)} / wash</Badge>
+                          <div className="mt-2 flex flex-col items-end gap-1">
+                             <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
+                             <p className="text-[10px] font-bold text-muted-foreground">ID: {selectedStudent.matrixNumber}</p>
+                          </div>
                         </div>
                       </div>
+                      
                       <Button 
-                        className="w-full h-16 rounded-2xl text-xl font-black shadow-xl" 
+                        className="w-full h-16 rounded-2xl text-xl font-black shadow-xl group" 
                         onClick={handleChargeLaundry} 
                         disabled={isProcessing || !isLevelAllowedToday(selectedStudent.level)}
                       >
-                        {isProcessing ? "Authorizing..." : `Confirm Wash ($${getWashRateForLevel(selectedStudent.level).toFixed(2)})`}
+                        {isProcessing ? "Processing Authorization..." : (
+                          <span className="flex items-center gap-3">
+                            Confirm Wash & Debit Account <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                          </span>
+                        )}
                       </Button>
                     </div>
                   ) : (
                     <div className="py-24 text-center bg-secondary/10 rounded-[32px] border-4 border-dashed border-secondary/30">
                       <Search className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                      <p className="font-black text-muted-foreground uppercase tracking-widest">Ready for matrix verification</p>
+                      <p className="font-black text-muted-foreground uppercase tracking-widest">Scanner Ready for Matrix Entry</p>
                     </div>
                   )}
                 </CardContent>
@@ -518,29 +560,66 @@ export default function LaundryPage() {
                         </div>
                       </div>
                     ))}
+                    {laundryTransactions.length === 0 && (
+                      <div className="p-12 text-center text-muted-foreground font-bold opacity-30">
+                        No activity yet today.
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             </div>
 
             <div className="lg:col-span-1 space-y-6">
-              <Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] p-8">
-                <CardTitle className="flex items-center gap-3 text-xl font-black mb-6">
-                  <CalendarDays className="w-6 h-6" /> Authorized Today
+              <Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] p-8 overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-8 opacity-10"><Clock className="w-32 h-32" /></div>
+                <CardTitle className="flex items-center gap-3 text-xl font-black mb-6 relative z-10">
+                  <CalendarDays className="w-6 h-6" /> Turn Schedule: Today
                 </CardTitle>
-                <div className="space-y-4">
+                <div className="space-y-4 relative z-10">
                   {LEVELS.map(lv => {
                     const isAllowed = isLevelAllowedToday(lv);
                     return (
                       <div key={lv} className={cn(
-                        "p-4 rounded-2xl flex justify-between items-center",
-                        isAllowed ? "bg-white/20 border-2 border-white/20" : "bg-black/10 opacity-50"
+                        "p-4 rounded-2xl flex justify-between items-center transition-all",
+                        isAllowed ? "bg-white/20 border-2 border-white/20 scale-[1.02]" : "bg-black/10 opacity-50"
                       )}>
                         <p className="font-black text-lg">Level {lv}</p>
-                        {isAllowed && <Badge className="bg-white text-primary font-black">Authorized</Badge>}
+                        {isAllowed ? (
+                          <Badge className="bg-white text-primary font-black">Turn Today</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-white border-white/40 font-bold opacity-40">Not Turn</Badge>
+                        )}
                       </div>
                     );
                   })}
+                  {(!todayDate || schedules?.filter(s => s.date === todayDate).length === 0) && (
+                    <div className="p-6 bg-black/10 rounded-2xl text-center border-2 border-dashed border-white/10">
+                       <p className="text-xs font-bold opacity-60">No levels scheduled for today.</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+              
+              <Card className="border-none shadow-sm bg-white rounded-3xl p-6">
+                <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-4">Chemical Health</h4>
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-black uppercase">
+                       <span>Student Chemical</span>
+                       <span className={cn(studentSoap && studentSoap.soapStockMl < 5000 ? "text-destructive" : "text-primary")}>
+                         {studentSoap ? (studentSoap.soapStockMl / 1000).toFixed(1) : 0}L
+                       </span>
+                    </div>
+                    <Progress value={studentSoap ? (studentSoap.soapStockMl / studentSoap.capacityMl) * 100 : 0} className="h-1.5" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-black uppercase">
+                       <span>Payable Pool</span>
+                       <span>{payableSoap ? (payableSoap.soapStockMl / 1000).toFixed(1) : 0}L</span>
+                    </div>
+                    <Progress value={payableSoap ? (payableSoap.soapStockMl / payableSoap.capacityMl) * 100 : 0} className="h-1.5 bg-accent/20 [&>div]:bg-accent" />
+                  </div>
                 </div>
               </Card>
             </div>
@@ -858,6 +937,11 @@ export default function LaundryPage() {
                            </td>
                         </tr>
                       ))}
+                      {(!schedules || schedules.length === 0) && (
+                        <tr>
+                           <td colSpan={3} className="p-12 text-center text-muted-foreground font-bold opacity-30">No dates scheduled yet.</td>
+                        </tr>
+                      )}
                    </tbody>
                 </table>
              </div>
