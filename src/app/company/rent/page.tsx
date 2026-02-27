@@ -57,7 +57,9 @@ export default function RentPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerCompany, setCustomerCompany] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startTime, setStartTime] = useState("09:00");
   const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+  const [endTime, setEndTime] = useState("09:00");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<RentalItem['unit']>('day');
   
@@ -90,7 +92,7 @@ export default function RentPage() {
 
   const activeRentals = transactions?.filter(t => t.module === 'rent' && t.status === 'in-progress') || [];
 
-  // Set default billing period when an asset is selected
+  // Set default billing period and auto-calculate end date/time
   useEffect(() => {
     if (selectedAssetForAgreement) {
       if (selectedAssetForAgreement.dailyRate) setSelectedBillingPeriod('day');
@@ -101,37 +103,65 @@ export default function RentPage() {
     }
   }, [selectedAssetForAgreement]);
 
-  // Live Price Calculation
+  // Auto-adjust End Date/Time based on Billing Period
+  useEffect(() => {
+    const start = new Date(`${startDate}T${startTime}`);
+    let end = new Date(start);
+
+    switch (selectedBillingPeriod) {
+      case 'hour':
+        end.setHours(end.getHours() + 1);
+        break;
+      case 'day':
+        end.setDate(end.getDate() + 1);
+        break;
+      case 'week':
+        end.setDate(end.getDate() + 7);
+        break;
+      case 'month':
+        end.setMonth(end.getMonth() + 1);
+        break;
+      case 'year':
+        end.setFullYear(end.getFullYear() + 1);
+        break;
+    }
+
+    setEndDate(end.toISOString().split('T')[0]);
+    setEndTime(end.toTimeString().split(' ')[0].substring(0, 5));
+  }, [selectedBillingPeriod, startDate, startTime]);
+
+  // Live Price Calculation with Time Accuracy
   const calculatedAgreement = useMemo(() => {
     if (!selectedAssetForAgreement) return { totalAmount: 0, duration: 0, rate: 0 };
     
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+    const start = new Date(`${startDate}T${startTime}`);
+    const end = new Date(`${endDate}T${endTime}`);
+    const diffTime = end.getTime() - start.getTime();
     
-    let duration = diffDays;
+    if (diffTime <= 0) return { totalAmount: 0, duration: 0, rate: 0 };
+    
+    let duration = 0;
     let rate = 0;
 
     switch (selectedBillingPeriod) {
       case 'hour':
-        duration = diffDays * 24;
+        duration = Math.ceil(diffTime / (1000 * 60 * 60));
         rate = selectedAssetForAgreement.hourlyRate || 0;
         break;
       case 'day':
-        duration = diffDays;
+        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         rate = selectedAssetForAgreement.dailyRate || 0;
         break;
       case 'week':
-        duration = Math.ceil(diffDays / 7);
+        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
         rate = selectedAssetForAgreement.weeklyRate || 0;
         break;
       case 'month':
-        duration = Math.ceil(diffDays / 30);
+        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
         rate = selectedAssetForAgreement.monthlyRate || 0;
         break;
       case 'year':
-        duration = Math.ceil(diffDays / 365);
+        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 365));
         rate = selectedAssetForAgreement.yearlyRate || 0;
         break;
     }
@@ -141,7 +171,7 @@ export default function RentPage() {
       duration,
       rate
     };
-  }, [selectedAssetForAgreement, startDate, endDate, selectedBillingPeriod]);
+  }, [selectedAssetForAgreement, startDate, startTime, endDate, endTime, selectedBillingPeriod]);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - calculatedAgreement.totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < calculatedAgreement.totalAmount;
@@ -199,8 +229,8 @@ export default function RentPage() {
           quantity: 1, 
           duration: calculatedAgreement.duration,
           unit: selectedBillingPeriod,
-          startDate: new Date(startDate).toISOString(),
-          endDate: new Date(endDate).toISOString()
+          startDate: new Date(`${startDate}T${startTime}`).toISOString(),
+          endDate: new Date(`${endDate}T${endTime}`).toISOString()
         }]
       };
 
@@ -277,7 +307,7 @@ export default function RentPage() {
         <div className="mb-8 flex justify-between items-end">
           <div>
             <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Leasing Terminal</h1>
-            <p className="text-muted-foreground font-bold text-sm">Advanced Agreement & Billing Control</p>
+            <p className="text-muted-foreground font-bold text-sm">Precision Time-Aware Billing Control</p>
           </div>
           <div className="flex gap-4">
              <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
@@ -324,7 +354,9 @@ export default function RentPage() {
                             <User className="w-3.5 h-3.5" /> {rental.customerName}
                           </div>
                           <div className="flex items-center gap-2 text-[10px] font-black text-destructive uppercase tracking-widest">
-                            <Clock className="w-3.5 h-3.5" /> Period: {new Date(rental.items[0].startDate!).toLocaleDateString()} - {new Date(rental.items[0].endDate!).toLocaleDateString()}
+                            <Clock className="w-3.5 h-3.5" /> 
+                            {new Date(rental.items[0].startDate!).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} - 
+                            {new Date(rental.items[0].endDate!).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                           </div>
                         </div>
                       </div>
@@ -447,14 +479,26 @@ export default function RentPage() {
                            </Select>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                           <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Date</label>
-                              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                        <div className="space-y-6">
+                           <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Date</label>
+                                 <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                              </div>
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Time</label>
+                                 <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-12 rounded-xl font-bold" />
+                              </div>
                            </div>
-                           <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
-                              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                           <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
+                                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                              </div>
+                              <div className="space-y-1.5">
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Time</label>
+                                 <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-12 rounded-xl font-bold" />
+                              </div>
                            </div>
                         </div>
 
@@ -491,7 +535,7 @@ export default function RentPage() {
                     <CardFooter className="flex-col gap-4 p-8 border-t bg-secondary/5">
                       <Button 
                         onClick={() => setShowCheckoutDialog(true)} 
-                        disabled={!customerName} 
+                        disabled={!customerName || calculatedAgreement.totalAmount <= 0} 
                         className="w-full h-16 text-xl font-black rounded-[24px] shadow-xl"
                       >
                         Verify Payment Settlement
