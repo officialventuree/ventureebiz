@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!email || !password) return { success: false, error: 'Missing credentials' };
 
     try {
-      // Hardcoded platform admin check
+      // Hardcoded platform admin check (Seed database if missing for production)
       if (email === 'admin@ventureebiz.com' && password === 'admin') {
         const adminUser: User = {
           id: 'platform-admin',
@@ -53,9 +54,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // Query Firestore for company users
+      // Query Firestore for company users or viewers
       const usersRef = collection(firestore, 'company_users');
-      const q = query(usersRef, where('email', '==', email), limit(1));
+      const q = query(usersRef, where('email', '==', email.toLowerCase()), limit(1));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
@@ -64,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const userData = querySnapshot.docs[0].data() as User;
 
-      // Verify password (Manual check for prototype)
+      // Verify password (Manual check for prototype as requested)
       if (userData.password !== password) {
         return { success: false, error: 'Invalid password' };
       }

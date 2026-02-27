@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -5,18 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Building2, Mail, Key, Search } from 'lucide-react';
+import { Plus, Building2, Mail, Key, Search, Trash2 } from 'lucide-react';
 import { createCompanyAction } from '@/app/actions';
 import { useState } from 'react';
 import { Company } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export default function AdminDashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const companiesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -24,6 +26,11 @@ export default function AdminDashboard() {
   }, [firestore]);
 
   const { data: companies, isLoading: loadingCompanies } = useCollection<Company>(companiesQuery);
+
+  const filteredCompanies = companies?.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -36,14 +43,14 @@ export default function AdminDashboard() {
     if (result.success && result.company) {
       const companyData = result.company;
       try {
-        // Save company profile
+        // Save company profile (Main entity)
         await setDoc(doc(firestore, 'companies', companyData.id), companyData);
         
-        // Save user record for manual login lookup
+        // Save user record for manual login lookup (Login entity)
         await setDoc(doc(firestore, 'company_users', companyData.id), {
           id: companyData.id,
           name: companyData.name,
-          email: companyData.email,
+          email: companyData.email.toLowerCase(),
           password: companyData.password,
           role: 'company',
           companyId: companyData.id
@@ -51,7 +58,7 @@ export default function AdminDashboard() {
 
         toast({
           title: "Company Registered",
-          description: `Account for ${companyData.name} is ready.`,
+          description: `Account for ${companyData.name} is synchronized and ready.`,
         });
         (e.target as HTMLFormElement).reset();
       } catch (e: any) {
@@ -59,6 +66,17 @@ export default function AdminDashboard() {
       }
     }
     setIsCreating(false);
+  };
+
+  const handleDelete = async (companyId: string) => {
+    if (!firestore) return;
+    try {
+      await deleteDoc(doc(firestore, 'companies', companyId));
+      await deleteDoc(doc(firestore, 'company_users', companyId));
+      toast({ title: "Company Removed", description: "Business and login records deleted." });
+    } catch (e: any) {
+      toast({ title: "Deletion failed", description: e.message, variant: "destructive" });
+    }
   };
 
   return (
@@ -103,6 +121,8 @@ export default function AdminDashboard() {
                 <input 
                   placeholder="Search registered companies..." 
                   className="flex-1 bg-transparent border-none outline-none text-sm h-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
 
@@ -116,23 +136,33 @@ export default function AdminDashboard() {
                   <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center text-muted-foreground animate-pulse">
                     Scanning database...
                   </div>
-                ) : !companies || companies.length === 0 ? (
+                ) : !filteredCompanies || filteredCompanies.length === 0 ? (
                   <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center">
                     <Building2 className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                    <p className="text-muted-foreground">No companies registered yet.</p>
+                    <p className="text-muted-foreground">No companies found matching your search.</p>
                   </div>
                 ) : (
                   <div className="grid gap-4">
-                    {companies.map((company) => (
-                      <Card key={company.id} className="shadow-sm border-none hover:shadow-md transition-shadow">
+                    {filteredCompanies.map((company) => (
+                      <Card key={company.id} className="shadow-sm border-none hover:shadow-md transition-shadow group">
                         <CardContent className="p-6">
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <h4 className="font-bold text-xl">{company.name}</h4>
                               <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">ID: {company.id}</p>
                             </div>
-                            <div className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase">
-                              Active Partner
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleDelete(company.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                              <div className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase">
+                                Active Partner
+                              </div>
                             </div>
                           </div>
                           

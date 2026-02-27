@@ -16,6 +16,21 @@
       },
       "required": ["id", "name", "email", "createdAt"]
     },
+    "User": {
+      "title": "User",
+      "type": "object",
+      "description": "User account records for manual login system.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "company", "viewer"] },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "password", "role"]
+    },
     "Product": {
       "title": "Product",
       "type": "object",
@@ -43,19 +58,6 @@
         "balance": { "type": "number" }
       },
       "required": ["id", "companyId", "name", "matrixNumber", "balance"]
-    },
-    "LaundrySoap": {
-      "title": "LaundrySoap",
-      "type": "object",
-      "description": "Inventory for laundry consumables.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "totalVolumeMl": { "type": "number" },
-        "remainingVolumeMl": { "type": "number" },
-        "cost": { "type": "number" }
-      }
     },
     "SaleTransaction": {
       "title": "SaleTransaction",
@@ -91,6 +93,10 @@
     "/companies/{companyId}": {
       "schema": "Company",
       "description": "Root company data."
+    },
+    "/company_users/{userId}": {
+      "schema": "User",
+      "description": "Centralized user records for manual login."
     },
     "/companies/{companyId}/products/{productId}": {
       "schema": "Product",

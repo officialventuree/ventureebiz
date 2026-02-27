@@ -6,17 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Users, Mail, Key, ShieldCheck, UserPlus } from 'lucide-react';
+import { Users, Mail, Key, ShieldCheck, UserPlus, Trash2 } from 'lucide-react';
 import { createViewerAction } from '@/app/actions';
 import { useState } from 'react';
 import { User } from '@/lib/types';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, query, where } from 'firebase/firestore';
+import { collection, doc, setDoc, query, where, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { firebaseConfig } from '@/firebase/config';
 
 export default function ViewersPage() {
   const { user: currentUser } = useAuth();
@@ -46,30 +43,12 @@ export default function ViewersPage() {
     if (result.success && result.user) {
       const viewerData = result.user;
       try {
-        // Use secondary app to create viewer without signing out current user
-        const tempApp = initializeApp(firebaseConfig, `viewer-${Date.now()}`);
-        const tempAuth = getAuth(tempApp);
-        
-        const userCredential = await createUserWithEmailAndPassword(
-          tempAuth, 
-          viewerData.email, 
-          viewerData.password!
-        );
-        
-        const authUid = userCredential.user.uid;
-        await deleteApp(tempApp);
-
-        const finalViewer = {
-          ...viewerData,
-          id: authUid
-        };
-
-        // Save to Firestore
-        await setDoc(doc(firestore, 'company_users', authUid), finalViewer);
+        // Just save to Firestore company_users (Syncing manual login records)
+        await setDoc(doc(firestore, 'company_users', viewerData.id), viewerData);
 
         toast({
           title: "Viewer Access Granted",
-          description: `${finalViewer.name} can now log in.`,
+          description: `${viewerData.name} can now log in.`,
         });
         (e.target as HTMLFormElement).reset();
       } catch (e: any) {
@@ -77,6 +56,16 @@ export default function ViewersPage() {
       }
     }
     setIsCreating(false);
+  };
+
+  const handleRevoke = async (viewerId: string) => {
+    if (!firestore) return;
+    try {
+      await deleteDoc(doc(firestore, 'company_users', viewerId));
+      toast({ title: "Access Revoked", description: "Viewer account has been removed." });
+    } catch (e: any) {
+      toast({ title: "Revocation failed", description: e.message, variant: "destructive" });
+    }
   };
 
   return (
@@ -110,7 +99,7 @@ export default function ViewersPage() {
                       <Input id="username" name="username" placeholder="johndoe" required />
                     </div>
                     <Button type="submit" className="w-full" disabled={isCreating}>
-                      {isCreating ? "Provisioning Auth..." : "Create Account"}
+                      {isCreating ? "Saving..." : "Create Account"}
                     </Button>
                   </form>
                 </CardContent>
@@ -158,7 +147,15 @@ export default function ViewersPage() {
                               </div>
                             </div>
                             <div className="bg-secondary/10 px-4 flex items-center justify-center border-l group-hover:bg-primary/5 transition-colors">
-                              <Button variant="ghost" size="sm" className="text-destructive font-semibold">Revoke Access</Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-destructive font-semibold hover:bg-destructive/10"
+                                onClick={() => handleRevoke(viewer.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Revoke
+                              </Button>
                             </div>
                           </div>
                         </CardContent>
