@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaundryStudent, SaleTransaction, LaundryInventory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
 
 export default function LaundryPage() {
   const { user } = useAuth();
@@ -328,7 +329,7 @@ export default function LaundryPage() {
                     </div>
                     <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm">
                       <p className="text-[10px] font-black opacity-60 uppercase mb-1 tracking-widest">Remaining</p>
-                      <p className="text-2xl font-black">{Math.floor(currentSoapMl / mlPerWash)} <span className="text-xs">Wasps</span></p>
+                      <p className="text-2xl font-black">{Math.floor(currentSoapMl / mlPerWash)} <span className="text-xs">Washes</span></p>
                     </div>
                   </div>
                 </CardContent>
