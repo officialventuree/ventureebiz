@@ -47,6 +47,21 @@
         "unit": { "type": "string", "description": "Measurement unit (e.g. piece, kg, box)" }
       }
     },
+    "LaundryInventory": {
+      "title": "LaundryInventory",
+      "type": "object",
+      "description": "Consumables for laundry services.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "soapStockMl": { "type": "number" },
+        "soapCostPerLitre": { "type": "number" },
+        "capacityMl": { "type": "number" },
+        "category": { "type": "string", "enum": ["student", "payable"] },
+        "lastBottleCost": { "type": "number" },
+        "lastBottleVolume": { "type": "number" }
+      }
+    },
     "Coupon": {
       "title": "Coupon",
       "type": "object",
@@ -141,37 +156,14 @@
       "schema": "Product",
       "description": "Retail stock."
     },
-    "/companies/{companyId}/coupons/{couponId}": {
-      "schema": "Coupon",
-      "description": "Promotional codes."
-    },
-    "/companies/{companyId}/laundryStudents/{studentId}": {
-      "schema": "LaundryStudent",
-      "description": "Student laundry accounts."
-    },
-    "/companies/{companyId}/laundryLevelConfigs/{configId}": {
-      "schema": "LaundryLevelConfig",
-      "description": "Quota and pricing settings per level."
-    },
-    "/companies/{companyId}/laundrySchedules/{scheduleId}": {
-      "schema": "LaundrySchedule",
-      "description": "Scheduled laundry days per level."
-    },
-    "/companies/{companyId}/luckyDraws/{entryId}": {
-      "schema": "LuckyDrawEntry",
-      "description": "Event participant list."
-    },
-    "/companies/{companyId}/luckyDrawEvents/{eventId}": {
-      "schema": "LuckyDrawEvent",
-      "description": "Business marketing events."
-    },
-    "/companies/{companyId}/transactions/{transactionId}": {
-      "schema": "SaleTransaction",
-      "description": "Cross-module ledger."
-    },
-    "/companies/{companyId}/purchases/{purchaseId}": {
-      "schema": "CapitalPurchase",
-      "description": "Stock replenishment logs."
-    }
+    "/companies/{companyId}/coupons/{couponId}": { "schema": "Coupon", "description": "Promotional codes." },
+    "/companies/{companyId}/laundryStudents/{studentId}": { "schema": "LaundryStudent", "description": "Student laundry accounts." },
+    "/companies/{companyId}/laundryInventory/{inventoryId}": { "schema": "LaundryInventory", "description": "Soap stocks." },
+    "/companies/{companyId}/laundryLevelConfigs/{configId}": { "schema": "LaundryLevelConfig", "description": "Quota settings." },
+    "/companies/{companyId}/laundrySchedules/{scheduleId}": { "schema": "LaundrySchedule", "description": "Scheduled laundry days." },
+    "/companies/{companyId}/luckyDraws/{entryId}": { "schema": "LuckyDrawEntry", "description": "Event participant list." },
+    "/companies/{companyId}/luckyDrawEvents/{eventId}": { "schema": "LuckyDrawEvent", "description": "Business marketing events." },
+    "/companies/{companyId}/transactions/{transactionId}": { "schema": "SaleTransaction", "description": "Cross-module ledger." },
+    "/companies/{companyId}/purchases/{purchaseId}": { "schema": "CapitalPurchase", "description": "Stock replenishment logs." }
   }
 }

@@ -107,6 +107,8 @@ export interface LaundryInventory {
   soapCostPerLitre: number;
   capacityMl: number;
   category: 'student' | 'payable';
+  lastBottleCost?: number;
+  lastBottleVolume?: number;
 }
 
 export interface LaundryLevelConfig {
