@@ -2,7 +2,7 @@
 export type Role = 'admin' | 'company' | 'viewer';
 export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
-export type TransactionStatus = 'completed' | 'pending' | 'cancelled';
+export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
 
 export interface User {
@@ -30,6 +30,9 @@ export interface SaleItem {
   price: number;
   quantity: number;
   cost?: number;
+  duration?: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface SaleTransaction {
@@ -41,6 +44,7 @@ export interface SaleTransaction {
   timestamp: string;
   items: SaleItem[];
   status?: TransactionStatus;
+  customerName?: string;
 }
 
 export interface Product {
