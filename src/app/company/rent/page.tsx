@@ -58,8 +58,9 @@ export default function RentPage() {
   const [customerCompany, setCustomerCompany] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState("09:00");
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
-  const [endTime, setEndTime] = useState("09:00");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [duration, setDuration] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<RentalItem['unit']>('day');
   
@@ -92,7 +93,7 @@ export default function RentPage() {
 
   const activeRentals = transactions?.filter(t => t.module === 'rent' && t.status === 'in-progress') || [];
 
-  // Set default billing period and auto-calculate end date/time
+  // Set default billing period when asset changes
   useEffect(() => {
     if (selectedAssetForAgreement) {
       if (selectedAssetForAgreement.dailyRate) setSelectedBillingPeriod('day');
@@ -103,65 +104,55 @@ export default function RentPage() {
     }
   }, [selectedAssetForAgreement]);
 
-  // Auto-adjust End Date/Time based on Billing Period
+  // Auto-adjust End Date/Time based on Billing Period and Duration
   useEffect(() => {
+    if (!startDate || !startTime) return;
+
     const start = new Date(`${startDate}T${startTime}`);
     let end = new Date(start);
 
     switch (selectedBillingPeriod) {
       case 'hour':
-        end.setHours(end.getHours() + 1);
+        end.setHours(end.getHours() + duration);
         break;
       case 'day':
-        end.setDate(end.getDate() + 1);
+        end.setDate(end.getDate() + duration);
         break;
       case 'week':
-        end.setDate(end.getDate() + 7);
+        end.setDate(end.getDate() + (duration * 7));
         break;
       case 'month':
-        end.setMonth(end.getMonth() + 1);
+        end.setMonth(end.getMonth() + duration);
         break;
       case 'year':
-        end.setFullYear(end.getFullYear() + 1);
+        end.setFullYear(end.getFullYear() + duration);
         break;
     }
 
     setEndDate(end.toISOString().split('T')[0]);
     setEndTime(end.toTimeString().split(' ')[0].substring(0, 5));
-  }, [selectedBillingPeriod, startDate, startTime]);
+  }, [selectedBillingPeriod, startDate, startTime, duration]);
 
-  // Live Price Calculation with Time Accuracy
+  // Live Price Calculation based on Duration
   const calculatedAgreement = useMemo(() => {
     if (!selectedAssetForAgreement) return { totalAmount: 0, duration: 0, rate: 0 };
     
-    const start = new Date(`${startDate}T${startTime}`);
-    const end = new Date(`${endDate}T${endTime}`);
-    const diffTime = end.getTime() - start.getTime();
-    
-    if (diffTime <= 0) return { totalAmount: 0, duration: 0, rate: 0 };
-    
-    let duration = 0;
     let rate = 0;
 
     switch (selectedBillingPeriod) {
       case 'hour':
-        duration = Math.ceil(diffTime / (1000 * 60 * 60));
         rate = selectedAssetForAgreement.hourlyRate || 0;
         break;
       case 'day':
-        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         rate = selectedAssetForAgreement.dailyRate || 0;
         break;
       case 'week':
-        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
         rate = selectedAssetForAgreement.weeklyRate || 0;
         break;
       case 'month':
-        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
         rate = selectedAssetForAgreement.monthlyRate || 0;
         break;
       case 'year':
-        duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 365));
         rate = selectedAssetForAgreement.yearlyRate || 0;
         break;
     }
@@ -171,7 +162,7 @@ export default function RentPage() {
       duration,
       rate
     };
-  }, [selectedAssetForAgreement, startDate, startTime, endDate, endTime, selectedBillingPeriod]);
+  }, [selectedAssetForAgreement, selectedBillingPeriod, duration]);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - calculatedAgreement.totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < calculatedAgreement.totalAmount;
@@ -244,6 +235,7 @@ export default function RentPage() {
       setReferenceNumber('');
       setPaymentMethod('cash');
       setCashReceived('');
+      setDuration(1);
       setShowCheckoutDialog(false);
     } catch (e: any) {
       toast({ title: "Launch failed", description: e.message, variant: "destructive" });
@@ -479,6 +471,17 @@ export default function RentPage() {
                            </Select>
                         </div>
 
+                        <div className="space-y-1.5">
+                           <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Rental Duration ({selectedBillingPeriod}s)</label>
+                           <Input 
+                             type="number" 
+                             min="1"
+                             value={duration}
+                             onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+                             className="h-12 rounded-xl font-bold bg-secondary/10 border-none" 
+                           />
+                        </div>
+
                         <div className="space-y-6">
                            <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1.5">
@@ -492,12 +495,12 @@ export default function RentPage() {
                            </div>
                            <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1.5">
-                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
-                                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Calculated End Date</label>
+                                 <Input type="date" value={endDate} readOnly className="h-12 rounded-xl font-bold bg-secondary/5 border-none opacity-80" />
                               </div>
                               <div className="space-y-1.5">
-                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Time</label>
-                                 <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-12 rounded-xl font-bold" />
+                                 <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Calculated End Time</label>
+                                 <Input type="time" value={endTime} readOnly className="h-12 rounded-xl font-bold bg-secondary/5 border-none opacity-80" />
                               </div>
                            </div>
                         </div>
@@ -515,8 +518,8 @@ export default function RentPage() {
 
                         <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 space-y-2">
                            <div className="flex justify-between items-center opacity-70">
-                              <p className="text-[10px] font-black uppercase tracking-widest">Calculated Duration</p>
-                              <p className="text-xs font-black">{calculatedAgreement.duration} {selectedBillingPeriod}(s)</p>
+                              <p className="text-[10px] font-black uppercase tracking-widest">Calculated Fee Breakdown</p>
+                              <p className="text-xs font-black">{duration} {selectedBillingPeriod}(s) @ ${calculatedAgreement.rate.toFixed(2)}</p>
                            </div>
                            <div className="flex justify-between items-end pt-2">
                               <p className="text-xs font-black uppercase text-primary tracking-widest mb-1">Total Fee</p>
