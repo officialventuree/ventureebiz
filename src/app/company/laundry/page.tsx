@@ -339,8 +339,13 @@ export default function LaundryPage() {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
-    const amountLitres = Number(formData.get('litres'));
-    const cost = Number(formData.get('cost'));
+    
+    const bottles = Number(formData.get('bottles'));
+    const volPerBottle = Number(formData.get('volPerBottle')); // in Litres
+    const costPerBottle = Number(formData.get('costPerBottle'));
+    
+    const amountLitres = bottles * volPerBottle;
+    const totalCost = bottles * costPerBottle;
     const category = restockCategory;
     const amountMl = amountLitres * 1000;
     const docId = category === 'student' ? 'student_soap' : 'payable_soap';
@@ -353,22 +358,22 @@ export default function LaundryPage() {
           id: docId,
           companyId: user.companyId,
           soapStockMl: amountMl,
-          soapCostPerLitre: cost / amountLitres,
+          soapCostPerLitre: totalCost / amountLitres,
           capacityMl: 50000,
           category
         });
       } else {
         await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
           soapStockMl: increment(amountMl),
-          soapCostPerLitre: cost / amountLitres
+          soapCostPerLitre: totalCost / amountLitres
         });
       }
 
       await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), {
         id: crypto.randomUUID(),
         companyId: user.companyId,
-        amount: cost,
-        description: `Laundry Restock (${category}): ${amountLitres}L Soap`,
+        amount: totalCost,
+        description: `Laundry Restock (${category}): ${bottles}x ${volPerBottle}L Bottles`,
         timestamp: new Date().toISOString()
       });
 
@@ -580,7 +585,7 @@ export default function LaundryPage() {
               <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
                 <CardHeader className="bg-secondary/10 p-8">
                   <CardTitle className="text-xl font-black">Usage Terminal (Student)</CardTitle>
-                  <CardDescription className="font-bold">Verify student identity and process washing charge from Student Soap Stock</CardDescription>
+                  <CardTitle className="text-sm font-bold mt-1">Verify student identity and process washing charge from Student Soap Stock</CardTitle>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
                   <div className="flex gap-2">
@@ -1000,12 +1005,16 @@ export default function LaundryPage() {
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Quantity (Litres)</label>
-                        <Input name="litres" type="number" placeholder="5" required className="h-12 rounded-xl font-bold" />
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">No. of Bottles</label>
+                        <Input name="bottles" type="number" placeholder="5" required className="h-12 rounded-xl font-bold" />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Total Procurement Cost ($)</label>
-                        <Input name="cost" type="number" step="0.01" placeholder="7.50" required className="h-12 rounded-xl font-bold" />
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Volume per Bottle (Litres)</label>
+                        <Input name="volPerBottle" type="number" step="0.1" placeholder="5.0" required className="h-12 rounded-xl font-bold" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Cost per Bottle ($)</label>
+                        <Input name="costPerBottle" type="number" step="0.01" placeholder="7.50" required className="h-12 rounded-xl font-bold" />
                       </div>
                       <Button type="submit" className="w-full h-14 font-black rounded-2xl shadow-xl">Apply to Stock</Button>
                     </form>
