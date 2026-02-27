@@ -230,10 +230,7 @@ export default function LaundryPage() {
       return;
     }
 
-    if (selectedStudent.balance < washRate) {
-      toast({ title: "Insufficient Balance", description: `Minimum $${washRate.toFixed(2)} required.`, variant: "destructive" });
-      return;
-    }
+    // Overdraft allowed: Removed balance check
 
     if (studentSoap.soapStockMl < mlPerWash) {
        toast({ title: "Refill Required", description: "Insufficient soap stock for student usage.", variant: "destructive" });
@@ -396,7 +393,9 @@ export default function LaundryPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current</p>
-                          <p className="text-3xl font-black text-foreground">${foundTopUpStudent.balance.toFixed(2)}</p>
+                          <p className={cn("text-3xl font-black", foundTopUpStudent.balance < 0 ? "text-destructive" : "text-foreground")}>
+                            ${foundTopUpStudent.balance.toFixed(2)}
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-4">
@@ -487,7 +486,7 @@ export default function LaundryPage() {
                       <Button 
                         className="w-full h-16 rounded-2xl text-xl font-black shadow-xl" 
                         onClick={handleChargeLaundry} 
-                        disabled={isProcessing || !isLevelAllowedToday(selectedStudent.level) || selectedStudent.balance < getWashRateForLevel(selectedStudent.level)}
+                        disabled={isProcessing || !isLevelAllowedToday(selectedStudent.level)}
                       >
                         {isProcessing ? "Authorizing..." : `Confirm Wash ($${getWashRateForLevel(selectedStudent.level).toFixed(2)})`}
                       </Button>
@@ -753,9 +752,11 @@ export default function LaundryPage() {
                                 <p className="text-[9px] text-muted-foreground font-bold uppercase">Calculated Rate</p>
                              </td>
                              <td className="p-4 text-right">
-                                <p className="font-black text-lg">${s.balance.toFixed(2)}</p>
-                                <p className={cn("text-[9px] font-black uppercase", washesLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
-                                   {washesLeft} washes remaining
+                                <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-foreground")}>
+                                  ${s.balance.toFixed(2)}
+                                </p>
+                                <p className={cn("text-[9px] font-black uppercase", s.balance < 0 ? "text-destructive" : washesLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
+                                   {s.balance < 0 ? "Account in Arrears" : `${washesLeft} washes remaining`}
                                 </p>
                              </td>
                              <td className="p-4 text-center">
