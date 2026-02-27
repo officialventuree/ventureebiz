@@ -22,12 +22,15 @@ import {
   QrCode, 
   Calendar as CalendarIcon,
   Upload,
-  CheckCircle2
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RentalItem, SaleTransaction, Company, PaymentMethod } from '@/lib/types';
@@ -49,12 +52,18 @@ export default function RentPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<RentalItem | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
   
-  // Advanced Agreement State
+  // Agreement Form State
+  const [customerName, setCustomerName] = useState('');
+  const [customerCompany, setCustomerCompany] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+  
+  // Checkout State
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [referenceNumber, setReferenceNumber] = useState('');
+  const [cashReceived, setCashReceived] = useState<number | string>('');
 
   const companyRef = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -80,6 +89,35 @@ export default function RentPage() {
   );
 
   const activeRentals = transactions?.filter(t => t.module === 'rent' && t.status === 'in-progress') || [];
+
+  // Live Price Calculation
+  const calculatedAgreement = useMemo(() => {
+    if (!selectedItem) return { totalAmount: 0, duration: 0 };
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+    
+    let duration = diffDays;
+    const rate = selectedItem.unit === 'day' ? selectedItem.dailyRate! : selectedItem.unit === 'month' ? selectedItem.monthlyRate! : selectedItem.hourlyRate!;
+    
+    if (selectedItem.unit === 'month') {
+      duration = Math.ceil(diffDays / 30);
+    } else if (selectedItem.unit === 'hour') {
+      duration = diffDays * 24;
+    }
+
+    return {
+      totalAmount: rate * duration,
+      duration,
+      rate
+    };
+  }, [selectedItem, startDate, endDate]);
+
+  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - calculatedAgreement.totalAmount) : 0;
+  const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < calculatedAgreement.totalAmount;
+  const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
 
   const handleRegisterItem = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -109,31 +147,9 @@ export default function RentPage() {
     }
   };
 
-  const handleCreateAgreement = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleLaunchAgreement = async () => {
     if (!selectedItem || !firestore || !user?.companyId) return;
     setIsProcessing(true);
-
-    const formData = new FormData(e.currentTarget);
-    const customerName = formData.get('customer') as string;
-    const customerCompany = formData.get('company') as string;
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    // Calculate total based on selected item unit
-    let duration = diffDays;
-    const rate = selectedItem.unit === 'day' ? selectedItem.dailyRate! : selectedItem.unit === 'month' ? selectedItem.monthlyRate! : selectedItem.hourlyRate!;
-    
-    if (selectedItem.unit === 'month') {
-      duration = Math.ceil(diffDays / 30);
-    } else if (selectedItem.unit === 'hour') {
-      duration = diffDays * 24; // Approximation for date selector
-    }
-
-    const totalAmount = rate * duration;
 
     try {
       const transactionId = crypto.randomUUID();
@@ -141,8 +157,8 @@ export default function RentPage() {
         id: transactionId,
         companyId: user.companyId,
         module: 'rent',
-        totalAmount,
-        profit: totalAmount * 0.95, 
+        totalAmount: calculatedAgreement.totalAmount,
+        profit: calculatedAgreement.totalAmount * 0.95, 
         timestamp: new Date().toISOString(),
         customerName: customerCompany ? `${customerName} (${customerCompany})` : customerName,
         paymentMethod,
@@ -150,12 +166,12 @@ export default function RentPage() {
         status: 'in-progress',
         items: [{ 
           name: selectedItem.name, 
-          price: rate, 
+          price: calculatedAgreement.rate, 
           quantity: 1, 
-          duration,
+          duration: calculatedAgreement.duration,
           unit: selectedItem.unit,
-          startDate: start.toISOString(),
-          endDate: end.toISOString()
+          startDate: new Date(startDate).toISOString(),
+          endDate: new Date(endDate).toISOString()
         }]
       };
 
@@ -164,8 +180,12 @@ export default function RentPage() {
 
       toast({ title: "Agreement Launched", description: `Active lease for ${customerName} recorded.` });
       setSelectedItem(null);
+      setCustomerName('');
+      setCustomerCompany('');
       setReferenceNumber('');
       setPaymentMethod('cash');
+      setCashReceived('');
+      setShowCheckoutDialog(false);
     } catch (e: any) {
       toast({ title: "Launch failed", description: e.message, variant: "destructive" });
     } finally {
@@ -346,92 +366,166 @@ export default function RentPage() {
                       Agreement Creator
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex-1 p-8 overflow-y-auto space-y-6">
+                  <CardContent className="flex-1 p-8 overflow-y-auto space-y-8">
                     {selectedItem ? (
-                      <form id="agreement-form" onSubmit={handleCreateAgreement} className="space-y-6">
-                        <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl">
-                          <p className="text-[10px] font-black text-primary uppercase mb-1">Target Asset</p>
-                          <p className="text-lg font-black text-foreground">{selectedItem.name}</p>
+                      <div className="space-y-8">
+                        <div className="p-6 bg-primary/5 border-2 border-primary/10 rounded-3xl relative overflow-hidden group">
+                          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform">
+                            <CalendarDays className="w-24 h-24" />
+                          </div>
+                          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Active Selection</p>
+                          <p className="text-xl font-black text-foreground">{selectedItem.name}</p>
                         </div>
 
                         <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</label>
-                              <Input name="customer" placeholder="Full Name" required className="rounded-xl" />
-                            </div>
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</label>
-                              <Input name="company" placeholder="Business Name" className="rounded-xl" />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Date</label>
-                              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-xl" />
-                            </div>
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
-                              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-xl" />
-                            </div>
-                          </div>
-                        </div>
-
-                        <Separator />
-
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Settlement Method</label>
-                          <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-2">
-                             <PaymentMiniOption value="cash" label="Cash" icon={Banknote} id="pay_cash" />
-                             <PaymentMiniOption value="card" label="Card" icon={CreditCard} id="pay_card" />
-                             <PaymentMiniOption value="duitnow" label="DuitNow" icon={QrCode} id="pay_qr" />
-                          </RadioGroup>
-
-                          {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                            <div className="mt-4 p-4 bg-secondary/20 rounded-2xl flex flex-col items-center">
-                              <p className="text-[10px] font-black uppercase text-muted-foreground mb-3">Scan to Pay</p>
-                              <Image 
-                                src={companyDoc.duitNowQr} 
-                                alt="DuitNow QR" 
-                                width={120} 
-                                height={120} 
-                                className="rounded-xl shadow-md"
-                              />
-                            </div>
-                          )}
-
-                          {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Reference / Trace ID</label>
+                           <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Full Name</label>
                               <Input 
-                                placeholder="TRX-XXXX" 
-                                className="rounded-xl" 
-                                value={referenceNumber}
-                                onChange={(e) => setReferenceNumber(e.target.value)}
-                                required
+                                placeholder="Alice Smith" 
+                                className="h-12 rounded-xl font-bold" 
+                                value={customerName}
+                                onChange={(e) => setCustomerName(e.target.value)}
                               />
-                            </div>
-                          )}
+                           </div>
+                           <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Organization (Optional)</label>
+                              <Input 
+                                placeholder="Acme Logistics" 
+                                className="h-12 rounded-xl font-bold" 
+                                value={customerCompany}
+                                onChange={(e) => setCustomerCompany(e.target.value)}
+                              />
+                           </div>
                         </div>
-                      </form>
+
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Date</label>
+                              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                           </div>
+                           <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
+                              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-12 rounded-xl font-bold" />
+                           </div>
+                        </div>
+
+                        <Separator className="bg-secondary/50" />
+
+                        <div className="bg-secondary/10 p-6 rounded-3xl space-y-1">
+                           <div className="flex justify-between items-center">
+                              <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Duration Estimate</p>
+                              <p className="text-sm font-black">{calculatedAgreement.duration} {selectedItem.unit}(s)</p>
+                           </div>
+                           <div className="flex justify-between items-end pt-2">
+                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Total Due</p>
+                              <p className="text-4xl font-black text-foreground tracking-tighter">${calculatedAgreement.totalAmount.toFixed(2)}</p>
+                           </div>
+                        </div>
+                      </div>
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4 py-12">
                         <CalendarDays className="w-16 h-16" />
-                        <p className="font-black text-sm uppercase tracking-widest">Select an asset<br/>to generate contract</p>
+                        <p className="font-black text-sm uppercase tracking-widest">Select an available asset<br/>to begin drafting</p>
                       </div>
                     )}
                   </CardContent>
                   {selectedItem && (
                     <CardFooter className="flex-col gap-4 p-8 border-t bg-secondary/5">
-                      <Button form="agreement-form" type="submit" disabled={isProcessing} className="w-full h-16 text-lg font-black rounded-2xl shadow-xl">
-                        {isProcessing ? "Processing..." : "Launch Agreement"}
+                      <Button 
+                        onClick={() => setShowCheckoutDialog(true)} 
+                        disabled={!customerName} 
+                        className="w-full h-16 text-xl font-black rounded-[24px] shadow-xl"
+                      >
+                        Initialize Agreement
                       </Button>
                     </CardFooter>
                   )}
                 </Card>
               </div>
             </div>
+
+            <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
+              <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
+                <div className="bg-primary p-12 text-primary-foreground text-center relative">
+                   <div className="absolute top-4 left-1/2 -translate-x-1/2 opacity-20"><Wallet className="w-16 h-16" /></div>
+                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Agreement Settlement</p>
+                   <h2 className="text-6xl font-black tracking-tighter relative z-10">${calculatedAgreement.totalAmount.toFixed(2)}</h2>
+                </div>
+                
+                <div className="p-12 space-y-10">
+                  <div className="space-y-4">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Method</Label>
+                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
+                      <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash" />
+                      <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card" />
+                      <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="rent_qr" />
+                    </RadioGroup>
+                  </div>
+
+                  {paymentMethod === 'cash' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Cash Received ($)</Label>
+                      <Input 
+                        type="number" 
+                        className="h-16 rounded-[20px] font-black text-3xl bg-secondary/20 border-none px-6" 
+                        value={cashReceived} 
+                        onChange={(e) => setCashReceived(e.target.value)} 
+                        autoFocus
+                      />
+                      {Number(cashReceived) >= calculatedAgreement.totalAmount && (
+                        <div className="bg-primary/5 p-6 rounded-[24px] border-2 border-primary/20 flex justify-between items-center">
+                           <div className="flex items-center gap-3">
+                              <CheckCircle2 className="w-6 h-6 text-primary" />
+                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Change to Return</p>
+                           </div>
+                           <p className="text-4xl font-black tracking-tighter text-foreground">${changeAmount.toFixed(2)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                       {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                         <div className="flex flex-col items-center bg-secondary/10 p-6 rounded-3xl">
+                            <Image 
+                              src={companyDoc.duitNowQr} 
+                              alt="DuitNow QR" 
+                              width={180} 
+                              height={180} 
+                              className="rounded-2xl shadow-xl border-4 border-white mb-4"
+                            />
+                            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Point to Scan</p>
+                         </div>
+                       )}
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Reference / Trace ID</Label>
+                          <Input 
+                            placeholder="TRX-XXXXXX" 
+                            className="h-14 rounded-2xl font-black text-lg bg-secondary/20 border-none px-6" 
+                            value={referenceNumber} 
+                            onChange={(e) => setReferenceNumber(e.target.value)} 
+                            required
+                          />
+                       </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-12 pt-0">
+                  <Button 
+                    onClick={handleLaunchAgreement} 
+                    className="w-full h-20 rounded-[30px] font-black text-xl shadow-2xl transition-all hover:scale-[1.02]" 
+                    disabled={isProcessing || isInsufficientCash || isMissingReference}
+                  >
+                    {isProcessing ? "Launching..." : "Confirm & Launch Agreement"}
+                  </Button>
+                  <p className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-6 opacity-40">
+                    Agreement will be finalized and asset marked as rented
+                  </p>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="registry" className="flex-1 overflow-hidden">
@@ -483,7 +577,7 @@ export default function RentPage() {
                       </DialogContent>
                     </Dialog>
                     
-                    <Separator />
+                    <Separator className="bg-secondary/50" />
                     
                     <div className="space-y-4">
                        <div className="flex justify-between items-center text-sm">
@@ -597,14 +691,15 @@ export default function RentPage() {
   );
 }
 
-function PaymentMiniOption({ value, label, icon: Icon, id }: any) {
+function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div>
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-xl border-2 border-transparent bg-secondary/30 p-3 hover:bg-secondary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 cursor-pointer transition-all h-20">
-        <Icon className="mb-1 h-5 w-5 text-primary" />
-        <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28">
+        <Icon className="mb-2 h-7 w-7 text-primary" />
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
     </div>
   );
 }
+
