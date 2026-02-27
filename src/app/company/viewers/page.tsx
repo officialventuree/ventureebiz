@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -7,38 +8,73 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Users, Mail, Key, ShieldCheck, UserPlus } from 'lucide-react';
 import { createViewerAction } from '@/app/actions';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { User } from '@/lib/types';
 import { useAuth } from '@/components/auth-context';
-import { db } from '@/lib/store';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, doc, setDoc, query, where } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { firebaseConfig } from '@/firebase/config';
 
 export default function ViewersPage() {
   const { user: currentUser } = useAuth();
-  const [viewers, setViewers] = useState<User[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
+  const firestore = useFirestore();
   const { toast } = useToast();
+  const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
-    // Filter global users to find viewers for this company
-    const allUsers = db.getUsers();
-    const companyViewers = allUsers.filter(u => u.role === 'viewer' && u.companyId === currentUser?.companyId);
-    setViewers(companyViewers);
-  }, [currentUser?.companyId]);
+  const viewersQuery = useMemoFirebase(() => {
+    if (!firestore || !currentUser?.companyId) return null;
+    return query(
+      collection(firestore, 'company_users'), 
+      where('role', '==', 'viewer'),
+      where('companyId', '==', currentUser.companyId)
+    );
+  }, [firestore, currentUser?.companyId]);
+
+  const { data: viewers } = useCollection<User>(viewersQuery);
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!firestore || !currentUser) return;
     setIsCreating(true);
+    
     const formData = new FormData(e.currentTarget);
-    const result = await createViewerAction(formData, currentUser?.companyId || '', currentUser?.name || '');
+    const result = await createViewerAction(formData, currentUser.companyId || '', currentUser.name || '');
     
     if (result.success && result.user) {
-      setViewers([...viewers, result.user]);
-      toast({
-        title: "Viewer Access Granted",
-        description: `${result.user.name}'s account has been created.`,
-      });
-      (e.target as HTMLFormElement).reset();
+      const viewerData = result.user;
+      try {
+        // Use secondary app to create viewer without signing out current user
+        const tempApp = initializeApp(firebaseConfig, `viewer-${Date.now()}`);
+        const tempAuth = getAuth(tempApp);
+        
+        const userCredential = await createUserWithEmailAndPassword(
+          tempAuth, 
+          viewerData.email, 
+          viewerData.password!
+        );
+        
+        const authUid = userCredential.user.uid;
+        await deleteApp(tempApp);
+
+        const finalViewer = {
+          ...viewerData,
+          id: authUid
+        };
+
+        // Save to Firestore
+        await setDoc(doc(firestore, 'company_users', authUid), finalViewer);
+
+        toast({
+          title: "Viewer Access Granted",
+          description: `${finalViewer.name} can now log in.`,
+        });
+        (e.target as HTMLFormElement).reset();
+      } catch (e: any) {
+        toast({ title: "Failed to create viewer", description: e.message, variant: "destructive" });
+      }
     }
     setIsCreating(false);
   };
@@ -74,7 +110,7 @@ export default function ViewersPage() {
                       <Input id="username" name="username" placeholder="johndoe" required />
                     </div>
                     <Button type="submit" className="w-full" disabled={isCreating}>
-                      {isCreating ? "Creating Viewer..." : "Create Account"}
+                      {isCreating ? "Provisioning Auth..." : "Create Account"}
                     </Button>
                   </form>
                 </CardContent>
@@ -88,7 +124,7 @@ export default function ViewersPage() {
                   Active Viewers
                 </h3>
                 
-                {viewers.length === 0 ? (
+                {!viewers || viewers.length === 0 ? (
                   <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center">
                     <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                     <p className="text-muted-foreground">No viewers added yet.</p>

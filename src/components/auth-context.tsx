@@ -4,8 +4,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useFirestore, useAuth as useFirebaseAuth } from '@/firebase';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -21,56 +22,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const firestore = useFirestore();
+  const auth = useFirebaseAuth();
 
   useEffect(() => {
-    const saved = localStorage.getItem('venturee_user');
-    if (saved) {
-      setUser(JSON.parse(saved));
-    }
-    setIsLoading(false);
-  }, []);
+    if (!auth || !firestore) return;
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Hardcoded admin check first
+        if (firebaseUser.email === 'admin@ventureebiz.com') {
+          setUser({
+            id: firebaseUser.uid,
+            name: 'Platform Owner',
+            email: firebaseUser.email,
+            role: 'admin'
+          });
+        } else {
+          // Fetch additional user data from Firestore
+          try {
+            const userDoc = await getDoc(doc(firestore, 'company_users', firebaseUser.uid));
+            if (userDoc.exists()) {
+              setUser(userDoc.data() as User);
+            }
+          } catch (e) {
+            console.error("Error fetching user data:", e);
+          }
+        }
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [auth, firestore]);
 
   const login = async (email: string, password?: string) => {
-    if (!firestore) return false;
+    if (!auth || !password) return false;
 
-    // First check hardcoded admin
-    if (email === 'admin@ventureebiz.com' && password === 'admin') {
-      const adminUser: User = { id: 'admin-1', name: 'Platform Owner', email, role: 'admin' };
-      setUser(adminUser);
-      localStorage.setItem('venturee_user', JSON.stringify(adminUser));
-      router.push('/admin');
-      return true;
-    }
-
-    // Then check Firestore for company users
     try {
-      const usersRef = collection(firestore, 'company_users');
-      const q = query(usersRef, where('email', '==', email));
-      const querySnapshot = await getDocs(q);
+      // Actually sign into Firebase Auth
+      await signInWithEmailAndPassword(auth, email, password);
       
-      if (!querySnapshot.empty) {
-        const userData = querySnapshot.docs[0].data() as User;
-        if (!password || userData.password === password) {
-          setUser(userData);
-          localStorage.setItem('venturee_user', JSON.stringify(userData));
-          
-          if (userData.role === 'company') router.push('/company');
-          else if (userData.role === 'viewer') router.push('/viewer');
-          
-          return true;
-        }
+      // The onAuthStateChanged listener will handle redirecting and setting state
+      // but we help it along with immediate navigation
+      const userDoc = await getDocs(query(collection(firestore, 'company_users'), where('email', '==', email)));
+      
+      if (!userDoc.empty) {
+        const userData = userDoc.docs[0].data() as User;
+        if (userData.role === 'company') router.push('/company');
+        else if (userData.role === 'viewer') router.push('/viewer');
+      } else if (email === 'admin@ventureebiz.com') {
+        router.push('/admin');
       }
+      
+      return true;
     } catch (e) {
-      console.error("Auth error:", e);
+      console.error("Firebase Auth login error:", e);
+      return false;
     }
-    
-    return false;
   };
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem('venturee_user');
-    router.push('/');
+    if (auth) {
+      signOut(auth);
+      setUser(null);
+      router.push('/');
+    }
   };
 
   return (

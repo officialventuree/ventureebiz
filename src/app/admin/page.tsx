@@ -13,6 +13,9 @@ import { Company } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, doc, setDoc } from 'firebase/firestore';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { firebaseConfig } from '@/firebase/config';
 
 export default function AdminDashboard() {
   const firestore = useFirestore();
@@ -35,28 +38,47 @@ export default function AdminDashboard() {
     const result = await createCompanyAction(formData);
     
     if (result.success && result.company) {
+      const companyData = result.company;
       try {
-        // Save to real Firestore
-        await setDoc(doc(firestore, 'companies', result.company.id), result.company);
+        // To create a user without signing out the admin, use a secondary App instance
+        const tempApp = initializeApp(firebaseConfig, `temp-${Date.now()}`);
+        const tempAuth = getAuth(tempApp);
         
-        // Also create the user login document
-        const userRef = doc(firestore, 'company_users', result.company.id);
-        await setDoc(userRef, {
-          id: result.company.id,
-          name: result.company.name,
-          email: result.company.email,
-          password: result.company.password,
+        const userCredential = await createUserWithEmailAndPassword(
+          tempAuth, 
+          companyData.email, 
+          companyData.password!
+        );
+        
+        const authUid = userCredential.user.uid;
+        await deleteApp(tempApp);
+
+        // Update company object to use the real Auth UID
+        const finalCompany = {
+          ...companyData,
+          id: authUid
+        };
+
+        // Save to Firestore using Auth UID
+        await setDoc(doc(firestore, 'companies', authUid), finalCompany);
+        
+        // Create the user record for login lookups
+        await setDoc(doc(firestore, 'company_users', authUid), {
+          id: authUid,
+          name: finalCompany.name,
+          email: finalCompany.email,
+          password: finalCompany.password,
           role: 'company',
-          companyId: result.company.id
+          companyId: authUid
         });
 
         toast({
           title: "Company Registered",
-          description: `Credentials for ${result.company.name} saved to database.`,
+          description: `Account for ${finalCompany.name} is ready.`,
         });
         (e.target as HTMLFormElement).reset();
-      } catch (e) {
-        toast({ title: "Database error", variant: "destructive" });
+      } catch (e: any) {
+        toast({ title: "Registration error", description: e.message, variant: "destructive" });
       }
     }
     setIsCreating(false);
@@ -91,7 +113,7 @@ export default function AdminDashboard() {
                       <Input id="name" name="name" placeholder="Acme Corp" required />
                     </div>
                     <Button type="submit" className="w-full" disabled={isCreating}>
-                      {isCreating ? "Generating Credentials..." : "Add Company"}
+                      {isCreating ? "Provisioning Auth..." : "Add Company"}
                     </Button>
                   </form>
                 </CardContent>
@@ -114,7 +136,9 @@ export default function AdminDashboard() {
                 </h3>
                 
                 {loadingCompanies ? (
-                  <p className="text-center py-10 text-muted-foreground">Loading database...</p>
+                  <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center text-muted-foreground animate-pulse">
+                    Scanning database...
+                  </div>
                 ) : !companies || companies.length === 0 ? (
                   <div className="bg-white/50 border-2 border-dashed rounded-xl p-12 text-center">
                     <Building2 className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
@@ -128,7 +152,7 @@ export default function AdminDashboard() {
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <h4 className="font-bold text-xl">{company.name}</h4>
-                              <p className="text-[10px] text-muted-foreground font-mono">DB_ID: {company.id}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">AUTH_UID: {company.id}</p>
                             </div>
                             <div className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase">
                               Active Partner
