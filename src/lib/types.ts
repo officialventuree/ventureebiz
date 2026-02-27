@@ -37,6 +37,7 @@ export interface SaleItem {
   startDate?: string;
   endDate?: string;
   unit?: string;
+  soapUsedMl?: number;
 }
 
 export interface SaleTransaction {
@@ -95,6 +96,14 @@ export interface LaundryStudent {
   name: string;
   matrixNumber: string;
   balance: number;
+}
+
+export interface LaundryInventory {
+  id: string;
+  companyId: string;
+  soapStockMl: number;
+  soapCostPerLitre: number;
+  capacityMl: number;
 }
 
 export interface CapitalPurchase {
