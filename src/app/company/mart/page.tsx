@@ -6,13 +6,13 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod, LuckyDrawEvent } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-
-const LUCKY_DRAW_MIN_SPEND = 100;
+import { Switch } from '@/components/ui/switch';
 
 export default function MartPage() {
   const { user } = useAuth();
@@ -61,10 +60,16 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'coupons');
   }, [firestore, user?.companyId]);
 
+  const eventsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'luckyDrawEvents');
+  }, [firestore, user?.companyId]);
+
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
+  const { data: events } = useCollection<LuckyDrawEvent>(eventsQuery);
 
   // Auto-focus barcode scanner on load and after checkout
   useEffect(() => {
@@ -129,6 +134,9 @@ export default function MartPage() {
   const totalAmount = Math.max(0, subtotal - discount);
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - discount;
 
+  // Find qualifying events
+  const qualifyingEvent = events?.find(e => e.isActive && totalAmount >= e.minSpend);
+
   const handleApplyCoupon = async () => {
     if (!firestore || !user?.companyId || !couponCode) return;
     
@@ -155,8 +163,8 @@ export default function MartPage() {
 
   const initiateCheckout = () => {
     if (cart.length === 0 || !user?.companyId || !firestore) return;
-    if (totalAmount >= LUCKY_DRAW_MIN_SPEND && !customerName) {
-      toast({ title: "Lucky Draw Entry Required", description: "This high-value purchase qualifies for the Lucky Draw. Please enter the customer's name.", variant: "destructive" });
+    if (qualifyingEvent && !customerName) {
+      toast({ title: "Lucky Draw Qualification", description: `This purchase qualifies for ${qualifyingEvent.name}. Please enter customer name.`, variant: "destructive" });
       return;
     }
     setShowCheckoutDialog(true);
@@ -189,6 +197,7 @@ export default function MartPage() {
         paymentMethod,
         referenceNumber: referenceNumber || undefined,
         status: 'completed',
+        luckyDrawEventId: qualifyingEvent?.id,
         items: cart.map(item => ({
           name: item.product.name,
           price: item.product.sellingPrice,
@@ -211,13 +220,14 @@ export default function MartPage() {
       }
 
       // Register Lucky Draw
-      if (totalAmount >= LUCKY_DRAW_MIN_SPEND) {
+      if (qualifyingEvent) {
         const drawRef = collection(firestore, 'companies', user.companyId, 'luckyDraws');
         await addDoc(drawRef, {
           id: crypto.randomUUID(),
           companyId: user.companyId,
-          customerName,
+          customerName: customerName || 'Anonymous Participant',
           transactionId,
+          eventId: qualifyingEvent.id,
           amount: totalAmount,
           timestamp: new Date().toISOString()
         });
@@ -253,15 +263,17 @@ export default function MartPage() {
             <p className="text-muted-foreground font-bold text-sm">Retail Logistics & Customer Engagement</p>
           </div>
           <div className="flex gap-4">
-             <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
-                <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center text-accent-foreground">
-                   <Trophy className="w-5 h-5" />
-                </div>
-                <div>
-                   <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Lucky Draw Min.</p>
-                   <p className="text-lg font-black text-foreground">${LUCKY_DRAW_MIN_SPEND}</p>
-                </div>
-             </Card>
+             {events?.filter(e => e.isActive).map(e => (
+               <Card key={e.id} className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl animate-in slide-in-from-right">
+                  <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center text-accent-foreground">
+                     <Trophy className="w-5 h-5" />
+                  </div>
+                  <div>
+                     <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">{e.name}</p>
+                     <p className="text-lg font-black text-foreground">${e.minSpend}+</p>
+                  </div>
+               </Card>
+             ))}
           </div>
         </div>
 
@@ -276,6 +288,9 @@ export default function MartPage() {
             <TabsTrigger value="coupons" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Ticket className="w-4 h-4" /> Promotions
             </TabsTrigger>
+            <TabsTrigger value="events" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Settings2 className="w-4 h-4" /> Event Management
+            </TabsTrigger>
             <TabsTrigger value="billing" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Wallet className="w-4 h-4" /> Billing Config
             </TabsTrigger>
@@ -287,7 +302,6 @@ export default function MartPage() {
           <TabsContent value="pos" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
-                {/* Dedicated Barcode Scanner Bar */}
                 <div className="relative group">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary group-focus-within:bg-primary group-focus-within:text-white transition-all">
                     <Scan className="w-5 h-5" />
@@ -380,10 +394,10 @@ export default function MartPage() {
                   </CardContent>
                   <CardFooter className="flex-col gap-6 p-8 border-t bg-secondary/5">
                     <div className="w-full space-y-4">
-                      {totalAmount >= LUCKY_DRAW_MIN_SPEND && (
+                      {qualifyingEvent && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
                            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-accent-foreground tracking-widest bg-accent/20 px-3 py-1.5 rounded-full w-fit">
-                             <Trophy className="w-3 h-3" /> Lucky Draw Qualified
+                             <Trophy className="w-3 h-3" /> {qualifyingEvent.name} Qualified
                            </div>
                            <Input 
                              placeholder="Enter customer name..." 
@@ -515,6 +529,10 @@ export default function MartPage() {
             <CouponManager companyId={user?.companyId} />
           </TabsContent>
 
+          <TabsContent value="events">
+            <EventManager companyId={user?.companyId} />
+          </TabsContent>
+
           <TabsContent value="billing">
             <BillingManager companyId={user?.companyId} companyDoc={companyDoc} />
           </TabsContent>
@@ -523,7 +541,7 @@ export default function MartPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                <ReportStat label="Weekly Performance" value={`$${profitData.reduce((acc, d) => acc + d.revenue, 0).toFixed(2)}`} />
                <ReportStat label="Realized Profit" value={`$${profitData.reduce((acc, d) => acc + d.profit, 0).toFixed(2)}`} color="text-primary" />
-               <ReportStat label="Event Pipeline" value={`${transactions?.filter(t => t.totalAmount >= LUCKY_DRAW_MIN_SPEND).length || 0} Qualifiers`} />
+               <ReportStat label="Event Pipeline" value={`${transactions?.filter(t => !!t.luckyDrawEventId).length || 0} Qualifiers`} />
             </div>
             <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
                <CardHeader className="px-0 pt-0 mb-8">
@@ -998,6 +1016,114 @@ function CouponManager({ companyId }: { companyId?: string }) {
                <div className="col-span-full py-24 text-center border-4 border-dashed rounded-[40px] bg-white/50">
                   <Ticket className="w-20 h-20 mx-auto mb-4 opacity-10" />
                   <p className="font-black text-muted-foreground uppercase tracking-widest">No active campaigns</p>
+               </div>
+             )}
+          </div>
+       </div>
+    </div>
+  );
+}
+
+function EventManager({ companyId }: { companyId?: string }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const eventsQuery = useMemoFirebase(() => {
+    if (!firestore || !companyId) return null;
+    return collection(firestore, 'companies', companyId, 'luckyDrawEvents');
+  }, [firestore, companyId]);
+
+  const { data: events } = useCollection<LuckyDrawEvent>(eventsQuery);
+
+  const handleCreateEvent = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !companyId) return;
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const id = crypto.randomUUID();
+    const eventData = {
+      id,
+      companyId,
+      name: formData.get('name') as string,
+      minSpend: Number(formData.get('minSpend')),
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await setDoc(doc(firestore, 'companies', companyId, 'luckyDrawEvents', id), eventData);
+      toast({ title: "Event Created", description: "Marketing event is now active." });
+      (e.target as HTMLFormElement).reset();
+    } catch (err) {
+      toast({ title: "Failed to create event", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const toggleEventStatus = async (eventId: string, currentStatus: boolean) => {
+    if (!firestore || !companyId) return;
+    try {
+      await updateDoc(doc(firestore, 'companies', companyId, 'luckyDrawEvents', eventId), {
+        isActive: !currentStatus
+      });
+      toast({ title: "Status Updated", description: `Event is now ${!currentStatus ? 'Active' : 'Inactive'}` });
+    } catch (err) {
+      toast({ title: "Update failed", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+       <Card className="border-none shadow-sm rounded-3xl bg-white h-fit">
+          <CardHeader className="p-8">
+             <CardTitle className="text-xl font-black">Plan New Event</CardTitle>
+             <CardDescription className="font-bold">Set goals for customer engagement</CardDescription>
+          </CardHeader>
+          <CardContent className="p-8 pt-0">
+             <form onSubmit={handleCreateEvent} className="space-y-6">
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Event Name</label>
+                   <Input name="name" placeholder="Grand Anniversary Draw" required className="h-14 rounded-2xl font-black text-lg" />
+                </div>
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Min. Purchase for Entry ($)</label>
+                   <Input name="minSpend" type="number" step="0.01" placeholder="100.00" required className="h-14 rounded-2xl font-black text-lg" />
+                </div>
+                <Button type="submit" className="w-full h-16 rounded-2xl font-black shadow-xl" disabled={isSaving}>Launch Event</Button>
+             </form>
+          </CardContent>
+       </Card>
+
+       <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             {events?.map(e => (
+               <Card key={e.id} className={cn("border-none shadow-sm rounded-[32px] p-8 relative overflow-hidden transition-all", !e.isActive && "opacity-50")}>
+                  <div className="absolute -right-8 -top-8 opacity-5 rotate-12">
+                     <Trophy className="w-40 h-40" />
+                  </div>
+                  <div className="flex justify-between items-start mb-6">
+                     <Badge variant={e.isActive ? "default" : "secondary"} className="font-black uppercase text-[10px] tracking-widest px-3 py-1">
+                        {e.isActive ? 'Active' : 'Paused'}
+                     </Badge>
+                     <Switch 
+                       checked={e.isActive} 
+                       onCheckedChange={() => toggleEventStatus(e.id, e.isActive)}
+                     />
+                  </div>
+                  <h4 className="text-2xl font-black tracking-tighter text-foreground mb-1">{e.name}</h4>
+                  <div className="flex items-center gap-2 text-primary font-black">
+                     <DollarSign className="w-4 h-4" />
+                     <span>Min. Spend: ${e.minSpend.toFixed(2)}</span>
+                  </div>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mt-4">Launched: {new Date(e.createdAt).toLocaleDateString()}</p>
+               </Card>
+             ))}
+             {(!events || events.length === 0) && (
+               <div className="col-span-full py-24 text-center border-4 border-dashed rounded-[40px] bg-white/50">
+                  <Trophy className="w-20 h-20 mx-auto mb-4 opacity-10" />
+                  <p className="font-black text-muted-foreground uppercase tracking-widest">No scheduled events</p>
                </div>
              )}
           </div>

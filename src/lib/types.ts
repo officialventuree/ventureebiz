@@ -52,6 +52,7 @@ export interface SaleTransaction {
   discountApplied?: number;
   paymentMethod?: PaymentMethod;
   referenceNumber?: string;
+  luckyDrawEventId?: string;
 }
 
 export interface Product {
@@ -115,4 +116,14 @@ export interface LuckyDrawEntry {
   transactionId: string;
   timestamp: string;
   amount: number;
+  eventId: string;
+}
+
+export interface LuckyDrawEvent {
+  id: string;
+  companyId: string;
+  name: string;
+  minSpend: number;
+  isActive: boolean;
+  createdAt: string;
 }
