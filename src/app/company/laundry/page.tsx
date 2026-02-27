@@ -160,14 +160,14 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: Number(formData.get('initialBalance')) || 0,
+      balance: -(Number(formData.get('amountDue')) || 0), // Debt is recorded as negative balance
       level: Number(selectedLevel),
       class: selectedClass,
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student);
-      toast({ title: "Student Enrolled", description: `${student.name} is now registered.` });
+      toast({ title: "Student Enrolled", description: `${student.name} is now registered with a pending fee.` });
       (e.target as HTMLFormElement).reset();
       setSelectedLevel('');
       setSelectedClass('');
@@ -229,8 +229,6 @@ export default function LaundryPage() {
       toast({ title: "Access Denied", description: `Level ${selectedStudent.level} is not scheduled for today.`, variant: "destructive" });
       return;
     }
-
-    // Overdraft allowed: Removed balance check
 
     if (studentSoap.soapStockMl < mlPerWash) {
        toast({ title: "Refill Required", description: "Insufficient soap stock for student usage.", variant: "destructive" });
@@ -392,7 +390,7 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Level {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Balance</p>
                           <p className={cn("text-3xl font-black", foundTopUpStudent.balance < 0 ? "text-destructive" : "text-foreground")}>
                             ${foundTopUpStudent.balance.toFixed(2)}
                           </p>
@@ -475,10 +473,10 @@ export default function LaundryPage() {
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Available Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Balance</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            selectedStudent.balance < getWashRateForLevel(selectedStudent.level) ? "text-destructive" : "text-primary"
+                            selectedStudent.balance < 0 ? "text-destructive" : "text-primary"
                           )}>${selectedStudent.balance.toFixed(2)}</p>
                           <Badge variant="outline" className="mt-2 font-black">${getWashRateForLevel(selectedStudent.level).toFixed(2)} / wash</Badge>
                         </div>
@@ -679,8 +677,8 @@ export default function LaundryPage() {
                       </div>
                    </div>
                    <div className="space-y-1.5">
-                     <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Initial Deposit ($)</Label>
-                     <Input name="initialBalance" type="number" step="0.01" placeholder="50.00" className="h-12 rounded-xl font-bold" />
+                     <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Amount Need to Pay ($)</Label>
+                     <Input name="amountDue" type="number" step="0.01" placeholder="50.00" className="h-12 rounded-xl font-bold" />
                    </div>
                    <Button type="submit" className="w-full h-14 font-black rounded-2xl shadow-xl">Confirm Enrollment</Button>
                  </form>
@@ -729,8 +727,9 @@ export default function LaundryPage() {
                        <tr>
                          <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Subscriber</th>
                          <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-center">Identity</th>
-                         <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Fee / Service</th>
-                         <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-right">Balance Info</th>
+                         <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Fee / Rate</th>
+                         <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Amount Due</th>
+                         <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-right">Net Balance</th>
                          <th className="p-4 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-center">Actions</th>
                        </tr>
                      </thead>
@@ -738,6 +737,7 @@ export default function LaundryPage() {
                        {students?.map(s => {
                          const washRate = getWashRateForLevel(s.level);
                          const washesLeft = washRate > 0 ? Math.floor(s.balance / washRate) : 0;
+                         const amountDue = Math.max(0, -s.balance);
                          return (
                            <tr key={s.id} className="hover:bg-secondary/5 transition-colors">
                              <td className="p-4">
@@ -749,14 +749,20 @@ export default function LaundryPage() {
                              </td>
                              <td className="p-4">
                                 <p className="font-black text-primary">${washRate.toFixed(2)}</p>
-                                <p className="text-[9px] text-muted-foreground font-bold uppercase">Calculated Rate</p>
+                                <p className="text-[9px] text-muted-foreground font-bold uppercase">Per Service</p>
+                             </td>
+                             <td className="p-4">
+                                <p className={cn("font-black text-lg", amountDue > 0 ? "text-destructive" : "text-muted-foreground")}>
+                                  ${amountDue.toFixed(2)}
+                                </p>
+                                <p className="text-[9px] font-bold text-muted-foreground uppercase">Required Pay</p>
                              </td>
                              <td className="p-4 text-right">
                                 <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-foreground")}>
                                   ${s.balance.toFixed(2)}
                                 </p>
                                 <p className={cn("text-[9px] font-black uppercase", s.balance < 0 ? "text-destructive" : washesLeft <= 1 ? "text-destructive" : "text-muted-foreground")}>
-                                   {s.balance < 0 ? "Account in Arrears" : `${washesLeft} washes remaining`}
+                                   {s.balance < 0 ? "Debt Outstanding" : `${washesLeft} washes left`}
                                 </p>
                              </td>
                              <td className="p-4 text-center">
@@ -790,30 +796,32 @@ export default function LaundryPage() {
                    <h3 className="text-2xl font-black">Institutional Usage Schedule</h3>
                    <p className="text-sm text-muted-foreground font-medium">Designate authorized washing days per student level.</p>
                 </div>
-                <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
-                   <DialogTrigger asChild>
-                      <Button className="rounded-xl font-black shadow-lg gap-2 h-12 px-6">
-                         <Plus className="w-4 h-4" /> Add Assigned Date
-                      </Button>
-                   </DialogTrigger>
-                   <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
-                      <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-xl font-black">Schedule Usage Date</DialogTitle></div>
-                      <form onSubmit={handleAddSchedule} className="p-10 space-y-6">
-                         <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Target Date</Label>
-                            <Input name="date" type="date" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
-                         </div>
-                         <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorized Level</Label>
-                            <Select value={scheduleLevel} onValueChange={setScheduleLevel}>
-                               <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none"><SelectValue placeholder="Select Level" /></SelectTrigger>
-                               <SelectContent className="rounded-xl font-bold">{LEVELS.map(lv => (<SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>))}</SelectContent>
-                            </Select>
-                         </div>
-                         <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl">Confirm Schedule</Button>
-                      </form>
-                   </DialogContent>
-                </Dialog>
+                <div className="flex gap-4">
+                   <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+                      <DialogTrigger asChild>
+                         <Button className="rounded-xl font-black shadow-lg gap-2 h-12 px-6">
+                            <Plus className="w-4 h-4" /> Add Assigned Date
+                         </Button>
+                      </DialogTrigger>
+                      <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
+                         <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-xl font-black">Schedule Usage Date</DialogTitle></div>
+                         <form onSubmit={handleAddSchedule} className="p-10 space-y-6">
+                            <div className="space-y-2">
+                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Target Date</Label>
+                               <Input name="date" type="date" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                            </div>
+                            <div className="space-y-2">
+                               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorized Level</Label>
+                               <Select value={scheduleLevel} onValueChange={setScheduleLevel}>
+                                  <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none"><SelectValue placeholder="Select Level" /></SelectTrigger>
+                                  <SelectContent className="rounded-xl font-bold">{LEVELS.map(lv => (<SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>))}</SelectContent>
+                               </Select>
+                            </div>
+                            <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl">Confirm Schedule</Button>
+                         </form>
+                      </DialogContent>
+                   </Dialog>
+                </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
