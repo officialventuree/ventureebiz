@@ -62,6 +62,7 @@ export interface Product {
   sellingPrice: number;
   stock: number;
   sku?: string;
+  barcode?: string;
   unit?: string;
 }
 

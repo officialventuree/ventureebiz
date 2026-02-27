@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
@@ -65,7 +65,8 @@ export default function MartPage() {
 
   const filteredProducts = products?.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+    p.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.barcode?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const addToCart = (product: Product) => {
@@ -262,7 +263,7 @@ export default function MartPage() {
                 <div className="relative group">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 transition-colors group-focus-within:text-primary" />
                   <Input 
-                    placeholder="Search inventory by name or SKU..." 
+                    placeholder="Search inventory by name, SKU or barcode..." 
                     className="pl-12 h-14 rounded-2xl border-none bg-white shadow-sm text-lg font-bold"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -283,7 +284,10 @@ export default function MartPage() {
                         <div className="space-y-1">
                           <h3 className="font-black text-xl group-hover:text-primary transition-colors">{product.name}</h3>
                           <p className="text-2xl font-black text-primary">${product.sellingPrice.toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {product.sku || 'N/A'}</p>
+                          <div className="flex gap-2">
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {product.sku || 'N/A'}</p>
+                            {product.barcode && <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest flex items-center gap-1"><Barcode className="w-2 h-2" /> {product.barcode}</p>}
+                          </div>
                         </div>
                         <div className="text-right">
                            <Badge variant={product.stock > 10 ? "secondary" : "destructive"} className="mb-2 uppercase font-black text-[10px] tracking-tighter px-3 py-1">
@@ -691,6 +695,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
       companyId,
       name: formData.get('name') as string,
       sku: formData.get('sku') as string,
+      barcode: formData.get('barcode') as string,
       costPrice: Number(formData.get('cost')),
       sellingPrice: Number(formData.get('price')),
       stock: Number(formData.get('stock')),
@@ -725,6 +730,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                   <div className="p-4 bg-secondary/20 rounded-2xl">
                      <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Batch</p>
                      <p className="font-black text-lg">{selectedProduct.name}</p>
+                     {selectedProduct.barcode && <p className="text-[10px] font-black text-muted-foreground flex items-center gap-1 mt-1"><Barcode className="w-3 h-3" /> {selectedProduct.barcode}</p>}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1.5">
@@ -778,9 +784,13 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                           <Input name="unit" placeholder="e.g. piece, kg, ml" required className="h-12 rounded-xl font-bold border-secondary" />
                        </div>
                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black uppercase tracking-widest px-1">SKU / Barcode</label>
-                          <Input name="sku" placeholder="Optional" className="h-12 rounded-xl font-bold border-secondary" />
+                          <label className="text-[10px] font-black uppercase tracking-widest px-1">SKU</label>
+                          <Input name="sku" placeholder="Optional SKU" className="h-12 rounded-xl font-bold border-secondary" />
                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black uppercase tracking-widest px-1">Barcode</label>
+                       <Input name="barcode" placeholder="EAN / UPC / Barcode" className="h-12 rounded-xl font-bold border-secondary" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                        <div className="space-y-1.5">
@@ -810,6 +820,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
             <thead className="bg-secondary/20 border-b">
               <tr>
                 <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Product Information</th>
+                <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Identity</th>
                 <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Stock Status</th>
                 <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Asset Value</th>
                 <th className="p-6 text-center font-black uppercase text-muted-foreground tracking-widest text-[10px]">Operations</th>
@@ -820,7 +831,13 @@ function InventoryManager({ companyId }: { companyId?: string }) {
                 <tr key={p.id} className="hover:bg-secondary/5 transition-colors group">
                   <td className="p-6">
                     <p className="font-black text-lg text-foreground">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {p.sku || 'N/A'}</p>
+                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">{p.unit || 'Units'}</p>
+                  </td>
+                  <td className="p-6">
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {p.sku || 'N/A'}</p>
+                      {p.barcode && <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest flex items-center gap-1"><Barcode className="w-2.5 h-2.5" /> {p.barcode}</p>}
+                    </div>
                   </td>
                   <td className="p-6">
                     <div className="flex items-center gap-2">
@@ -839,7 +856,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
               ))}
               {(!products || products.length === 0) && (
                 <tr>
-                  <td colSpan={4} className="p-20 text-center opacity-30">
+                  <td colSpan={5} className="p-20 text-center opacity-30">
                     <Package className="w-16 h-16 mx-auto mb-4" />
                     <p className="font-black uppercase tracking-widest">Registry Empty</p>
                     <p className="text-xs font-bold mt-1">Register your first product to begin tracking</p>
