@@ -109,6 +109,21 @@ export interface LaundryInventory {
   category: 'student' | 'payable';
 }
 
+export interface LaundryLevelConfig {
+  id: string;
+  companyId: string;
+  level: number;
+  subscriptionFee: number;
+  totalWashesAllowed: number;
+}
+
+export interface LaundrySchedule {
+  id: string;
+  companyId: string;
+  date: string;
+  level: number;
+}
+
 export interface CapitalPurchase {
   id: string;
   companyId: string;

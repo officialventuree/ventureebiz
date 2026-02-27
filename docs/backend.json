@@ -74,6 +74,29 @@
         "class": { "type": "string" }
       }
     },
+    "LaundryLevelConfig": {
+      "title": "LaundryLevelConfig",
+      "type": "object",
+      "description": "Fee and quota settings per level.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "level": { "type": "number" },
+        "subscriptionFee": { "type": "number" },
+        "totalWashesAllowed": { "type": "number" }
+      }
+    },
+    "LaundrySchedule": {
+      "title": "LaundrySchedule",
+      "type": "object",
+      "description": "Dates assigned for laundry usage by level.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "level": { "type": "number" }
+      }
+    },
     "LuckyDrawEntry": {
       "title": "LuckyDrawEntry",
       "type": "object",
@@ -125,6 +148,14 @@
     "/companies/{companyId}/laundryStudents/{studentId}": {
       "schema": "LaundryStudent",
       "description": "Student laundry accounts."
+    },
+    "/companies/{companyId}/laundryLevelConfigs/{configId}": {
+      "schema": "LaundryLevelConfig",
+      "description": "Quota and pricing settings per level."
+    },
+    "/companies/{companyId}/laundrySchedules/{scheduleId}": {
+      "schema": "LaundrySchedule",
+      "description": "Scheduled laundry days per level."
     },
     "/companies/{companyId}/luckyDraws/{entryId}": {
       "schema": "LuckyDrawEntry",
