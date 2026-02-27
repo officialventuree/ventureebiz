@@ -1,7 +1,7 @@
 
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,8 @@ import {
   Banknote,
   User,
   Building2,
-  Wallet
+  Wallet,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -50,7 +51,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
+
+const UNITS = ['pc', 'ml', 'litre', 'mm', 'cm', 'meter', 'kg', 'g', 'set'];
 
 export default function ServiceDashboardPage({ params }: { params: Promise<{ serviceId: string }> }) {
   const { serviceId } = use(params);
@@ -69,6 +73,12 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [cashReceived, setCashReceived] = useState<number | string>('');
+
+  // Material Form State (Advanced)
+  const [matQuantity, setMatQuantity] = useState<string>('1');
+  const [matMeasure, setMatMeasure] = useState<string>('');
+  const [matUnit, setMatUnit] = useState<string>('pc');
+  const [matCostPerItem, setMatCostPerItem] = useState<string>('');
 
   // Queries
   const serviceRef = useMemoFirebase(() => {
@@ -174,7 +184,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
         });
         toast({ title: "Billing QR Updated", description: "Payment gateway is now active for this department." });
       } catch (err: any) {
-        toast({ title: "Upload failed", variant: "destructive" });
+        toast({ title: "Upload failed", description: err.message, variant: "destructive" });
       }
     };
     reader.readAsDataURL(file);
@@ -210,21 +220,42 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     const formData = new FormData(e.currentTarget);
     const id = crypto.randomUUID();
     
+    const qty = Number(matQuantity);
+    const measure = Number(matMeasure) || 1;
+    const costPerItem = Number(matCostPerItem);
+    
+    const totalVolume = qty * measure;
+    const totalExpenditure = qty * costPerItem;
+    const costPerUnit = totalExpenditure / totalVolume;
+
     const material: Product = {
       id,
       companyId: user.companyId,
       serviceTypeId: serviceId,
       name: formData.get('name') as string,
-      costPrice: Number(formData.get('cost')),
-      sellingPrice: Number(formData.get('cost')) * 1.5,
-      stock: Number(formData.get('stock')),
-      unit: formData.get('unit') as string
+      costPrice: costPerUnit, // Store cost per basic measurement unit (ml, pc, etc.)
+      sellingPrice: costPerUnit * 1.5,
+      stock: totalVolume,
+      unit: matUnit
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'products', id), material);
-      toast({ title: "Material Registered", description: "Added to service inventory." });
+      
+      // Log the purchase
+      await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), {
+        id: crypto.randomUUID(),
+        companyId: user.companyId,
+        amount: totalExpenditure,
+        description: `Service Material: ${qty}x ${material.name} (${measure}${matUnit})`,
+        timestamp: new Date().toISOString()
+      });
+
+      toast({ title: "Material Registered", description: "Added to service inventory and logged as purchase." });
       (e.target as HTMLFormElement).reset();
+      setMatQuantity('1');
+      setMatMeasure('');
+      setMatCostPerItem('');
     } catch (e) {
       toast({ title: "Failed to add material", variant: "destructive" });
     }
@@ -234,6 +265,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const totalProfit = transactions?.reduce((acc, t) => acc + t.profit, 0) || 0;
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - (selectedBundle?.price || 0)) : 0;
+
+  // Derived Values for Material Form
+  const totalMatVolume = (Number(matQuantity) || 0) * (Number(matMeasure) || 0);
+  const totalMatCost = (Number(matQuantity) || 0) * (Number(matCostPerItem) || 0);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -329,14 +364,81 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
             <TabsContent value="inventory" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white h-fit p-8">
-                  <h3 className="text-xl font-black mb-6">Add Material</h3>
-                  <form onSubmit={handleAddMaterial} className="space-y-4">
-                    <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input name="stock" type="number" placeholder="Stock" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
-                      <Input name="unit" placeholder="Unit (pc)" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                      <Calculator className="w-5 h-5" />
                     </div>
-                    <Input name="cost" type="number" step="0.01" placeholder="Cost per Unit ($)" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                    <h3 className="text-xl font-black">Material Entry</h3>
+                  </div>
+                  <form onSubmit={handleAddMaterial} className="space-y-5">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Material Name</Label>
+                      <Input name="name" placeholder="Item/Chemical Name" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest px-1">Quantity (Items)</Label>
+                        <Input 
+                          type="number" 
+                          min="1" 
+                          value={matQuantity} 
+                          onChange={(e) => setMatQuantity(e.target.value)} 
+                          placeholder="e.g. 5" 
+                          required 
+                          className="h-12 rounded-xl bg-secondary/10 border-none font-bold" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-widest px-1">Unit</Label>
+                        <Select value={matUnit} onValueChange={setMatUnit}>
+                          <SelectTrigger className="h-12 rounded-xl bg-secondary/10 border-none font-bold">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl font-bold">
+                            {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Amount per Item ({matUnit})</Label>
+                      <Input 
+                        type="number" 
+                        step="0.1" 
+                        value={matMeasure} 
+                        onChange={(e) => setMatMeasure(e.target.value)} 
+                        placeholder="e.g. 500" 
+                        required 
+                        className="h-12 rounded-xl bg-secondary/10 border-none font-bold" 
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Cost per Item ($)</Label>
+                      <Input 
+                        type="number" 
+                        step="0.01" 
+                        value={matCostPerItem} 
+                        onChange={(e) => setMatCostPerItem(e.target.value)} 
+                        placeholder="e.g. 15.00" 
+                        required 
+                        className="h-12 rounded-xl bg-secondary/10 border-none font-bold" 
+                      />
+                    </div>
+
+                    <div className="bg-primary/5 rounded-2xl p-4 space-y-2 border border-primary/10">
+                       <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
+                          <span>Stock to Add</span>
+                          <span className="text-foreground">{totalMatVolume.toFixed(1)} {matUnit}</span>
+                       </div>
+                       <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
+                          <span>Total Expenditure</span>
+                          <span className="text-primary font-black">${totalMatCost.toFixed(2)}</span>
+                       </div>
+                    </div>
+
                     <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg">Register Stock</Button>
                   </form>
                </Card>
@@ -357,7 +459,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                           <tr key={m.id} className="hover:bg-secondary/5 transition-colors">
                             <td className="p-6 font-black text-lg">{m.name}</td>
                             <td className="p-6">
-                               <Badge variant={m.stock < 10 ? "destructive" : "secondary"} className="font-black px-3 rounded-lg">{m.stock} {m.unit}</Badge>
+                               <Badge variant={m.stock < 10 ? "destructive" : "secondary"} className="font-black px-3 rounded-lg">{m.stock.toFixed(1)} {m.unit}</Badge>
                             </td>
                             <td className="p-6 font-black text-primary text-lg">${(m.stock * m.costPrice).toFixed(2)}</td>
                             <td className="p-6 text-center">
@@ -369,6 +471,14 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                             </td>
                           </tr>
                         ))}
+                        {(!materials || materials.length === 0) && (
+                          <tr>
+                            <td colSpan={4} className="py-24 text-center opacity-30">
+                               <Layers className="w-12 h-12 mx-auto mb-2" />
+                               <p className="font-black uppercase tracking-widest">Stock Registry Empty</p>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
