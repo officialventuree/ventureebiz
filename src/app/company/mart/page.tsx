@@ -36,6 +36,7 @@ export default function MartPage() {
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [referenceNumber, setReferenceNumber] = useState('');
+  const [cashReceived, setCashReceived] = useState<number | string>('');
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
   
   const scanInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +135,10 @@ export default function MartPage() {
   const totalAmount = Math.max(0, subtotal - discount);
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - discount;
 
+  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
+  const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < totalAmount;
+  const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
+
   // Find qualifying events
   const qualifyingEvent = events?.find(e => e.isActive && totalAmount >= e.minSpend);
 
@@ -173,9 +178,14 @@ export default function MartPage() {
   const handleFinalCheckout = async () => {
     if (!user?.companyId || !firestore) return;
     
-    if ((paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber) {
+    if (isMissingReference) {
       toast({ title: "Audit Trail Required", description: "Please enter the payment reference/trace number.", variant: "destructive" });
       return;
+    }
+
+    if (isInsufficientCash) {
+        toast({ title: "Payment Incomplete", description: "Cash received is less than total amount due.", variant: "destructive" });
+        return;
     }
 
     setIsProcessing(true);
@@ -239,6 +249,7 @@ export default function MartPage() {
       setCouponCode('');
       setCustomerName('');
       setReferenceNumber('');
+      setCashReceived('');
       setShowCheckoutDialog(false);
     } catch (e) {
       toast({ title: "Finalization Failed", variant: "destructive" });
@@ -461,6 +472,32 @@ export default function MartPage() {
 
                   <Separator className="opacity-10" />
 
+                  {paymentMethod === 'cash' && (
+                    <div className="space-y-6 animate-in zoom-in-95 duration-300">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Cash Received ($)</label>
+                        <Input 
+                          type="number"
+                          placeholder="0.00" 
+                          className="h-14 rounded-2xl font-black text-2xl bg-secondary/10 border-none px-6 text-primary"
+                          value={cashReceived}
+                          onChange={(e) => setCashReceived(e.target.value === '' ? '' : Number(e.target.value))}
+                        />
+                      </div>
+                      {Number(cashReceived) >= totalAmount && (
+                        <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/20 flex justify-between items-center animate-in slide-in-from-top-2">
+                           <div>
+                             <p className="text-[10px] font-black uppercase text-primary tracking-widest">Change to Return</p>
+                             <p className="text-3xl font-black text-foreground">${changeAmount.toFixed(2)}</p>
+                           </div>
+                           <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center text-primary">
+                             <Banknote className="w-6 h-6" />
+                           </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
                     <div className="space-y-6 animate-in zoom-in-95 duration-300">
                        <div className="space-y-2">
@@ -511,7 +548,7 @@ export default function MartPage() {
                   <Button 
                     onClick={handleFinalCheckout} 
                     className="w-full h-20 rounded-[28px] font-black text-xl shadow-[0_16px_48px_rgba(var(--primary),0.2)] flex items-center justify-center gap-4 group" 
-                    disabled={isProcessing}
+                    disabled={isProcessing || isInsufficientCash || isMissingReference}
                   >
                     {isProcessing ? "Finalizing Transaction..." : "Complete & Record Sale"}
                     {!isProcessing && <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />}
