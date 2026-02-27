@@ -66,10 +66,6 @@ export default function LaundryPage() {
   const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
   const [amountReceived, setAmountReceived] = useState<number | string>('');
   const [transactionNo, setTransactionNo] = useState('');
-  const [walkInName, setWalkInName] = useState('');
-  const [walkInPaymentMethod, setWalkInPaymentMethod] = useState<PaymentMethod>('cash');
-  const [walkInAmountReceived, setWalkInAmountReceived] = useState<number | string>('');
-  const [restockCategory, setRestockCategory] = useState<'student' | 'payable'>('student');
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleLevel, setScheduleLevel] = useState<string>('');
 
@@ -112,7 +108,6 @@ export default function LaundryPage() {
   const { data: companyDoc } = useDoc<Company>(companyRef);
 
   const studentSoap = inventoryItems?.find(i => i.id === 'student_soap');
-  const payableSoap = inventoryItems?.find(i => i.id === 'payable_soap');
 
   const mlPerWash = 50;
   const defaultWashRate = 5.00;
@@ -662,6 +657,19 @@ export default function LaundryPage() {
                 </Dialog>
              </div>
 
+             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {LEVELS.map(lv => {
+                   const count = schedules?.filter(s => s.level === lv).length || 0;
+                   return (
+                      <Card key={lv} className="border-none shadow-sm bg-white rounded-2xl p-6 text-center">
+                         <p className="text-[10px] font-black uppercase text-primary mb-1">Level {lv}</p>
+                         <p className="text-3xl font-black">{count}</p>
+                         <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Scheduled Days</p>
+                      </Card>
+                   );
+                })}
+             </div>
+
              <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
                 <table className="w-full text-sm text-left">
                    <thead className="bg-secondary/10 border-b">
@@ -704,9 +712,9 @@ export default function LaundryPage() {
                     const costPerBottle = Number(formData.get('costPerBottle'));
                     const amountMl = bottles * volPerBottle * 1000;
                     const totalCost = bottles * costPerBottle;
-                    const docId = restockCategory === 'student' ? 'student_soap' : 'payable_soap';
+                    const docId = 'student_soap';
 
-                    const existing = restockCategory === 'student' ? studentSoap : payableSoap;
+                    const existing = studentSoap;
                     if (!existing) {
                       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
                         id: docId,
@@ -714,7 +722,7 @@ export default function LaundryPage() {
                         soapStockMl: amountMl,
                         soapCostPerLitre: totalCost / (bottles * volPerBottle),
                         capacityMl: 50000,
-                        category: restockCategory
+                        category: 'student'
                       });
                     } else {
                       await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
@@ -726,16 +734,12 @@ export default function LaundryPage() {
                       id: crypto.randomUUID(),
                       companyId: user.companyId,
                       amount: totalCost,
-                      description: `Soap Restock (${restockCategory})`,
+                      description: `Soap Restock`,
                       timestamp: new Date().toISOString()
                     });
                     toast({ title: "Inventory Replenished" });
                     (e.target as HTMLFormElement).reset();
                   }} className="space-y-4">
-                    <Select value={restockCategory} onValueChange={(v: any) => setRestockCategory(v)}>
-                      <SelectTrigger className="rounded-xl font-bold"><SelectValue placeholder="Target usage" /></SelectTrigger>
-                      <SelectContent className="rounded-xl"><SelectItem value="student">Student Usage</SelectItem><SelectItem value="payable">Walk-in Usage</SelectItem></SelectContent>
-                    </Select>
                     <div className="grid grid-cols-2 gap-2">
                        <Input name="bottles" type="number" placeholder="Bottles" required className="rounded-xl" />
                        <Input name="volPerBottle" type="number" step="0.1" placeholder="Litres/Btl" required className="rounded-xl" />
@@ -750,11 +754,6 @@ export default function LaundryPage() {
                       <p className="text-[10px] font-black uppercase opacity-60 mb-2">Student Chemical Pool</p>
                       <h4 className="text-6xl font-black tracking-tighter">{studentSoap ? (studentSoap.soapStockMl / 1000).toFixed(2) : 0}L</h4>
                       <Progress value={studentSoap ? (studentSoap.soapStockMl / studentSoap.capacityMl) * 100 : 0} className="h-2 bg-white/20 mt-6" />
-                   </Card>
-                   <Card className="p-10 border-none shadow-sm bg-accent text-accent-foreground rounded-[40px]">
-                      <p className="text-[10px] font-black uppercase opacity-60 mb-2">Walk-in Chemical Pool</p>
-                      <h4 className="text-6xl font-black tracking-tighter">{payableSoap ? (payableSoap.soapStockMl / 1000).toFixed(2) : 0}L</h4>
-                      <Progress value={payableSoap ? (payableSoap.soapStockMl / payableSoap.capacityMl) * 100 : 0} className="h-2 bg-black/10 mt-6" />
                    </Card>
                 </div>
              </div>
