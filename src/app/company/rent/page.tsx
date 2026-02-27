@@ -702,4 +702,3 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
     </div>
   );
 }
-
