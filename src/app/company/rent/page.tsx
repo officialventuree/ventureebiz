@@ -25,7 +25,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Wallet
+  Wallet,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -420,14 +421,14 @@ export default function RentPage() {
 
                         <Separator className="bg-secondary/50" />
 
-                        <div className="bg-secondary/10 p-6 rounded-3xl space-y-1">
-                           <div className="flex justify-between items-center">
-                              <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Duration Estimate</p>
-                              <p className="text-sm font-black">{calculatedAgreement.duration} {selectedItem.unit}(s)</p>
+                        <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 space-y-2">
+                           <div className="flex justify-between items-center opacity-70">
+                              <p className="text-[10px] font-black uppercase tracking-widest">Duration Estimate</p>
+                              <p className="text-xs font-black">{calculatedAgreement.duration} {selectedItem.unit}(s)</p>
                            </div>
                            <div className="flex justify-between items-end pt-2">
-                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Total Due</p>
-                              <p className="text-4xl font-black text-foreground tracking-tighter">${calculatedAgreement.totalAmount.toFixed(2)}</p>
+                              <p className="text-xs font-black uppercase text-primary tracking-widest mb-1">Total Fee</p>
+                              <p className="text-5xl font-black text-foreground tracking-tighter">${calculatedAgreement.totalAmount.toFixed(2)}</p>
                            </div>
                         </div>
                       </div>
@@ -445,7 +446,7 @@ export default function RentPage() {
                         disabled={!customerName} 
                         className="w-full h-16 text-xl font-black rounded-[24px] shadow-xl"
                       >
-                        Verify Payment
+                        Verify Payment Settlement
                       </Button>
                     </CardFooter>
                   )}
@@ -455,57 +456,63 @@ export default function RentPage() {
 
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
               <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
-                <div className="bg-primary p-12 text-primary-foreground text-center relative">
-                   <div className="absolute top-4 left-1/2 -translate-x-1/2 opacity-20"><Wallet className="w-16 h-16" /></div>
-                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Verification & Settlement</p>
-                   <h2 className="text-6xl font-black tracking-tighter relative z-10">${calculatedAgreement.totalAmount.toFixed(2)}</h2>
-                   <div className="mt-4 inline-flex items-center gap-2 bg-black/10 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                      <span className="opacity-60">Method:</span> {paymentMethod}
+                <div className="bg-primary p-12 text-primary-foreground text-center relative overflow-hidden">
+                   <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Wallet className="w-24 h-24" /></div>
+                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Total Agreement Fee</p>
+                   <h2 className="text-7xl font-black tracking-tighter relative z-10">${calculatedAgreement.totalAmount.toFixed(2)}</h2>
+                   <div className="mt-6 inline-flex items-center gap-3 bg-black/10 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest backdrop-blur-sm">
+                      <span className="opacity-60">Payment Method:</span> {paymentMethod}
                    </div>
                 </div>
                 
                 <div className="p-12 space-y-10">
                   {paymentMethod === 'cash' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Cash Received ($)</Label>
-                      <Input 
-                        type="number" 
-                        className="h-16 rounded-[20px] font-black text-3xl bg-secondary/20 border-none px-6" 
-                        value={cashReceived} 
-                        onChange={(e) => setCashReceived(e.target.value)} 
-                        autoFocus
-                      />
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Received Amount ($)</Label>
+                        <Input 
+                          type="number" 
+                          className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none px-8 text-center" 
+                          placeholder="0.00"
+                          value={cashReceived} 
+                          onChange={(e) => setCashReceived(e.target.value)} 
+                          autoFocus
+                        />
+                      </div>
+                      
                       {Number(cashReceived) >= calculatedAgreement.totalAmount && (
-                        <div className="bg-primary/5 p-6 rounded-[24px] border-2 border-primary/20 flex justify-between items-center">
-                           <div className="flex items-center gap-3">
-                              <CheckCircle2 className="w-6 h-6 text-primary" />
-                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Change to Return</p>
+                        <div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center animate-in zoom-in-95">
+                           <div className="space-y-1">
+                              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Balance to Return</p>
+                              <p className="text-sm font-bold text-muted-foreground">Settlement verified</p>
                            </div>
-                           <p className="text-4xl font-black tracking-tighter text-foreground">${changeAmount.toFixed(2)}</p>
+                           <p className="text-5xl font-black tracking-tighter text-foreground">${changeAmount.toFixed(2)}</p>
                         </div>
                       )}
                     </div>
                   )}
 
                   {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
                        {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                         <div className="flex flex-col items-center bg-secondary/10 p-6 rounded-3xl">
+                         <div className="flex flex-col items-center bg-secondary/5 p-8 rounded-[40px] border-2 border-dashed border-primary/10">
                             <Image 
                               src={companyDoc.duitNowQr} 
                               alt="DuitNow QR" 
-                              width={180} 
-                              height={180} 
-                              className="rounded-2xl shadow-xl border-4 border-white mb-4"
+                              width={200} 
+                              height={200} 
+                              className="rounded-3xl shadow-2xl border-4 border-white mb-6"
                             />
-                            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Point to Scan</p>
+                            <p className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center gap-2">
+                               <QrCode className="w-3 h-3" /> Point to Scan & Pay
+                            </p>
                          </div>
                        )}
                        <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Reference / Trace ID</Label>
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction No / Trace ID</Label>
                           <Input 
                             placeholder="TRX-XXXXXX" 
-                            className="h-14 rounded-2xl font-black text-lg bg-secondary/20 border-none px-6" 
+                            className="h-16 rounded-[24px] font-black text-xl bg-secondary/20 border-none px-8" 
                             value={referenceNumber} 
                             onChange={(e) => setReferenceNumber(e.target.value)} 
                             required
@@ -519,14 +526,22 @@ export default function RentPage() {
                 <div className="p-12 pt-0">
                   <Button 
                     onClick={handleLaunchAgreement} 
-                    className="w-full h-20 rounded-[30px] font-black text-xl shadow-2xl transition-all hover:scale-[1.02]" 
+                    className="w-full h-20 rounded-[32px] font-black text-2xl shadow-2xl transition-all hover:scale-[1.02] active:scale-95 group" 
                     disabled={isProcessing || isInsufficientCash || isMissingReference}
                   >
-                    {isProcessing ? "Launching..." : "Confirm & Launch Agreement"}
+                    {isProcessing ? "Launching..." : (
+                      <>
+                        Confirm & Launch Agreement
+                        <ArrowRight className="ml-2 w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
                   </Button>
-                  <p className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-6 opacity-40">
-                    Agreement will be finalized and asset marked as rented
-                  </p>
+                  <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
+                    <ShieldCheck className="w-4 h-4" />
+                    <p className="text-[10px] font-bold uppercase tracking-widest">
+                      Secure Transaction Encryption Active
+                    </p>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
