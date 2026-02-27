@@ -46,6 +46,33 @@
       },
       "required": ["id", "companyId", "name", "costPrice", "sellingPrice", "stock"]
     },
+    "RentalItem": {
+      "title": "RentalItem",
+      "type": "object",
+      "description": "Assets available for rent.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "hourlyRate": { "type": "number" },
+        "dailyRate": { "type": "number" },
+        "status": { "type": "string", "enum": ["available", "rented", "maintenance"] }
+      },
+      "required": ["id", "companyId", "name", "dailyRate"]
+    },
+    "ServiceItem": {
+      "title": "ServiceItem",
+      "type": "object",
+      "description": "Services offered by the company.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "basePrice": { "type": "number" },
+        "estimatedProfit": { "type": "number" }
+      },
+      "required": ["id", "companyId", "name", "basePrice"]
+    },
     "LaundryStudent": {
       "title": "LaundryStudent",
       "type": "object",
@@ -70,7 +97,8 @@
         "totalAmount": { "type": "number" },
         "profit": { "type": "number" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "items": { "type": "array", "items": { "type": "object" } }
+        "items": { "type": "array", "items": { "type": "object" } },
+        "status": { "type": "string", "enum": ["completed", "pending", "cancelled"] }
       }
     },
     "CapitalPurchase": {
@@ -101,6 +129,14 @@
     "/companies/{companyId}/products/{productId}": {
       "schema": "Product",
       "description": "Mart retail inventory."
+    },
+    "/companies/{companyId}/rentalItems/{itemId}": {
+      "schema": "RentalItem",
+      "description": "Rental assets."
+    },
+    "/companies/{companyId}/serviceItems/{itemId}": {
+      "schema": "ServiceItem",
+      "description": "Service catalog."
     },
     "/companies/{companyId}/laundryStudents/{studentId}": {
       "schema": "LaundryStudent",
