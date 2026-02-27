@@ -179,7 +179,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     setIsStartWorkOpen(true);
   };
 
-  const handleConfirmStartWork = async () => {
+  const handleConfirmStartWork = () => {
     if (!firestore || !user?.companyId || !activeOrder) return;
 
     const totalMartSellingPrice = selectedMartItems.reduce((acc, item) => acc + (item.product.sellingPrice * item.qty), 0);
@@ -188,44 +188,56 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
     const serviceRevenue = Math.max(0, activeOrder.totalAmount - totalMartSellingPrice);
     const martRevenue = totalMartSellingPrice;
-    
-    // Profit Calculation: (Service Revenue - Service Material Cost) + (Mart Revenue - Mart Cost)
     const netProfit = (serviceRevenue - totalMaterialCost) + (martRevenue - totalMartCost);
 
-    try {
-      // 1. Update Transaction
-      const orderRef = doc(firestore, 'companies', user.companyId, 'transactions', activeOrder.id);
-      await updateDoc(orderRef, {
-        status: 'in-progress',
-        serviceRevenue,
-        martRevenue,
-        materialCost: totalMaterialCost,
-        profit: netProfit,
-        // Append used items to items array for logging
-        items: [
-          ...activeOrder.items,
-          ...selectedMaterials.map(m => ({ name: `[MAT] ${m.product.name}`, price: 0, quantity: m.qty, cost: m.product.costPrice })),
-          ...selectedMartItems.map(m => ({ name: `[MART] ${m.product.name}`, price: m.product.sellingPrice, quantity: m.qty, cost: m.product.costPrice }))
-        ]
+    const orderRef = doc(firestore, 'companies', user.companyId, 'transactions', activeOrder.id);
+    const updateData = {
+      status: 'in-progress',
+      serviceRevenue,
+      martRevenue,
+      materialCost: totalMaterialCost,
+      profit: netProfit,
+      items: [
+        ...activeOrder.items,
+        ...selectedMaterials.map(m => ({ name: `[MAT] ${m.product.name}`, price: 0, quantity: m.qty, cost: m.product.costPrice })),
+        ...selectedMartItems.map(m => ({ name: `[MART] ${m.product.name}`, price: m.product.sellingPrice, quantity: m.qty, cost: m.product.costPrice }))
+      ]
+    };
+
+    updateDoc(orderRef, updateData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: orderRef.path,
+        operation: 'update',
+        requestResourceData: updateData
+      }));
+    });
+
+    // Deduct materials
+    for (const mat of selectedMaterials) {
+      const matRef = doc(firestore, 'companies', user.companyId, 'products', mat.product.id);
+      updateDoc(matRef, { stock: increment(-mat.qty) }).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: matRef.path,
+          operation: 'update',
+          requestResourceData: { stock: increment(-mat.qty) }
+        }));
       });
-
-      // 2. Deduct Materials
-      for (const mat of selectedMaterials) {
-        const matRef = doc(firestore, 'companies', user.companyId, 'products', mat.product.id);
-        await updateDoc(matRef, { stock: increment(-mat.qty) });
-      }
-
-      // 3. Deduct Mart Items
-      for (const martItem of selectedMartItems) {
-        const martRef = doc(firestore, 'companies', user.companyId, 'products', martItem.product.id);
-        await updateDoc(martRef, { stock: increment(-martItem.qty) });
-      }
-
-      toast({ title: "Work Commenced", description: "Inventory synchronized and revenue split recorded." });
-      setIsStartWorkOpen(false);
-    } catch (e: any) {
-      toast({ title: "Operation failed", variant: "destructive" });
     }
+
+    // Deduct Mart Items
+    for (const martItem of selectedMartItems) {
+      const martRef = doc(firestore, 'companies', user.companyId, 'products', martItem.product.id);
+      updateDoc(martRef, { stock: increment(-martItem.qty) }).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: martRef.path,
+          operation: 'update',
+          requestResourceData: { stock: increment(-martItem.qty) }
+        }));
+      });
+    }
+
+    toast({ title: "Work Commenced", description: "Order moved to In-Progress status." });
+    setIsStartWorkOpen(false);
   };
 
   const handleUpdateStatus = (id: string, newStatus: string) => {
@@ -376,8 +388,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             </TabsList>
 
             <TabsContent value="pipeline" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               <PipelineColumn title="Pending" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleOpenStartWork(id)} actionLabel="Start Work" actionIcon={Play} />
-               <PipelineColumn title="In-Progress" color="bg-primary" orders={pipeline.inProgress} onAction={(id) => handleUpdateStatus(id, 'completed')} actionLabel="Deliver" actionIcon={CheckCircle2} />
+               <PipelineColumn title="Pending Queue" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleOpenStartWork(id)} actionLabel="Start Work" actionIcon={Play} />
+               <PipelineColumn title="Production" color="bg-primary" orders={pipeline.inProgress} onAction={(id) => handleUpdateStatus(id, 'completed')} actionLabel="Finish Service" actionIcon={CheckCircle2} />
                <PipelineColumn title="Delivered" color="bg-green-600" orders={pipeline.completed} completed />
             </TabsContent>
 
@@ -860,7 +872,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                      className="w-full h-16 rounded-2xl font-black text-lg shadow-xl" 
                      onClick={handleConfirmStartWork}
                    >
-                      Confirm Setup & Start Service
+                      Commit Materials & Start Service
                    </Button>
                 </div>
              </div>
