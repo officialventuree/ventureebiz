@@ -59,9 +59,9 @@ export default function RentPage() {
   const [customerCompany, setCustomerCompany] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
-  
-  // Checkout State
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  
+  // Verification State
   const [referenceNumber, setReferenceNumber] = useState('');
   const [cashReceived, setCashReceived] = useState<number | string>('');
 
@@ -409,6 +409,15 @@ export default function RentPage() {
                            </div>
                         </div>
 
+                        <div className="space-y-4">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Method</Label>
+                          <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
+                            <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash_main" />
+                            <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card_main" />
+                            <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="rent_qr_main" />
+                          </RadioGroup>
+                        </div>
+
                         <Separator className="bg-secondary/50" />
 
                         <div className="bg-secondary/10 p-6 rounded-3xl space-y-1">
@@ -436,7 +445,7 @@ export default function RentPage() {
                         disabled={!customerName} 
                         className="w-full h-16 text-xl font-black rounded-[24px] shadow-xl"
                       >
-                        Initialize Agreement
+                        Verify Payment
                       </Button>
                     </CardFooter>
                   )}
@@ -448,20 +457,14 @@ export default function RentPage() {
               <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
                 <div className="bg-primary p-12 text-primary-foreground text-center relative">
                    <div className="absolute top-4 left-1/2 -translate-x-1/2 opacity-20"><Wallet className="w-16 h-16" /></div>
-                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Agreement Settlement</p>
+                   <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Verification & Settlement</p>
                    <h2 className="text-6xl font-black tracking-tighter relative z-10">${calculatedAgreement.totalAmount.toFixed(2)}</h2>
+                   <div className="mt-4 inline-flex items-center gap-2 bg-black/10 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                      <span className="opacity-60">Method:</span> {paymentMethod}
+                   </div>
                 </div>
                 
                 <div className="p-12 space-y-10">
-                  <div className="space-y-4">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Method</Label>
-                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
-                      <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash" />
-                      <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card" />
-                      <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="rent_qr" />
-                    </RadioGroup>
-                  </div>
-
                   {paymentMethod === 'cash' && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
                       <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Cash Received ($)</Label>
@@ -506,6 +509,7 @@ export default function RentPage() {
                             value={referenceNumber} 
                             onChange={(e) => setReferenceNumber(e.target.value)} 
                             required
+                            autoFocus
                           />
                        </div>
                     </div>
