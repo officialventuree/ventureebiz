@@ -1,9 +1,9 @@
-
 export type Role = 'admin' | 'company' | 'viewer';
 export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
 export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
+export type CouponStatus = 'unused' | 'used';
 
 export interface User {
   id: string;
@@ -45,6 +45,8 @@ export interface SaleTransaction {
   items: SaleItem[];
   status?: TransactionStatus;
   customerName?: string;
+  couponCode?: string;
+  discountApplied?: number;
 }
 
 export interface Product {
@@ -88,4 +90,22 @@ export interface CapitalPurchase {
   amount: number;
   description: string;
   timestamp: string;
+}
+
+export interface Coupon {
+  id: string;
+  companyId: string;
+  code: string;
+  value: number;
+  expiryDate: string;
+  status: CouponStatus;
+}
+
+export interface LuckyDrawEntry {
+  id: string;
+  companyId: string;
+  customerName: string;
+  transactionId: string;
+  timestamp: string;
+  amount: number;
 }

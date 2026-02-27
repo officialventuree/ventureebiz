@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Company": {
@@ -43,73 +42,31 @@
         "sellingPrice": { "type": "number" },
         "stock": { "type": "number" },
         "sku": { "type": "string" }
-      },
-      "required": ["id", "companyId", "name", "costPrice", "sellingPrice", "stock"]
-    },
-    "RentalItem": {
-      "title": "RentalItem",
-      "type": "object",
-      "description": "Assets available for rent.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "hourlyRate": { "type": "number" },
-        "dailyRate": { "type": "number" },
-        "status": { "type": "string", "enum": ["available", "rented", "maintenance"] }
-      },
-      "required": ["id", "companyId", "name", "dailyRate"]
-    },
-    "ServiceItem": {
-      "title": "ServiceItem",
-      "type": "object",
-      "description": "Services offered by the company.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "basePrice": { "type": "number" },
-        "estimatedProfit": { "type": "number" }
-      },
-      "required": ["id", "companyId", "name", "basePrice"]
-    },
-    "LaundryStudent": {
-      "title": "LaundryStudent",
-      "type": "object",
-      "description": "Student records for the Mandatory Laundry system.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "matrixNumber": { "type": "string" },
-        "balance": { "type": "number" }
-      },
-      "required": ["id", "companyId", "name", "matrixNumber", "balance"]
-    },
-    "SaleTransaction": {
-      "title": "SaleTransaction",
-      "type": "object",
-      "description": "Unified transaction record for all modules.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "module": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] },
-        "totalAmount": { "type": "number" },
-        "profit": { "type": "number" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "items": { "type": "array", "items": { "type": "object" } },
-        "status": { "type": "string", "enum": ["completed", "pending", "cancelled"] }
       }
     },
-    "CapitalPurchase": {
-      "title": "CapitalPurchase",
+    "Coupon": {
+      "title": "Coupon",
       "type": "object",
-      "description": "Records of company spending that count against capital limits.",
+      "description": "Promotional discounts for POS.",
       "properties": {
         "id": { "type": "string" },
         "companyId": { "type": "string" },
+        "code": { "type": "string" },
+        "value": { "type": "number" },
+        "expiryDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["unused", "used"] }
+      }
+    },
+    "LuckyDrawEntry": {
+      "title": "LuckyDrawEntry",
+      "type": "object",
+      "description": "Customers eligible for events.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "transactionId": { "type": "string" },
         "amount": { "type": "number" },
-        "description": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
     }
@@ -124,31 +81,27 @@
     },
     "/company_users/{userId}": {
       "schema": "User",
-      "description": "Centralized user records for manual login."
+      "description": "Manual login lookup records."
     },
     "/companies/{companyId}/products/{productId}": {
       "schema": "Product",
-      "description": "Mart retail inventory."
+      "description": "Retail stock."
     },
-    "/companies/{companyId}/rentalItems/{itemId}": {
-      "schema": "RentalItem",
-      "description": "Rental assets."
+    "/companies/{companyId}/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Promotional codes."
     },
-    "/companies/{companyId}/serviceItems/{itemId}": {
-      "schema": "ServiceItem",
-      "description": "Service catalog."
-    },
-    "/companies/{companyId}/laundryStudents/{studentId}": {
-      "schema": "LaundryStudent",
-      "description": "Students registered for laundry."
+    "/companies/{companyId}/luckyDraws/{entryId}": {
+      "schema": "LuckyDrawEntry",
+      "description": "Event participant list."
     },
     "/companies/{companyId}/transactions/{transactionId}": {
       "schema": "SaleTransaction",
-      "description": "All sales history."
+      "description": "Cross-module ledger."
     },
     "/companies/{companyId}/purchases/{purchaseId}": {
       "schema": "CapitalPurchase",
-      "description": "Capital spending logs."
+      "description": "Stock replenishment logs."
     }
   }
 }

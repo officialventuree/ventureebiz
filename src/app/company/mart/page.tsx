@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -6,23 +5,29 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, LuckyDrawEntry } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+const LUCKY_DRAW_MIN_SPEND = 100;
 
 export default function MartPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
+  
   const [cart, setCart] = useState<{ product: Product, quantity: number }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
+  const [customerName, setCustomerName] = useState('');
 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -34,8 +39,14 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
+  const couponsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'coupons');
+  }, [firestore, user?.companyId]);
+
   const { data: products, isLoading: productsLoading } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
+  const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
   const filteredProducts = products?.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -70,11 +81,42 @@ export default function MartPage() {
     }).filter(item => item.quantity > 0));
   };
 
-  const totalAmount = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
-  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
+  const discount = activeCoupon ? activeCoupon.value : 0;
+  const totalAmount = Math.max(0, subtotal - discount);
+  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - discount;
+
+  const handleApplyCoupon = async () => {
+    if (!firestore || !user?.companyId || !couponCode) return;
+    
+    const q = query(
+      collection(firestore, 'companies', user.companyId, 'coupons'),
+      where('code', '==', couponCode),
+      where('status', '==', 'unused')
+    );
+    
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      toast({ title: "Invalid Coupon", description: "Code not found or already used.", variant: "destructive" });
+      setActiveCoupon(null);
+    } else {
+      const couponData = { ...snapshot.docs[0].data(), id: snapshot.docs[0].id } as Coupon;
+      if (new Date(couponData.expiryDate) < new Date()) {
+        toast({ title: "Coupon Expired", variant: "destructive" });
+        return;
+      }
+      setActiveCoupon(couponData);
+      toast({ title: "Coupon Applied", description: `Discount: $${couponData.value.toFixed(2)}` });
+    }
+  };
 
   const handleCheckout = async () => {
     if (cart.length === 0 || !user?.companyId || !firestore) return;
+    if (totalAmount >= LUCKY_DRAW_MIN_SPEND && !customerName) {
+      toast({ title: "Lucky Draw Eligible!", description: "Please enter customer name to proceed.", variant: "destructive" });
+      return;
+    }
+
     setIsProcessing(true);
     
     try {
@@ -87,6 +129,9 @@ export default function MartPage() {
         module: 'mart',
         totalAmount,
         profit: totalProfit,
+        discountApplied: discount,
+        couponCode: activeCoupon?.code || null,
+        customerName: customerName || 'Walk-in',
         timestamp: new Date().toISOString(),
         items: cart.map(item => ({
           name: item.product.name,
@@ -98,15 +143,35 @@ export default function MartPage() {
 
       await setDoc(transactionRef, transactionData);
 
-      cart.forEach(item => {
-        const productRef = doc(firestore, 'companies', user.companyId!, 'products', item.product.id);
-        setDoc(productRef, { 
-          stock: item.product.stock - item.quantity 
-        }, { merge: true });
-      });
+      // Deduct stock
+      for (const item of cart) {
+        const productRef = doc(firestore, 'companies', user.companyId, 'products', item.product.id);
+        await updateDoc(productRef, { stock: increment(-item.quantity) });
+      }
+
+      // Mark coupon used
+      if (activeCoupon) {
+        await updateDoc(doc(firestore, 'companies', user.companyId, 'coupons', activeCoupon.id), { status: 'used' });
+      }
+
+      // Record Lucky Draw
+      if (totalAmount >= LUCKY_DRAW_MIN_SPEND) {
+        const drawRef = collection(firestore, 'companies', user.companyId, 'luckyDraws');
+        await addDoc(drawRef, {
+          id: crypto.randomUUID(),
+          companyId: user.companyId,
+          customerName,
+          transactionId,
+          amount: totalAmount,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       toast({ title: "Sale Completed", description: `Order total: $${totalAmount.toFixed(2)}` });
       setCart([]);
+      setActiveCoupon(null);
+      setCouponCode('');
+      setCustomerName('');
     } catch (e) {
       toast({ title: "Checkout failed", variant: "destructive" });
     } finally {
@@ -114,7 +179,6 @@ export default function MartPage() {
     }
   };
 
-  // Profit Analytics Logic
   const profitData = transactions?.filter(t => t.module === 'mart').slice(-7).map(t => ({
     date: new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' }),
     profit: t.profit,
@@ -125,130 +189,153 @@ export default function MartPage() {
     <div className="flex h-screen bg-background">
       <Sidebar />
       <main className="flex-1 overflow-hidden p-8 flex flex-col">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold font-headline text-foreground">Mart Module</h1>
-          <p className="text-muted-foreground">Retail Terminal, Inventory & Performance Analytics</p>
+        <div className="mb-6 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-black font-headline text-foreground">Mart Management</h1>
+            <p className="text-muted-foreground font-medium">Operations, Loyalty & Logistics</p>
+          </div>
+          <div className="flex gap-4">
+             <Card className="p-4 border-none shadow-sm bg-white/50 flex items-center gap-3">
+                <Trophy className="w-5 h-5 text-accent" />
+                <div>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground">Lucky Draw Min.</p>
+                   <p className="text-sm font-black text-foreground">${LUCKY_DRAW_MIN_SPEND}</p>
+                </div>
+             </Card>
+          </div>
         </div>
 
         <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-xl">
-            <TabsTrigger value="pos" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Receipt className="w-4 h-4" /> POS System
+            <TabsTrigger value="pos" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Receipt className="w-4 h-4" /> POS
             </TabsTrigger>
-            <TabsTrigger value="inventory" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Package className="w-4 h-4" /> Inventory
+            <TabsTrigger value="inventory" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Package className="w-4 h-4" /> Stock
             </TabsTrigger>
-            <TabsTrigger value="profit" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <TrendingUp className="w-4 h-4" /> Profit Analysis
+            <TabsTrigger value="coupons" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Ticket className="w-4 h-4" /> Coupons
+            </TabsTrigger>
+            <TabsTrigger value="profit" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <TrendingUp className="w-4 h-4" /> Analytics
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pos" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
-                <div className="relative group">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 group-focus-within:text-primary transition-colors" />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input 
-                    placeholder="Search products by name or SKU..." 
-                    className="pl-10 h-12 rounded-xl shadow-sm border-none bg-white/80 focus-visible:ring-primary"
+                    placeholder="Quick search products..." 
+                    className="pl-10 h-12 rounded-xl border-none bg-white shadow-sm"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 
-                <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-4 scrollbar-hide">
-                  {productsLoading ? (
-                    <div className="col-span-full py-20 text-center text-muted-foreground animate-pulse">Loading products...</div>
-                  ) : filteredProducts?.length === 0 ? (
-                    <div className="col-span-full py-20 text-center text-muted-foreground border-2 border-dashed rounded-2xl bg-white/30">
-                      No products found. Add some in the Inventory tab.
-                    </div>
-                  ) : (
-                    filteredProducts?.map((product) => (
-                      <Card 
-                        key={product.id} 
-                        className={cn(
-                          "cursor-pointer hover:border-primary border-transparent transition-all hover:scale-[1.02] bg-white relative overflow-hidden shadow-sm",
-                          product.stock <= 0 && "opacity-50 grayscale"
-                        )}
-                        onClick={() => addToCart(product)}
-                      >
-                        <CardContent className="p-6">
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center">
-                              <Package className="text-primary w-5 h-5" />
-                            </div>
-                            <span className={cn(
-                              "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
-                              product.stock > 10 ? "bg-primary/10 text-primary" : "bg-red-100 text-red-600"
-                            )}>
-                              {product.stock} in stock
-                            </span>
-                          </div>
-                          <h3 className="font-bold mb-1 truncate text-foreground">{product.name}</h3>
-                          <p className="text-primary font-black text-xl">${product.sellingPrice.toFixed(2)}</p>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
+                <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+                  {filteredProducts?.map((product) => (
+                    <Card 
+                      key={product.id} 
+                      className={cn(
+                        "cursor-pointer hover:border-primary border-transparent transition-all bg-white shadow-sm",
+                        product.stock <= 0 && "opacity-50 grayscale"
+                      )}
+                      onClick={() => addToCart(product)}
+                    >
+                      <CardContent className="p-6 flex justify-between items-center">
+                        <div className="space-y-1">
+                          <h3 className="font-black text-lg">{product.name}</h3>
+                          <p className="text-xl font-black text-primary">${product.sellingPrice.toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground font-bold uppercase">SKU: {product.sku || 'N/A'}</p>
+                        </div>
+                        <div className="text-right">
+                           <Badge variant={product.stock > 10 ? "outline" : "destructive"} className="mb-2 uppercase font-black">
+                             {product.stock} Units
+                           </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               </div>
 
-              <div className="lg:col-span-1 h-full pb-4">
-                <Card className="h-full flex flex-col border-none shadow-xl bg-white/90 backdrop-blur-md rounded-2xl overflow-hidden">
-                  <CardHeader className="bg-primary/5 border-b">
-                    <CardTitle className="flex items-center gap-2 text-xl font-headline">
+              <div className="lg:col-span-1 h-full">
+                <Card className="h-full flex flex-col border-none shadow-xl bg-white rounded-3xl overflow-hidden">
+                  <CardHeader className="bg-secondary/10">
+                    <CardTitle className="flex items-center gap-2 text-xl font-black">
                       <ShoppingCart className="w-5 h-5 text-primary" />
-                      Shopping Cart
+                      Checkout
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex-1 overflow-auto p-4">
-                    {cart.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-4">
-                        <div className="w-16 h-16 bg-secondary/50 rounded-full flex items-center justify-center">
-                          <ShoppingCart className="w-8 h-8 opacity-20" />
+                  <CardContent className="flex-1 overflow-auto p-6 space-y-4">
+                    {cart.map((item) => (
+                      <div key={item.product.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/20">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-black truncate">{item.product.name}</p>
+                          <p className="text-xs text-primary font-bold">${(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
                         </div>
-                        <p className="font-medium">Cart is waiting for items</p>
+                        <div className="flex items-center gap-3">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 bg-white" onClick={() => updateQuantity(item.product.id, -1)}>
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <span className="font-black w-4 text-center">{item.quantity}</span>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 bg-white" onClick={() => updateQuantity(item.product.id, 1)}>
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {cart.map((item) => (
-                          <div key={item.product.id} className="flex items-center justify-between gap-4 p-4 rounded-xl bg-secondary/30 group">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold truncate text-foreground">{item.product.name}</p>
-                              <p className="text-xs text-primary font-bold">${(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white" onClick={() => updateQuantity(item.product.id, -1)}>
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <span className="text-sm font-black w-4 text-center">{item.quantity}</span>
-                              <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white" onClick={() => updateQuantity(item.product.id, 1)}>
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    ))}
+                    {cart.length === 0 && <p className="text-center py-20 text-muted-foreground font-bold">Cart is empty</p>}
                   </CardContent>
-                  <CardFooter className="flex-col gap-4 border-t p-6 bg-secondary/10">
-                    <div className="w-full space-y-2">
-                      <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase">
-                        <span>Projected Profit</span>
-                        <span className="text-green-600 font-black">+${totalProfit.toFixed(2)}</span>
+                  <CardFooter className="flex-col gap-4 p-6 border-t bg-secondary/5">
+                    <div className="w-full space-y-3">
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="Coupon Code" 
+                          className="h-10 rounded-xl bg-white border-none shadow-sm text-sm"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value)}
+                        />
+                        <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-xl font-black h-10">Apply</Button>
                       </div>
-                      <div className="flex justify-between text-2xl font-black text-foreground">
-                        <span>Total Pay</span>
-                        <span className="text-primary">${totalAmount.toFixed(2)}</span>
+
+                      {totalAmount >= LUCKY_DRAW_MIN_SPEND && (
+                        <div className="space-y-1">
+                           <label className="text-[10px] font-black uppercase text-accent">Customer Name (Lucky Draw Entry)</label>
+                           <Input 
+                             placeholder="Required for entries..." 
+                             className="h-10 rounded-xl border-accent bg-accent/5 font-bold"
+                             value={customerName}
+                             onChange={(e) => setCustomerName(e.target.value)}
+                           />
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span>${subtotal.toFixed(2)}</span>
+                        </div>
+                        {discount > 0 && (
+                          <div className="flex justify-between text-xs font-bold text-green-600">
+                            <span>Discount ({activeCoupon?.code})</span>
+                            <span>-${discount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-2xl font-black text-foreground">
+                          <span>Total</span>
+                          <span className="text-primary">${totalAmount.toFixed(2)}</span>
+                        </div>
                       </div>
                     </div>
                     <Button 
-                      className="w-full h-14 text-lg font-black shadow-lg shadow-primary/20 rounded-xl" 
+                      className="w-full h-14 text-lg font-black rounded-xl shadow-lg" 
                       disabled={cart.length === 0 || isProcessing}
                       onClick={handleCheckout}
                     >
-                      {isProcessing ? "Finalizing..." : "Confirm Checkout"}
+                      {isProcessing ? "Processing..." : "Complete Order"}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -256,60 +343,36 @@ export default function MartPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="inventory" className="flex-1 overflow-auto">
+          <TabsContent value="inventory">
             <InventoryManager companyId={user?.companyId} />
           </TabsContent>
 
-          <TabsContent value="profit" className="flex-1 overflow-auto space-y-6 pb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="border-none shadow-sm">
-                <CardContent className="p-6">
-                  <p className="text-xs font-bold text-muted-foreground uppercase">Average Profit Margin</p>
-                  <h4 className="text-3xl font-black mt-1 text-primary">32.5%</h4>
-                  <p className="text-[10px] text-green-600 mt-1 flex items-center gap-1 font-bold">
-                    <TrendingUp className="w-3 h-3" /> +2.1% from last week
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm">
-                <CardContent className="p-6">
-                  <p className="text-xs font-bold text-muted-foreground uppercase">Best Selling Item</p>
-                  <h4 className="text-2xl font-black mt-1 text-foreground truncate">
-                    {products?.sort((a,b) => (b.costPrice - a.costPrice))[0]?.name || 'No Data'}
-                  </h4>
-                  <p className="text-[10px] text-muted-foreground mt-1 font-bold uppercase tracking-tighter">Based on revenue</p>
-                </CardContent>
-              </Card>
-              <Card className="border-none shadow-sm">
-                <CardContent className="p-6">
-                  <p className="text-xs font-bold text-muted-foreground uppercase">Weekly Revenue</p>
-                  <h4 className="text-3xl font-black mt-1 text-foreground">
-                    ${profitData.reduce((acc, d) => acc + d.revenue, 0).toFixed(2)}
-                  </h4>
-                  <p className="text-[10px] text-muted-foreground mt-1 font-bold uppercase">Last 7 Transactions</p>
-                </CardContent>
-              </Card>
-            </div>
+          <TabsContent value="coupons">
+            <CouponManager companyId={user?.companyId} />
+          </TabsContent>
 
-            <Card className="border-none shadow-sm p-6">
-              <CardHeader className="px-0 pt-0">
-                <CardTitle className="text-lg">Sales & Profit Trend</CardTitle>
-                <CardDescription>Comparison of revenue vs. actual profit</CardDescription>
-              </CardHeader>
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={profitData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} />
-                    <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}
-                    />
-                    <Bar dataKey="revenue" fill="hsl(var(--secondary))" radius={[4, 4, 0, 0]} name="Revenue" barSize={40} />
-                    <Bar dataKey="profit" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Profit" barSize={40} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+          <TabsContent value="profit" className="space-y-6 overflow-auto pb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <ReportStat label="Weekly Revenue" value={`$${profitData.reduce((acc, d) => acc + d.revenue, 0).toFixed(2)}`} />
+               <ReportStat label="Net Profit" value={`$${profitData.reduce((acc, d) => acc + d.profit, 0).toFixed(2)}`} color="text-primary" />
+               <ReportStat label="Lucky Draws" value={`${transactions?.filter(t => t.totalAmount >= LUCKY_DRAW_MIN_SPEND).length || 0} entries`} />
+            </div>
+            <Card className="border-none shadow-sm p-8 bg-white rounded-3xl">
+               <CardHeader className="px-0 pt-0">
+                  <CardTitle className="text-lg font-black">Growth Analytics</CardTitle>
+               </CardHeader>
+               <div className="h-[350px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={profitData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} />
+                      <YAxis axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
+                      <Bar dataKey="revenue" fill="hsl(var(--secondary))" radius={[8, 8, 0, 0]} name="Revenue" />
+                      <Bar dataKey="profit" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} name="Profit" />
+                    </BarChart>
+                  </ResponsiveContainer>
+               </div>
             </Card>
           </TabsContent>
         </Tabs>
@@ -322,6 +385,7 @@ function InventoryManager({ companyId }: { companyId?: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !companyId) return null;
@@ -330,121 +394,256 @@ function InventoryManager({ companyId }: { companyId?: string }) {
 
   const { data: products } = useCollection<Product>(productsQuery);
 
-  const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleReplenish = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !companyId || !selectedProduct) return;
+    setIsAdding(true);
+
+    const formData = new FormData(e.currentTarget);
+    const qty = Number(formData.get('quantity'));
+    const cost = Number(formData.get('cost'));
+
+    try {
+      // 1. Update Product Stock
+      const productRef = doc(firestore, 'companies', companyId, 'products', selectedProduct.id);
+      await updateDoc(productRef, { 
+        stock: increment(qty),
+        costPrice: cost / qty // Update avg cost price
+      });
+
+      // 2. Record Capital Purchase
+      const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
+      await addDoc(purchaseRef, {
+        id: crypto.randomUUID(),
+        companyId,
+        amount: cost,
+        description: `Restock: ${qty} units of ${selectedProduct.name}`,
+        timestamp: new Date().toISOString()
+      });
+
+      toast({ title: "Inventory Restocked", description: `Added ${qty} units to ${selectedProduct.name}` });
+      setSelectedProduct(null);
+      (e.target as HTMLFormElement).reset();
+    } catch (err) {
+      toast({ title: "Restock failed", variant: "destructive" });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleAddNew = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !companyId) return;
     setIsAdding(true);
-    
     const formData = new FormData(e.currentTarget);
+    const id = crypto.randomUUID();
     const productData = {
-      id: crypto.randomUUID(),
+      id,
       companyId,
       name: formData.get('name') as string,
       sku: formData.get('sku') as string,
-      costPrice: Number(formData.get('costPrice')),
-      sellingPrice: Number(formData.get('sellingPrice')),
+      costPrice: Number(formData.get('cost')),
+      sellingPrice: Number(formData.get('price')),
       stock: Number(formData.get('stock')),
     };
 
     try {
-      await setDoc(doc(firestore, 'companies', companyId, 'products', productData.id), productData);
-      toast({ title: "Product Added", description: `${productData.name} has been added to inventory.` });
+      await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
+      toast({ title: "Product Registered" });
       (e.target as HTMLFormElement).reset();
-    } catch (e) {
-      toast({ title: "Failed to add product", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Save failed", variant: "destructive" });
     } finally {
       setIsAdding(false);
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-8 h-full">
-      <Card className="lg:col-span-1 h-fit border-none shadow-sm bg-white rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-lg">Product Entry</CardTitle>
-          <CardDescription>Update your retail catalog</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAddProduct} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Item Name</label>
-              <Input name="name" placeholder="Green Tea Pack" className="rounded-lg" required />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">SKU / Barcode</label>
-              <Input name="sku" placeholder="GT-001" className="rounded-lg" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Cost ($)</label>
-                <Input name="costPrice" type="number" step="0.01" placeholder="5.00" className="rounded-lg" required />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Sale ($)</label>
-                <Input name="sellingPrice" type="number" step="0.01" placeholder="12.00" className="rounded-lg" required />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Initial Units</label>
-              <Input name="stock" type="number" placeholder="100" className="rounded-lg" required />
-            </div>
-            <Button type="submit" className="w-full h-11 font-bold rounded-xl" disabled={isAdding}>
-              {isAdding ? "Saving..." : "Register Product"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-8">
+      <div className="space-y-6">
+        <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden">
+          <CardHeader className="bg-primary/5">
+            <CardTitle className="text-lg font-black flex items-center gap-2">
+               <Truck className="w-5 h-5" /> Replenish Stock
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+             {selectedProduct ? (
+               <form onSubmit={handleReplenish} className="space-y-4">
+                  <div className="p-4 bg-secondary/20 rounded-2xl">
+                     <p className="text-[10px] font-black uppercase text-muted-foreground">Product</p>
+                     <p className="font-black">{selectedProduct.name}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase">Units</label>
+                        <Input name="quantity" type="number" required className="rounded-xl h-12" />
+                     </div>
+                     <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase">Total Cost ($)</label>
+                        <Input name="cost" type="number" step="0.01" required className="rounded-xl h-12" />
+                     </div>
+                  </div>
+                  <div className="flex gap-2">
+                     <Button type="submit" className="flex-1 rounded-xl font-black h-12" disabled={isAdding}>Confirm</Button>
+                     <Button type="button" variant="outline" className="rounded-xl font-black h-12" onClick={() => setSelectedProduct(null)}>Cancel</Button>
+                  </div>
+               </form>
+             ) : (
+               <div className="py-12 text-center text-muted-foreground bg-secondary/10 rounded-2xl border-2 border-dashed">
+                  <p className="text-sm font-bold">Select a product from the list to replenish stock</p>
+               </div>
+             )}
+          </CardContent>
+        </Card>
 
-      <div className="lg:col-span-3 space-y-4 overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="font-black text-xl text-foreground">Stock Registry</h3>
-          <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-            <Calendar className="w-3 h-3" /> Last synced: Just now
-          </div>
-        </div>
-        <div className="border rounded-2xl overflow-hidden bg-white shadow-sm flex-1">
+        <Card className="border-none shadow-sm rounded-3xl bg-white">
+          <CardHeader>
+            <CardTitle className="text-lg font-black">New Product Entry</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+             <form onSubmit={handleAddNew} className="space-y-4">
+                <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
+                <Input name="sku" placeholder="SKU/Barcode" className="h-12 rounded-xl" />
+                <div className="grid grid-cols-2 gap-4">
+                   <Input name="cost" type="number" placeholder="Cost" step="0.01" required className="h-12 rounded-xl" />
+                   <Input name="price" type="number" placeholder="Price" step="0.01" required className="h-12 rounded-xl" />
+                </div>
+                <Input name="stock" type="number" placeholder="Initial Stock" required className="h-12 rounded-xl" />
+                <Button type="submit" className="w-full h-12 rounded-xl font-black" disabled={isAdding}>Save Product</Button>
+             </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="lg:col-span-2">
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
           <table className="w-full text-sm text-left">
             <thead className="bg-secondary/20 border-b">
               <tr>
-                <th className="p-4 font-black uppercase tracking-tighter text-muted-foreground">Product Details</th>
-                <th className="p-4 font-black uppercase tracking-tighter text-muted-foreground">SKU</th>
-                <th className="p-4 text-right font-black uppercase tracking-tighter text-muted-foreground">Profit/Unit</th>
-                <th className="p-4 text-right font-black uppercase tracking-tighter text-muted-foreground">Stock Level</th>
+                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Product</th>
+                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Stock</th>
+                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Value</th>
+                <th className="p-4 text-center font-black uppercase text-muted-foreground tracking-tighter">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {products?.map(p => (
-                <tr key={p.id} className="hover:bg-secondary/10 transition-colors">
+                <tr key={p.id} className="hover:bg-secondary/5 transition-colors">
                   <td className="p-4">
                     <p className="font-black text-foreground">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground">Cost: ${p.costPrice.toFixed(2)} | Sale: ${p.sellingPrice.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">SKU: {p.sku || 'N/A'}</p>
                   </td>
-                  <td className="p-4 text-muted-foreground font-mono">{p.sku || '---'}</td>
-                  <td className="p-4 text-right font-bold text-green-600">
-                    +${(p.sellingPrice - p.costPrice).toFixed(2)}
+                  <td className="p-4">
+                    <Badge variant={p.stock < 10 ? "destructive" : "outline"} className="font-black uppercase text-[10px]">
+                      {p.stock} Units
+                    </Badge>
                   </td>
-                  <td className="p-4 text-right">
-                    <span className={cn(
-                      "font-black px-3 py-1 rounded-full text-[10px] border",
-                      p.stock < 10 ? "bg-red-50 text-red-600 border-red-100" : "bg-primary/5 text-primary border-primary/10"
-                    )}>
-                      {p.stock} UNITS
-                    </span>
+                  <td className="p-4 font-black text-primary">${(p.stock * p.costPrice).toFixed(2)}</td>
+                  <td className="p-4 text-center">
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedProduct(p)} className="rounded-xl font-black gap-2">
+                      <Truck className="w-4 h-4" /> Restock
+                    </Button>
                   </td>
                 </tr>
               ))}
-              {(!products || products.length === 0) && (
-                <tr>
-                  <td colSpan={4} className="p-20 text-center text-muted-foreground">
-                    <Package className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                    No inventory records found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       </div>
     </div>
+  );
+}
+
+function CouponManager({ companyId }: { companyId?: string }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const couponsQuery = useMemoFirebase(() => {
+    if (!firestore || !companyId) return null;
+    return collection(firestore, 'companies', companyId, 'coupons');
+  }, [firestore, companyId]);
+
+  const { data: coupons } = useCollection<Coupon>(couponsQuery);
+
+  const handleCreateCoupon = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !companyId) return;
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const id = crypto.randomUUID();
+    const couponData = {
+      id,
+      companyId,
+      code: formData.get('code') as string,
+      value: Number(formData.get('value')),
+      expiryDate: formData.get('expiry') as string,
+      status: 'unused'
+    };
+
+    try {
+      await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), couponData);
+      toast({ title: "Coupon Created" });
+      (e.target as HTMLFormElement).reset();
+    } catch (err) {
+      toast({ title: "Save failed", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+       <Card className="border-none shadow-sm rounded-3xl bg-white h-fit">
+          <CardHeader>
+             <CardTitle className="text-lg font-black">Generate Coupon</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+             <form onSubmit={handleCreateCoupon} className="space-y-4">
+                <Input name="code" placeholder="Code (e.g. SAVE20)" required className="h-12 rounded-xl font-black uppercase" />
+                <Input name="value" type="number" step="0.01" placeholder="Discount Amount ($)" required className="h-12 rounded-xl" />
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Expiry Date</label>
+                   <Input name="expiry" type="date" required className="h-12 rounded-xl" />
+                </div>
+                <Button type="submit" className="w-full h-12 rounded-xl font-black" disabled={isSaving}>Create Coupon</Button>
+             </form>
+          </CardContent>
+       </Card>
+
+       <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             {coupons?.map(c => (
+               <Card key={c.id} className={cn("border-none shadow-sm rounded-3xl p-6 relative overflow-hidden", c.status === 'used' ? "opacity-50 grayscale" : "bg-white")}>
+                  <div className="absolute -right-4 -top-4 opacity-5 rotate-12">
+                     <Ticket className="w-24 h-24" />
+                  </div>
+                  <div className="flex justify-between items-start mb-4">
+                     <Badge className="font-black uppercase text-[10px]">{c.status}</Badge>
+                     <p className="text-xl font-black text-primary">-${c.value.toFixed(2)}</p>
+                  </div>
+                  <h4 className="text-2xl font-black font-mono tracking-tighter">{c.code}</h4>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Expires: {c.expiryDate}</p>
+               </Card>
+             ))}
+             {(!coupons || coupons.length === 0) && (
+               <div className="col-span-full py-20 text-center border-2 border-dashed rounded-3xl bg-white/50">
+                  <Ticket className="w-12 h-12 mx-auto mb-2 opacity-10" />
+                  <p className="font-bold text-muted-foreground">No promotional coupons found.</p>
+               </div>
+             )}
+          </div>
+       </div>
+    </div>
+  );
+}
+
+function ReportStat({ label, value, color = "text-foreground" }: any) {
+  return (
+    <Card className="border-none shadow-sm p-6 bg-white rounded-2xl group hover:shadow-md transition-shadow">
+       <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest">{label}</p>
+       <h4 className={cn("text-3xl font-black", color)}>{value}</h4>
+    </Card>
   );
 }

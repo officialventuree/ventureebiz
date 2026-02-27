@@ -1,32 +1,37 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { BarChart3, TrendingUp, DollarSign, Download, Calendar, Filter, PieChart as PieChartIcon, Search, ListFilter, ShieldCheck } from 'lucide-react';
-import { SaleTransaction, CapitalPurchase, Product } from '@/lib/types';
+import { BarChart3, TrendingUp, DollarSign, Download, Calendar, Filter, PieChart as PieChartIcon, Search, ListFilter, ShieldCheck, Trophy } from 'lucide-react';
+import { SaleTransaction, CapitalPurchase, Product, LuckyDrawEntry } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ReportsPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'ledger'>('dashboard');
 
   const transactionsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
+  const luckyDrawsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'luckyDraws');
+  }, [firestore, user?.companyId]);
+
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
+  const { data: luckyDraws } = useCollection<LuckyDrawEntry>(luckyDrawsQuery);
 
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, t) => acc + t.profit, 0) || 0;
@@ -76,152 +81,152 @@ export default function ReportsPage() {
           <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Strategic Intelligence</h1>
-              <p className="text-muted-foreground font-medium">Cross-Module Financial Performance & Auditing</p>
+              <p className="text-muted-foreground font-medium">Full Ecosystem Auditing & Performance Tracking</p>
             </div>
             <div className="flex items-center gap-2">
-               <Button 
-                variant={activeTab === 'dashboard' ? 'default' : 'outline'} 
-                onClick={() => setActiveTab('dashboard')} 
-                className="rounded-xl font-black h-11 px-6 shadow-sm"
-               >
-                 Analysis
-               </Button>
-               <Button 
-                variant={activeTab === 'ledger' ? 'default' : 'outline'} 
-                onClick={() => setActiveTab('ledger')} 
-                className="rounded-xl font-black h-11 px-6 shadow-sm"
-               >
-                 Ledger
-               </Button>
-               <div className="w-px h-8 bg-border mx-2" />
                <Button onClick={handleExportCSV} className="rounded-xl font-black h-11 px-6 shadow-lg bg-primary">
                  <Download className="w-4 h-4 mr-2" /> Export CSV
                </Button>
             </div>
           </div>
 
-          {activeTab === 'dashboard' ? (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <SummaryCard label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} color="text-foreground" />
-                <SummaryCard label="Operating Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
-                <SummaryCard label="Module Reach" value={`${moduleStats.length} Active`} icon={BarChart3} color="text-foreground" />
-                <SummaryCard label="Data Integrity" value="Syncing" icon={ShieldCheck} color="text-primary" />
-              </div>
+          <Tabs defaultValue="analysis" className="space-y-8">
+             <TabsList className="bg-white/50 border p-1 rounded-xl">
+               <TabsTrigger value="analysis" className="rounded-lg font-bold">Analysis</TabsTrigger>
+               <TabsTrigger value="ledger" className="rounded-lg font-bold">Ledger</TabsTrigger>
+               <TabsTrigger value="events" className="rounded-lg font-bold">Events (Lucky Draw)</TabsTrigger>
+             </TabsList>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-3xl overflow-hidden">
-                   <CardHeader className="p-8 pb-0">
-                      <CardTitle className="text-lg font-black flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-primary" /> Performance Shares
-                      </CardTitle>
-                   </CardHeader>
-                   <CardContent className="h-[350px] p-8 pt-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                         <BarChart data={moduleStats}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                            <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }} />
-                            <Bar dataKey="value" name="Revenue" radius={[8, 8, 0, 0]} barSize={60}>
-                               {moduleStats.map((entry, index) => (
-                                 <Cell key={`cell-${index}`} fill={entry.color} />
-                               ))}
-                            </Bar>
-                         </BarChart>
-                      </ResponsiveContainer>
-                   </CardContent>
-                </Card>
+             <TabsContent value="analysis" className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <SummaryCard label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} />
+                  <SummaryCard label="Operating Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
+                  <SummaryCard label="Active Modules" value={moduleStats.length.toString()} icon={BarChart3} />
+                  <SummaryCard label="Event Entries" value={luckyDraws?.length.toString() || '0'} icon={Trophy} />
+                </div>
 
-                <Card className="lg:col-span-1 border-none shadow-sm bg-white rounded-3xl overflow-hidden">
-                   <CardHeader className="p-8">
-                      <CardTitle className="text-lg font-black flex items-center gap-2">
-                        <PieChartIcon className="w-5 h-5 text-primary" /> Sector Revenue
-                      </CardTitle>
-                   </CardHeader>
-                   <CardContent className="h-[300px] p-8 pt-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                         <PieChart>
-                            <Pie data={moduleStats} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                               {moduleStats.map((entry, index) => (
-                                 <Cell key={`cell-${index}`} fill={entry.color} />
-                               ))}
-                            </Pie>
-                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                         </PieChart>
-                      </ResponsiveContainer>
-                   </CardContent>
-                   <CardFooter className="bg-secondary/10 p-6">
-                      <p className="text-xs font-bold leading-relaxed opacity-60">Revenue is categorized by active modules in the current billing cycle.</p>
-                   </CardFooter>
-                </Card>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-               <div className="flex gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-3xl p-8">
+                     <CardHeader className="px-0 pt-0">
+                        <CardTitle className="text-lg font-black">Module Performance</CardTitle>
+                     </CardHeader>
+                     <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                           <BarChart data={moduleStats}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                              <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                              <YAxis axisLine={false} tickLine={false} />
+                              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }} />
+                              <Bar dataKey="value" name="Revenue" radius={[8, 8, 0, 0]} barSize={60}>
+                                 {moduleStats.map((entry, index) => (
+                                   <Cell key={`cell-${index}`} fill={entry.color} />
+                                 ))}
+                              </Bar>
+                           </BarChart>
+                        </ResponsiveContainer>
+                     </div>
+                  </Card>
+                  <Card className="lg:col-span-1 border-none shadow-sm bg-white rounded-3xl p-8">
+                     <CardHeader className="px-0 pt-0">
+                        <CardTitle className="text-lg font-black">Revenue Mix</CardTitle>
+                     </CardHeader>
+                     <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                           <PieChart>
+                              <Pie data={moduleStats} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                 {moduleStats.map((entry, index) => (
+                                   <Cell key={`cell-${index}`} fill={entry.color} />
+                                 ))}
+                              </Pie>
+                              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                           </PieChart>
+                        </ResponsiveContainer>
+                     </div>
+                  </Card>
+                </div>
+             </TabsContent>
+
+             <TabsContent value="ledger" className="space-y-4">
+                <div className="flex gap-4 mb-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input 
-                      placeholder="Search items, customers, or sectors..." 
+                      placeholder="Search transactions..." 
                       className="pl-10 h-12 rounded-xl bg-white border-none shadow-sm font-bold"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" className="rounded-xl h-12 px-6 bg-white font-bold gap-2">
-                    <ListFilter className="w-4 h-4" /> Filter
-                  </Button>
-               </div>
+                </div>
+                <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-secondary/20 border-b">
+                       <tr>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Event</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Sector</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Revenue</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Status</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                        {filteredTransactions.map(t => (
+                          <tr key={t.id} className="hover:bg-secondary/5 transition-colors">
+                            <td className="p-4">
+                               <p className="font-black text-foreground">{t.items[0].name}</p>
+                               <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                 {t.customerName || 'Walk-in'} | {new Date(t.timestamp).toLocaleDateString()}
+                               </div>
+                            </td>
+                            <td className="p-4">
+                               <Badge variant="outline" className="font-black uppercase text-[9px] tracking-widest">{t.module}</Badge>
+                            </td>
+                            <td className="p-4 font-black text-foreground">${t.totalAmount.toFixed(2)}</td>
+                            <td className="p-4">
+                               <Badge className={cn(
+                                 "font-black uppercase text-[9px] tracking-widest",
+                                 t.status === 'completed' || !t.status ? "bg-green-600" : "bg-orange-500"
+                               )}>
+                                 {t.status || 'completed'}
+                               </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                     </tbody>
+                   </table>
+                </div>
+             </TabsContent>
 
-               <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
-                  <table className="w-full text-sm text-left">
-                    <thead className="bg-secondary/20 border-b">
-                      <tr>
-                        <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Event Details</th>
-                        <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Sector</th>
-                        <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Revenue</th>
-                        <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Profit</th>
-                        <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                       {filteredTransactions.map(t => (
-                         <tr key={t.id} className="hover:bg-secondary/5 transition-colors">
-                           <td className="p-4">
-                              <p className="font-black text-foreground">{t.items[0].name}</p>
-                              <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                {t.customerName || 'Standard User'} | {new Date(t.timestamp).toLocaleDateString()}
-                              </div>
-                           </td>
-                           <td className="p-4">
-                              <Badge variant="outline" className="font-black uppercase text-[9px] tracking-widest">{t.module}</Badge>
-                           </td>
-                           <td className="p-4 font-black text-foreground">${t.totalAmount.toFixed(2)}</td>
-                           <td className="p-4 font-black text-primary">${t.profit.toFixed(2)}</td>
-                           <td className="p-4">
-                              <Badge className={cn(
-                                "font-black uppercase text-[9px] tracking-widest",
-                                t.status === 'completed' || !t.status ? "bg-green-600" : "bg-orange-500"
-                              )}>
-                                {t.status || 'completed'}
-                              </Badge>
-                           </td>
-                         </tr>
-                       ))}
-                       {filteredTransactions.length === 0 && (
-                         <tr>
-                           <td colSpan={5} className="py-20 text-center opacity-30">
-                              <ListFilter className="w-12 h-12 mx-auto mb-2" />
-                              <p className="font-bold">No ledger activities found.</p>
-                           </td>
-                         </tr>
-                       )}
-                    </tbody>
-                  </table>
-               </div>
-            </div>
-          )}
+             <TabsContent value="events" className="space-y-4">
+                <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-accent/20 border-b">
+                       <tr>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Customer Name</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Qualifying Total</th>
+                         <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Registration Date</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                        {luckyDraws?.map(entry => (
+                          <tr key={entry.id} className="hover:bg-accent/5">
+                            <td className="p-4 font-black text-foreground">{entry.customerName}</td>
+                            <td className="p-4 font-black text-primary">${entry.amount.toFixed(2)}</td>
+                            <td className="p-4 text-xs font-bold text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {(!luckyDraws || luckyDraws.length === 0) && (
+                          <tr>
+                            <td colSpan={3} className="py-20 text-center opacity-30">
+                               <Trophy className="w-12 h-12 mx-auto mb-2" />
+                               <p className="font-bold">No event entries yet.</p>
+                            </td>
+                          </tr>
+                        )}
+                     </tbody>
+                   </table>
+                </div>
+             </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>
@@ -240,9 +245,6 @@ function SummaryCard({ label, value, icon: Icon, color }: any) {
                 <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">{label}</p>
                 <h4 className={cn("text-2xl font-black", color)}>{value}</h4>
              </div>
-          </div>
-          <div className="h-1.5 w-full bg-secondary/30 rounded-full overflow-hidden">
-             <div className="h-full bg-primary/20 w-3/4" />
           </div>
        </CardContent>
     </Card>
