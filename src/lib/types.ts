@@ -36,6 +36,7 @@ export interface SaleItem {
   duration?: number;
   startDate?: string;
   endDate?: string;
+  unit?: string;
 }
 
 export interface SaleTransaction {
@@ -72,7 +73,9 @@ export interface RentalItem {
   companyId: string;
   name: string;
   hourlyRate?: number;
-  dailyRate: number;
+  dailyRate?: number;
+  monthlyRate?: number;
+  unit: 'hour' | 'day' | 'month';
   status: RentalStatus;
 }
 
