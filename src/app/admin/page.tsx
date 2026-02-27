@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -13,9 +12,6 @@ import { Company } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, doc, setDoc } from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { firebaseConfig } from '@/firebase/config';
 
 export default function AdminDashboard() {
   const firestore = useFirestore();
@@ -40,41 +36,22 @@ export default function AdminDashboard() {
     if (result.success && result.company) {
       const companyData = result.company;
       try {
-        // To create a user without signing out the admin, use a secondary App instance
-        const tempApp = initializeApp(firebaseConfig, `temp-${Date.now()}`);
-        const tempAuth = getAuth(tempApp);
+        // Save company profile
+        await setDoc(doc(firestore, 'companies', companyData.id), companyData);
         
-        const userCredential = await createUserWithEmailAndPassword(
-          tempAuth, 
-          companyData.email, 
-          companyData.password!
-        );
-        
-        const authUid = userCredential.user.uid;
-        await deleteApp(tempApp);
-
-        // Update company object to use the real Auth UID
-        const finalCompany = {
-          ...companyData,
-          id: authUid
-        };
-
-        // Save to Firestore using Auth UID
-        await setDoc(doc(firestore, 'companies', authUid), finalCompany);
-        
-        // Create the user record for login lookups
-        await setDoc(doc(firestore, 'company_users', authUid), {
-          id: authUid,
-          name: finalCompany.name,
-          email: finalCompany.email,
-          password: finalCompany.password,
+        // Save user record for manual login lookup
+        await setDoc(doc(firestore, 'company_users', companyData.id), {
+          id: companyData.id,
+          name: companyData.name,
+          email: companyData.email,
+          password: companyData.password,
           role: 'company',
-          companyId: authUid
+          companyId: companyData.id
         });
 
         toast({
           title: "Company Registered",
-          description: `Account for ${finalCompany.name} is ready.`,
+          description: `Account for ${companyData.name} is ready.`,
         });
         (e.target as HTMLFormElement).reset();
       } catch (e: any) {
@@ -113,7 +90,7 @@ export default function AdminDashboard() {
                       <Input id="name" name="name" placeholder="Acme Corp" required />
                     </div>
                     <Button type="submit" className="w-full" disabled={isCreating}>
-                      {isCreating ? "Provisioning Auth..." : "Add Company"}
+                      {isCreating ? "Saving..." : "Add Company"}
                     </Button>
                   </form>
                 </CardContent>
@@ -152,7 +129,7 @@ export default function AdminDashboard() {
                           <div className="flex items-start justify-between">
                             <div className="space-y-1">
                               <h4 className="font-bold text-xl">{company.name}</h4>
-                              <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">AUTH_UID: {company.id}</p>
+                              <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">ID: {company.id}</p>
                             </div>
                             <div className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-full uppercase">
                               Active Partner

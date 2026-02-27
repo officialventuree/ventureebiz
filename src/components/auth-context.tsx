@@ -3,10 +3,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { useFirestore, useAuth as useFirebaseAuth } from '@/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
-import { FirebaseError } from 'firebase/app';
+import { useFirestore } from '@/firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -22,93 +20,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const firestore = useFirestore();
-  const auth = useFirebaseAuth();
 
   useEffect(() => {
-    if (!auth || !firestore) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Hardcoded admin check first
-        if (firebaseUser.email === 'admin@ventureebiz.com') {
-          setUser({
-            id: firebaseUser.uid,
-            name: 'Platform Owner',
-            email: firebaseUser.email,
-            role: 'admin'
-          });
-        } else {
-          // Fetch additional user data from Firestore
-          try {
-            const userDoc = await getDoc(doc(firestore, 'company_users', firebaseUser.uid));
-            if (userDoc.exists()) {
-              setUser(userDoc.data() as User);
-            } else {
-              // Fallback if doc doesn't exist yet but user is authenticated
-              setUser({
-                id: firebaseUser.uid,
-                name: firebaseUser.displayName || 'User',
-                email: firebaseUser.email || '',
-                role: 'company' // Default to company for auto-provisioned users
-              });
-            }
-          } catch (e) {
-            console.error("Error fetching user data:", e);
-          }
-        }
-      } else {
-        setUser(null);
+    // Check local storage for existing session on mount
+    const savedUser = localStorage.getItem('venturee_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('venturee_user');
       }
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [auth, firestore]);
+    }
+    setIsLoading(false);
+  }, []);
 
   const login = async (email: string, password?: string) => {
-    if (!auth || !password) return { success: false, error: 'Missing credentials' };
+    if (!firestore) return { success: false, error: 'Database not initialized' };
+    if (!email || !password) return { success: false, error: 'Missing credentials' };
 
     try {
-      // Actually sign into Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Navigate based on role
-      if (email === 'admin@ventureebiz.com') {
+      // Hardcoded platform admin check
+      if (email === 'admin@ventureebiz.com' && password === 'admin') {
+        const adminUser: User = {
+          id: 'platform-admin',
+          name: 'Platform Owner',
+          email: 'admin@ventureebiz.com',
+          role: 'admin'
+        };
+        setUser(adminUser);
+        localStorage.setItem('venturee_user', JSON.stringify(adminUser));
         router.push('/admin');
-      } else {
-        // We query to find the role for navigation redirection
-        const userDoc = await getDoc(doc(firestore, 'company_users', userCredential.user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as User;
-          if (userData.role === 'company') router.push('/company');
-          else if (userData.role === 'viewer') router.push('/viewer');
-        } else {
-          // If doc not found, it might be a newly created company
-          router.push('/company');
-        }
+        return { success: true };
       }
-      
+
+      // Query Firestore for company users
+      const usersRef = collection(firestore, 'company_users');
+      const q = query(usersRef, where('email', '==', email), limit(1));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        return { success: false, error: 'Account not found' };
+      }
+
+      const userData = querySnapshot.docs[0].data() as User;
+
+      // Verify password (Manual check for prototype)
+      if (userData.password !== password) {
+        return { success: false, error: 'Invalid password' };
+      }
+
+      setUser(userData);
+      localStorage.setItem('venturee_user', JSON.stringify(userData));
+
+      // Redirect based on role
+      if (userData.role === 'company') {
+        router.push('/company');
+      } else if (userData.role === 'viewer') {
+        router.push('/viewer');
+      }
+
       return { success: true };
     } catch (e: any) {
-      let errorMessage = "Invalid credentials. Please try again.";
-      
-      if (e instanceof FirebaseError) {
-        // 'auth/invalid-credential' is the standard error for wrong email/password or disabled provider
-        if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
-          errorMessage = "Login failed. Ensure the 'Email/Password' provider is enabled in Firebase Console and the user exists.";
-        }
-      }
-      
-      return { success: false, error: errorMessage };
+      console.error("Login error:", e);
+      return { success: false, error: 'Database connection failed' };
     }
   };
 
   const logout = () => {
-    if (auth) {
-      signOut(auth);
-      setUser(null);
-      router.push('/');
-    }
+    setUser(null);
+    localStorage.removeItem('venturee_user');
+    router.push('/');
   };
 
   return (
