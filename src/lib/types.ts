@@ -52,6 +52,7 @@ export interface SaleTransaction {
   items: SaleItem[];
   status?: TransactionStatus;
   customerName?: string;
+  customerCompany?: string;
   couponCode?: string;
   discountApplied?: number;
   paymentMethod?: PaymentMethod;
@@ -90,6 +91,7 @@ export interface ServiceType {
   companyId: string;
   name: string;
   description?: string;
+  duitNowQr?: string;
 }
 
 export interface ServicePriceBundle {

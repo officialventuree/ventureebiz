@@ -25,19 +25,32 @@ import {
   ShieldCheck,
   Zap,
   BarChart3,
-  Star
+  Star,
+  QrCode,
+  Upload,
+  Settings2,
+  CreditCard,
+  Banknote,
+  User,
+  Building2,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, query, where, addDoc, increment, deleteDoc } from 'firebase/firestore';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ServiceType, ServicePriceBundle, SaleTransaction, Product } from '@/lib/types';
+import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import Image from 'next/image';
 
 export default function ServiceDashboardPage({ params }: { params: Promise<{ serviceId: string }> }) {
   const { serviceId } = use(params);
@@ -47,6 +60,15 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('pipeline');
+
+  // Booking Form State
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [selectedBundle, setSelectedBundle] = useState<ServicePriceBundle | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [customerCompany, setCustomerCompany] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [referenceNumber, setReferenceNumber] = useState('');
+  const [cashReceived, setCashReceived] = useState<number | string>('');
 
   // Queries
   const serviceRef = useMemoFirebase(() => {
@@ -87,6 +109,77 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     completed: transactions?.filter(t => t.status === 'completed') || []
   };
 
+  const handlePlaceOrder = async () => {
+    if (!firestore || !user?.companyId || !customerName || !selectedBundle) return;
+    setIsProcessing(true);
+
+    try {
+      const transactionId = crypto.randomUUID();
+      const transactionData: SaleTransaction = {
+        id: transactionId,
+        companyId: user.companyId,
+        module: 'services',
+        serviceTypeId: serviceId,
+        totalAmount: selectedBundle.price,
+        profit: selectedBundle.estimatedProfit,
+        timestamp: new Date().toISOString(),
+        customerName,
+        customerCompany: customerCompany || undefined,
+        paymentMethod,
+        referenceNumber: referenceNumber || undefined,
+        items: [{ name: selectedBundle.name, price: selectedBundle.price, quantity: 1 }],
+        status: 'pending'
+      };
+
+      await setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transactionId), transactionData);
+      toast({ title: "Booking Confirmed", description: `Pending order created for ${customerName}.` });
+      setIsBookingOpen(false);
+      resetBookingForm();
+    } catch (e) {
+      toast({ title: "Order failed", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const resetBookingForm = () => {
+    setCustomerName('');
+    setCustomerCompany('');
+    setPaymentMethod('cash');
+    setReferenceNumber('');
+    setCashReceived('');
+    setSelectedBundle(null);
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    if (!firestore || !user?.companyId) return;
+    try {
+      await updateDoc(doc(firestore, 'companies', user.companyId, 'transactions', id), { status: newStatus });
+      toast({ title: "Pipeline Updated", description: `Order is now ${newStatus}.` });
+    } catch (e) {
+      toast({ title: "Update failed", variant: "destructive" });
+    }
+  };
+
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !user?.companyId) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      try {
+        await updateDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId), {
+          duitNowQr: base64String
+        });
+        toast({ title: "Billing QR Updated", description: "Payment gateway is now active for this department." });
+      } catch (err: any) {
+        toast({ title: "Upload failed", variant: "destructive" });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCreateBundle = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
@@ -108,44 +201,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       (e.target as HTMLFormElement).reset();
     } catch (e) {
       toast({ title: "Creation failed", variant: "destructive" });
-    }
-  };
-
-  const handlePlaceOrder = async (bundle: ServicePriceBundle, customerName: string) => {
-    if (!firestore || !user?.companyId || !customerName) return;
-    setIsProcessing(true);
-
-    try {
-      const transactionId = crypto.randomUUID();
-      const transactionData: SaleTransaction = {
-        id: transactionId,
-        companyId: user.companyId,
-        module: 'services',
-        serviceTypeId: serviceId,
-        totalAmount: bundle.price,
-        profit: bundle.estimatedProfit,
-        timestamp: new Date().toISOString(),
-        customerName,
-        items: [{ name: bundle.name, price: bundle.price, quantity: 1 }],
-        status: 'pending'
-      };
-
-      await setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transactionId), transactionData);
-      toast({ title: "Order Logged", description: `Pending order created for ${customerName}.` });
-    } catch (e) {
-      toast({ title: "Order failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
-    if (!firestore || !user?.companyId) return;
-    try {
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'transactions', id), { status: newStatus });
-      toast({ title: "Pipeline Updated", description: `Order is now ${newStatus}.` });
-    } catch (e) {
-      toast({ title: "Update failed", variant: "destructive" });
     }
   };
 
@@ -175,9 +230,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     }
   };
 
-  // Analytics
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, t) => acc + t.profit, 0) || 0;
+
+  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - (selectedBundle?.price || 0)) : 0;
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -207,16 +263,19 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
           <Tabs defaultValue="pipeline" onValueChange={setActiveTab} className="space-y-8">
             <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start">
               <TabsTrigger value="pipeline" className="rounded-xl px-8 gap-2 font-black">
-                <Package className="w-4 h-4" /> Orders
+                <Package className="w-4 h-4" /> Pipeline
               </TabsTrigger>
               <TabsTrigger value="catalog" className="rounded-xl px-8 gap-2 font-black">
-                <ClipboardList className="w-4 h-4" /> Pricing
+                <ClipboardList className="w-4 h-4" /> Price Catalog
               </TabsTrigger>
               <TabsTrigger value="inventory" className="rounded-xl px-8 gap-2 font-black">
-                <Layers className="w-4 h-4" /> Materials
+                <Layers className="w-4 h-4" /> Inventory
               </TabsTrigger>
               <TabsTrigger value="profits" className="rounded-xl px-8 gap-2 font-black">
                 <TrendingUp className="w-4 h-4" /> Analytics
+              </TabsTrigger>
+              <TabsTrigger value="billing" className="rounded-xl px-8 gap-2 font-black">
+                <Settings2 className="w-4 h-4" /> Billing
               </TabsTrigger>
             </TabsList>
 
@@ -246,7 +305,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                           <p className="text-3xl font-black text-primary mt-2">${bundle.price.toFixed(2)}</p>
                         </div>
                         <Button variant="ghost" size="icon" onClick={async () => {
-                          await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id));
+                          if (confirm("Delete price bundle?")) {
+                            await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id));
+                          }
                         }} className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></Button>
                       </CardHeader>
                       <CardContent className="p-8 pt-0">
@@ -254,15 +315,12 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                             <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Estimated Net Yield</p>
                             <p className="text-lg font-black text-foreground">${bundle.estimatedProfit.toFixed(2)}</p>
                          </div>
-                         <form onSubmit={(e) => {
-                           e.preventDefault();
-                           const name = new FormData(e.currentTarget).get('customer') as string;
-                           handlePlaceOrder(bundle, name);
-                           (e.target as HTMLFormElement).reset();
-                         }} className="flex gap-2">
-                           <Input name="customer" placeholder="Customer Identity..." required className="h-12 rounded-xl bg-secondary/10 border-none text-xs font-bold px-4" />
-                           <Button type="submit" className="h-12 rounded-xl font-black px-6">Log Sale</Button>
-                         </form>
+                         <Button className="w-full h-12 rounded-xl font-black gap-2" onClick={() => {
+                           setSelectedBundle(bundle);
+                           setIsBookingOpen(true);
+                         }}>
+                           <Plus className="w-4 h-4" /> Book Service
+                         </Button>
                       </CardContent>
                     </Card>
                   ))}
@@ -304,7 +362,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                             <td className="p-6 font-black text-primary text-lg">${(m.stock * m.costPrice).toFixed(2)}</td>
                             <td className="p-6 text-center">
                                <Button variant="ghost" size="icon" onClick={async () => {
-                                 await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', m.id));
+                                 if (confirm("Remove material?")) {
+                                   await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', m.id));
+                                 }
                                }} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
                             </td>
                           </tr>
@@ -333,37 +393,123 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                      <h4 className="text-5xl font-black tracking-tighter">100%</h4>
                   </Card>
                </div>
+            </TabsContent>
 
-               <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
-                  <CardHeader className="px-0 pt-0 mb-8 flex flex-row justify-between items-end">
-                    <div>
-                      <CardTitle className="text-2xl font-black">Growth Trajectory</CardTitle>
-                      <CardDescription className="font-bold">Daily financial performance for {serviceType?.name}</CardDescription>
-                    </div>
-                    <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest">
-                       <div className="flex items-center gap-2"><div className="w-3 h-3 bg-primary rounded-full" /> Revenue</div>
-                       <div className="flex items-center gap-2"><div className="w-3 h-3 bg-secondary rounded-full" /> Profit</div>
-                    </div>
-                  </CardHeader>
-                  <div className="h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={[]}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Tooltip />
-                        <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.1} strokeWidth={4} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-                       <p className="font-black text-sm uppercase tracking-widest">Awaiting significant data volume...</p>
-                    </div>
-                  </div>
+            <TabsContent value="billing" className="max-w-xl mx-auto py-12">
+               <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden p-10 text-center space-y-8">
+                 <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-8 h-8" /></div>
+                 <h2 className="text-2xl font-black">Departmental Gateway</h2>
+                 <p className="text-sm text-muted-foreground font-medium">Configure a dedicated DuitNow QR for the "{serviceType?.name}" department.</p>
+                 {serviceType?.duitNowQr ? (
+                   <div className="relative group mx-auto w-fit">
+                     <Image src={serviceType.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
+                     <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity">
+                        <Upload className="text-white w-8 h-8" />
+                        <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                     </label>
+                   </div>
+                 ) : (
+                   <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center mx-auto cursor-pointer hover:bg-secondary/20 transition-all gap-4">
+                      <Plus className="w-8 h-8 text-primary" />
+                      <p className="text-xs font-black uppercase">Upload Settlement QR</p>
+                      <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                   </label>
+                 )}
                </Card>
             </TabsContent>
           </Tabs>
         </div>
       </main>
+
+      {/* New Booking Dialog */}
+      <Dialog open={isBookingOpen} onOpenChange={setIsBookingOpen}>
+        <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
+          <div className="bg-primary p-12 text-primary-foreground text-center relative overflow-hidden">
+             <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Briefcase className="w-24 h-24" /></div>
+             <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Service Settlement</p>
+             <h2 className="text-6xl font-black tracking-tighter relative z-10">${selectedBundle?.price.toFixed(2)}</h2>
+             <div className="mt-4 inline-flex items-center gap-2 bg-black/10 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm relative z-10">
+                {selectedBundle?.name}
+             </div>
+          </div>
+          
+          <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Customer Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="pl-10 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                  </div>
+               </div>
+               <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Organization (Optional)</Label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="pl-10 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                  </div>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Method</Label>
+               <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
+                  <PaymentOption value="cash" label="Cash" icon={Banknote} id="service_cash" />
+                  <PaymentOption value="card" label="Card" icon={CreditCard} id="service_card" />
+                  <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="service_qr" />
+               </RadioGroup>
+            </div>
+
+            {paymentMethod === 'cash' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                 <div className="space-y-1.5">
+                    <Label className="text-[10px] font-black uppercase tracking-widest px-1">Cash Received ($)</Label>
+                    <Input type="number" placeholder="0.00" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-14 rounded-2xl font-black text-2xl text-center" />
+                 </div>
+                 {Number(cashReceived) >= (selectedBundle?.price || 0) && (
+                   <div className="p-6 bg-primary/5 rounded-[32px] border-2 border-primary/20 flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase text-primary">Balance to Return</span>
+                      <span className="text-4xl font-black">${changeAmount.toFixed(2)}</span>
+                   </div>
+                 )}
+              </div>
+            )}
+
+            {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-top-2 text-center">
+                 {paymentMethod === 'duitnow' && serviceType?.duitNowQr && (
+                   <div className="space-y-4">
+                      <Image src={serviceType.duitNowQr} alt="DuitNow" width={200} height={200} className="rounded-2xl mx-auto shadow-xl border-4 border-white" />
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Point to Scan & Pay</p>
+                   </div>
+                 )}
+                 <div className="space-y-1.5 text-left">
+                    <Label className="text-[10px] font-black uppercase tracking-widest px-1">Transaction Ref / Trace ID</Label>
+                    <Input placeholder="Enter trace ID..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-10 pt-0">
+             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handlePlaceOrder} disabled={isProcessing || !customerName}>
+                {isProcessing ? "Finalizing Booking..." : "Log & Authorize Service"}
+             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PaymentOption({ value, label, icon: Icon, id }: any) {
+  return (
+    <div className="flex-1">
+      <RadioGroupItem value={value} id={id} className="peer sr-only" />
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28 text-center">
+        <Icon className="mb-2 h-6 w-6 text-primary" />
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      </Label>
     </div>
   );
 }
@@ -387,7 +533,9 @@ function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIco
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <p className="font-black text-foreground text-lg leading-tight">{order.items[0].name}</p>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{order.customerName}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
+                    {order.customerName} {order.customerCompany ? `(${order.customerCompany})` : ''}
+                  </p>
                 </div>
                 <p className="font-black text-primary text-xl">${order.totalAmount.toFixed(2)}</p>
               </div>

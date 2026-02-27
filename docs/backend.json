@@ -57,7 +57,8 @@
         "id": { "type": "string" },
         "companyId": { "type": "string" },
         "name": { "type": "string" },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "duitNowQr": { "type": "string" }
       }
     },
     "ServicePriceBundle": {
