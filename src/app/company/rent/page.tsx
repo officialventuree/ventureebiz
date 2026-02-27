@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -14,25 +13,21 @@ import {
   ArrowRightLeft, 
   User, 
   LayoutGrid, 
-  Info, 
   Settings2, 
-  Building2, 
   CreditCard, 
   Banknote, 
   QrCode, 
-  Calendar as CalendarIcon,
   Upload,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
+  ShieldCheck,
   Wallet,
   ArrowRight,
-  ShieldCheck
+  Edit2,
+  Check
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RentalItem, SaleTransaction, Company, PaymentMethod } from '@/lib/types';
@@ -43,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
 
 export default function RentPage() {
@@ -52,7 +48,8 @@ export default function RentPage() {
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedItem, setSelectedItem] = useState<RentalItem | null>(null);
+  const [selectedAssetForAgreement, setSelectedAssetForAgreement] = useState<RentalItem | null>(null);
+  const [editingAsset, setEditingAsset] = useState<RentalItem | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
   
@@ -62,6 +59,7 @@ export default function RentPage() {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<RentalItem['unit']>('day');
   
   // Verification State
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -92,9 +90,20 @@ export default function RentPage() {
 
   const activeRentals = transactions?.filter(t => t.module === 'rent' && t.status === 'in-progress') || [];
 
+  // Set default billing period when an asset is selected
+  useEffect(() => {
+    if (selectedAssetForAgreement) {
+      if (selectedAssetForAgreement.dailyRate) setSelectedBillingPeriod('day');
+      else if (selectedAssetForAgreement.hourlyRate) setSelectedBillingPeriod('hour');
+      else if (selectedAssetForAgreement.weeklyRate) setSelectedBillingPeriod('week');
+      else if (selectedAssetForAgreement.monthlyRate) setSelectedBillingPeriod('month');
+      else if (selectedAssetForAgreement.yearlyRate) setSelectedBillingPeriod('year');
+    }
+  }, [selectedAssetForAgreement]);
+
   // Live Price Calculation
   const calculatedAgreement = useMemo(() => {
-    if (!selectedItem) return { totalAmount: 0, duration: 0 };
+    if (!selectedAssetForAgreement) return { totalAmount: 0, duration: 0, rate: 0 };
     
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -102,12 +111,29 @@ export default function RentPage() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
     
     let duration = diffDays;
-    const rate = selectedItem.unit === 'day' ? selectedItem.dailyRate! : selectedItem.unit === 'month' ? selectedItem.monthlyRate! : selectedItem.hourlyRate!;
-    
-    if (selectedItem.unit === 'month') {
-      duration = Math.ceil(diffDays / 30);
-    } else if (selectedItem.unit === 'hour') {
-      duration = diffDays * 24;
+    let rate = 0;
+
+    switch (selectedBillingPeriod) {
+      case 'hour':
+        duration = diffDays * 24;
+        rate = selectedAssetForAgreement.hourlyRate || 0;
+        break;
+      case 'day':
+        duration = diffDays;
+        rate = selectedAssetForAgreement.dailyRate || 0;
+        break;
+      case 'week':
+        duration = Math.ceil(diffDays / 7);
+        rate = selectedAssetForAgreement.weeklyRate || 0;
+        break;
+      case 'month':
+        duration = Math.ceil(diffDays / 30);
+        rate = selectedAssetForAgreement.monthlyRate || 0;
+        break;
+      case 'year':
+        duration = Math.ceil(diffDays / 365);
+        rate = selectedAssetForAgreement.yearlyRate || 0;
+        break;
     }
 
     return {
@@ -115,42 +141,43 @@ export default function RentPage() {
       duration,
       rate
     };
-  }, [selectedItem, startDate, endDate]);
+  }, [selectedAssetForAgreement, startDate, endDate, selectedBillingPeriod]);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - calculatedAgreement.totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < calculatedAgreement.totalAmount;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
 
-  const handleRegisterItem = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveAsset = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
-    const itemId = crypto.randomUUID();
-    const unit = formData.get('unit') as 'hour' | 'day' | 'month';
-    const rate = Number(formData.get('rate'));
+    const itemId = editingAsset?.id || crypto.randomUUID();
     
     const newItem: RentalItem = {
       id: itemId,
       companyId: user.companyId,
       name: formData.get('name') as string,
-      unit,
-      dailyRate: unit === 'day' ? rate : undefined,
-      hourlyRate: unit === 'hour' ? rate : undefined,
-      monthlyRate: unit === 'month' ? rate : undefined,
-      status: 'available'
+      unit: editingAsset?.unit || 'day',
+      hourlyRate: formData.get('hourlyEnabled') === 'on' ? Number(formData.get('hourlyRate')) : undefined,
+      dailyRate: formData.get('dailyEnabled') === 'on' ? Number(formData.get('dailyRate')) : undefined,
+      weeklyRate: formData.get('weeklyEnabled') === 'on' ? Number(formData.get('weeklyRate')) : undefined,
+      monthlyRate: formData.get('monthlyEnabled') === 'on' ? Number(formData.get('monthlyRate')) : undefined,
+      yearlyRate: formData.get('yearlyEnabled') === 'on' ? Number(formData.get('yearlyRate')) : undefined,
+      status: editingAsset?.status || 'available'
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', itemId), newItem);
-      toast({ title: "Asset Registered", description: `${newItem.name} is now available for lease.` });
+      toast({ title: editingAsset ? "Asset Updated" : "Asset Registered", description: `${newItem.name} is saved in registry.` });
       setIsAddDialogOpen(false);
+      setEditingAsset(null);
     } catch (e: any) {
-      toast({ title: "Registration failed", description: e.message, variant: "destructive" });
+      toast({ title: "Operation failed", description: e.message, variant: "destructive" });
     }
   };
 
   const handleLaunchAgreement = async () => {
-    if (!selectedItem || !firestore || !user?.companyId) return;
+    if (!selectedAssetForAgreement || !firestore || !user?.companyId) return;
     setIsProcessing(true);
 
     try {
@@ -167,21 +194,21 @@ export default function RentPage() {
         referenceNumber: referenceNumber || undefined,
         status: 'in-progress',
         items: [{ 
-          name: selectedItem.name, 
+          name: selectedAssetForAgreement.name, 
           price: calculatedAgreement.rate, 
           quantity: 1, 
           duration: calculatedAgreement.duration,
-          unit: selectedItem.unit,
+          unit: selectedBillingPeriod,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate).toISOString()
         }]
       };
 
       await setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transactionId), transactionData);
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', selectedItem.id), { status: 'rented' });
+      await updateDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', selectedAssetForAgreement.id), { status: 'rented' });
 
       toast({ title: "Agreement Launched", description: `Active lease for ${customerName} recorded.` });
-      setSelectedItem(null);
+      setSelectedAssetForAgreement(null);
       setCustomerName('');
       setCustomerCompany('');
       setReferenceNumber('');
@@ -215,6 +242,7 @@ export default function RentPage() {
 
   const handleDeleteItem = async (itemId: string) => {
     if (!firestore || !user?.companyId) return;
+    if (!confirm("Are you sure you want to delete this asset? This action cannot be undone.")) return;
     try {
       await deleteDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', itemId));
       toast({ title: "Asset Removed" });
@@ -273,7 +301,7 @@ export default function RentPage() {
               <CalendarDays className="w-4 h-4" /> Create Agreement
             </TabsTrigger>
             <TabsTrigger value="registry" className="rounded-xl px-6 gap-2">
-              <LayoutGrid className="w-4 h-4" /> Assets
+              <LayoutGrid className="w-4 h-4" /> Asset Catalog
             </TabsTrigger>
             <TabsTrigger value="settings" className="rounded-xl px-6 gap-2">
               <Settings2 className="w-4 h-4" /> Billing Settings
@@ -338,9 +366,9 @@ export default function RentPage() {
                       key={item.id} 
                       className={cn(
                         "border-4 transition-all cursor-pointer rounded-[32px] overflow-hidden group hover:shadow-xl",
-                        selectedItem?.id === item.id ? "border-primary bg-primary/5" : "border-transparent bg-white shadow-sm"
+                        selectedAssetForAgreement?.id === item.id ? "border-primary bg-primary/5" : "border-transparent bg-white shadow-sm"
                       )}
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => setSelectedAssetForAgreement(item)}
                     >
                       <CardContent className="p-8">
                         <div className="flex justify-between items-start mb-4">
@@ -350,10 +378,13 @@ export default function RentPage() {
                            <Badge variant="secondary" className="font-black uppercase text-[10px] tracking-widest">Available</Badge>
                         </div>
                         <p className="font-black text-foreground text-xl leading-tight">{item.name}</p>
-                        <p className="text-3xl font-black text-primary mt-2">
-                           ${(item.unit === 'day' ? item.dailyRate : item.unit === 'month' ? item.monthlyRate : item.hourlyRate)?.toFixed(2)}
-                           <span className="text-sm font-bold text-muted-foreground uppercase tracking-widest">/{item.unit}</span>
-                        </p>
+                        <div className="mt-4 space-y-1 opacity-60">
+                          {item.hourlyRate && <p className="text-xs font-bold">${item.hourlyRate.toFixed(2)}/hour</p>}
+                          {item.dailyRate && <p className="text-xs font-bold">${item.dailyRate.toFixed(2)}/day</p>}
+                          {item.weeklyRate && <p className="text-xs font-bold">${item.weeklyRate.toFixed(2)}/week</p>}
+                          {item.monthlyRate && <p className="text-xs font-bold">${item.monthlyRate.toFixed(2)}/month</p>}
+                          {item.yearlyRate && <p className="text-xs font-bold">${item.yearlyRate.toFixed(2)}/year</p>}
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -369,14 +400,14 @@ export default function RentPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 p-8 overflow-y-auto space-y-8">
-                    {selectedItem ? (
+                    {selectedAssetForAgreement ? (
                       <div className="space-y-8">
                         <div className="p-6 bg-primary/5 border-2 border-primary/10 rounded-3xl relative overflow-hidden group">
                           <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform">
                             <CalendarDays className="w-24 h-24" />
                           </div>
                           <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Active Selection</p>
-                          <p className="text-xl font-black text-foreground">{selectedItem.name}</p>
+                          <p className="text-xl font-black text-foreground">{selectedAssetForAgreement.name}</p>
                         </div>
 
                         <div className="space-y-4">
@@ -398,6 +429,22 @@ export default function RentPage() {
                                 onChange={(e) => setCustomerCompany(e.target.value)}
                               />
                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                           <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Select Billing Period</label>
+                           <Select value={selectedBillingPeriod} onValueChange={(v) => setSelectedBillingPeriod(v as any)}>
+                              <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none">
+                                <SelectValue placeholder="Select Period" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl font-bold">
+                                {selectedAssetForAgreement.hourlyRate && <SelectItem value="hour">Hourly Rate (${selectedAssetForAgreement.hourlyRate.toFixed(2)})</SelectItem>}
+                                {selectedAssetForAgreement.dailyRate && <SelectItem value="day">Daily Rate (${selectedAssetForAgreement.dailyRate.toFixed(2)})</SelectItem>}
+                                {selectedAssetForAgreement.weeklyRate && <SelectItem value="week">Weekly Rate (${selectedAssetForAgreement.weeklyRate.toFixed(2)})</SelectItem>}
+                                {selectedAssetForAgreement.monthlyRate && <SelectItem value="month">Monthly Rate (${selectedAssetForAgreement.monthlyRate.toFixed(2)})</SelectItem>}
+                                {selectedAssetForAgreement.yearlyRate && <SelectItem value="year">Yearly Rate (${selectedAssetForAgreement.yearlyRate.toFixed(2)})</SelectItem>}
+                              </SelectContent>
+                           </Select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -424,8 +471,8 @@ export default function RentPage() {
 
                         <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 space-y-2">
                            <div className="flex justify-between items-center opacity-70">
-                              <p className="text-[10px] font-black uppercase tracking-widest">Duration Estimate</p>
-                              <p className="text-xs font-black">{calculatedAgreement.duration} {selectedItem.unit}(s)</p>
+                              <p className="text-[10px] font-black uppercase tracking-widest">Calculated Duration</p>
+                              <p className="text-xs font-black">{calculatedAgreement.duration} {selectedBillingPeriod}(s)</p>
                            </div>
                            <div className="flex justify-between items-end pt-2">
                               <p className="text-xs font-black uppercase text-primary tracking-widest mb-1">Total Fee</p>
@@ -440,7 +487,7 @@ export default function RentPage() {
                       </div>
                     )}
                   </CardContent>
-                  {selectedItem && (
+                  {selectedAssetForAgreement && (
                     <CardFooter className="flex-col gap-4 p-8 border-t bg-secondary/5">
                       <Button 
                         onClick={() => setShowCheckoutDialog(true)} 
@@ -553,45 +600,41 @@ export default function RentPage() {
                <Card className="lg:col-span-1 border-none shadow-sm rounded-[32px] bg-white h-fit p-8">
                   <div className="flex flex-col gap-6">
                     <div className="space-y-1">
-                      <h3 className="text-xl font-black">Strategic Reserve</h3>
+                      <h3 className="text-xl font-black tracking-tight">Active Asset Registry</h3>
                       <p className="text-xs font-bold text-muted-foreground">Rental pool management</p>
                     </div>
-                    <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                    <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                      setIsAddDialogOpen(open);
+                      if (!open) setEditingAsset(null);
+                    }}>
                       <DialogTrigger asChild>
                         <Button className="w-full h-14 rounded-2xl font-black shadow-lg">
                           <Plus className="w-5 h-5 mr-2" /> Register Asset
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden border-none shadow-2xl bg-white">
+                      <DialogContent className="rounded-[40px] max-w-2xl p-0 overflow-hidden border-none shadow-2xl bg-white">
                          <div className="bg-primary p-10 text-primary-foreground">
-                            <DialogTitle className="text-3xl font-black tracking-tight">New Asset Registration</DialogTitle>
+                            <DialogTitle className="text-3xl font-black tracking-tight">{editingAsset ? 'Edit Asset' : 'New Asset Registration'}</DialogTitle>
                          </div>
-                         <form onSubmit={handleRegisterItem} className="p-10 space-y-8">
+                         <form onSubmit={handleSaveAsset} className="p-10 space-y-8">
                            <div className="space-y-2">
                              <label className="text-[10px] font-black uppercase tracking-widest px-1">Legal Name / Model</label>
-                             <Input name="name" placeholder="Asset Name" required className="h-14 rounded-2xl font-bold bg-secondary/20 border-none" />
+                             <Input name="name" defaultValue={editingAsset?.name} placeholder="Asset Name" required className="h-14 rounded-2xl font-bold bg-secondary/20 border-none" />
                            </div>
-                           <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest px-1">Billing Cycle</label>
-                                <Select name="unit" defaultValue="day">
-                                  <SelectTrigger className="h-14 rounded-2xl bg-secondary/20 border-none font-bold">
-                                    <SelectValue placeholder="Unit" />
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-xl font-bold">
-                                    <SelectItem value="hour">Hourly</SelectItem>
-                                    <SelectItem value="day">Daily</SelectItem>
-                                    <SelectItem value="month">Monthly</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest px-1">Rate ($)</label>
-                                <Input name="rate" type="number" step="0.01" placeholder="0.00" required className="h-14 rounded-2xl font-black bg-secondary/20 border-none text-lg" />
+                           
+                           <div className="space-y-4">
+                              <label className="text-[10px] font-black uppercase tracking-widest px-1">Configure Multi-Period Rates</label>
+                              <div className="grid grid-cols-1 gap-4">
+                                <RateInput label="Hourly" name="hourly" rate={editingAsset?.hourlyRate} />
+                                <RateInput label="Daily" name="daily" rate={editingAsset?.dailyRate} />
+                                <RateInput label="Weekly" name="weekly" rate={editingAsset?.weeklyRate} />
+                                <RateInput label="Monthly" name="monthly" rate={editingAsset?.monthlyRate} />
+                                <RateInput label="Yearly" name="yearly" rate={editingAsset?.yearlyRate} />
                               </div>
                            </div>
+
                            <Button type="submit" className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl">
-                             Save to Registry
+                             {editingAsset ? 'Save Changes' : 'Register to Registry'}
                            </Button>
                          </form>
                       </DialogContent>
@@ -618,9 +661,9 @@ export default function RentPage() {
                        <thead className="bg-secondary/20 border-b">
                          <tr>
                            <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Asset Identity</th>
-                           <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Billing Metrics</th>
+                           <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Active Rates</th>
                            <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Status</th>
-                           <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
+                           <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Actions</th>
                          </tr>
                        </thead>
                        <tbody className="divide-y">
@@ -630,11 +673,12 @@ export default function RentPage() {
                                 <p className="font-black text-foreground text-lg">{item.name}</p>
                              </td>
                              <td className="p-6">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-black text-primary text-xl">
-                                    ${(item.unit === 'day' ? item.dailyRate : item.unit === 'month' ? item.monthlyRate : item.hourlyRate)?.toFixed(2)}
-                                  </p>
-                                  <Badge variant="outline" className="text-[9px] font-black uppercase">{item.unit}</Badge>
+                                <div className="flex flex-wrap gap-2">
+                                  {item.hourlyRate && <Badge variant="outline" className="text-[9px] font-black">H: ${item.hourlyRate}</Badge>}
+                                  {item.dailyRate && <Badge variant="outline" className="text-[9px] font-black">D: ${item.dailyRate}</Badge>}
+                                  {item.weeklyRate && <Badge variant="outline" className="text-[9px] font-black">W: ${item.weeklyRate}</Badge>}
+                                  {item.monthlyRate && <Badge variant="outline" className="text-[9px] font-black">M: ${item.monthlyRate}</Badge>}
+                                  {item.yearlyRate && <Badge variant="outline" className="text-[9px] font-black">Y: ${item.yearlyRate}</Badge>}
                                 </div>
                              </td>
                              <td className="p-6">
@@ -643,9 +687,17 @@ export default function RentPage() {
                                 </Badge>
                              </td>
                              <td className="p-6 text-center">
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                                <div className="flex items-center justify-center gap-2">
+                                  <Button variant="ghost" size="icon" onClick={() => {
+                                    setEditingAsset(item);
+                                    setIsAddDialogOpen(true);
+                                  }} className="text-primary hover:bg-primary/10">
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10">
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
                              </td>
                            </tr>
                          ))}
@@ -707,6 +759,37 @@ export default function RentPage() {
           </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function RateInput({ label, name, rate }: { label: string, name: string, rate?: number }) {
+  const [enabled, setEnabled] = useState(!!rate);
+  return (
+    <div className="flex items-center gap-4 p-4 rounded-2xl bg-secondary/10">
+      <div className="flex items-center gap-3 w-32">
+        <Checkbox 
+          id={`${name}Enabled`} 
+          name={`${name}Enabled`} 
+          checked={enabled} 
+          onCheckedChange={(checked) => setEnabled(!!checked)}
+          className="rounded-md h-5 w-5"
+        />
+        <Label htmlFor={`${name}Enabled`} className="font-black text-xs uppercase tracking-tight">{label}</Label>
+      </div>
+      <div className="flex-1 relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted-foreground">$</span>
+        <Input 
+          name={`${name}Rate`} 
+          type="number" 
+          step="0.01" 
+          defaultValue={rate} 
+          disabled={!enabled}
+          placeholder="0.00" 
+          className="pl-8 h-12 rounded-xl border-none bg-white font-bold" 
+        />
+      </div>
+      <span className="text-[10px] font-black text-muted-foreground uppercase w-12 text-center">/ {label.toLowerCase()}</span>
     </div>
   );
 }

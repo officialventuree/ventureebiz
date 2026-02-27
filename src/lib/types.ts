@@ -74,8 +74,10 @@ export interface RentalItem {
   name: string;
   hourlyRate?: number;
   dailyRate?: number;
+  weeklyRate?: number;
   monthlyRate?: number;
-  unit: 'hour' | 'day' | 'month';
+  yearlyRate?: number;
+  unit: 'hour' | 'day' | 'week' | 'month' | 'year';
   status: RentalStatus;
 }
 
