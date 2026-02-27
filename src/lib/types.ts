@@ -58,6 +58,10 @@ export interface SaleTransaction {
   paymentMethod?: PaymentMethod;
   referenceNumber?: string;
   luckyDrawEventId?: string;
+  // Advanced Service Fields
+  serviceRevenue?: number;
+  martRevenue?: number;
+  materialCost?: number;
 }
 
 export interface Product {
@@ -122,6 +126,14 @@ export interface LaundryInventory {
   category: 'student' | 'payable';
   lastBottleCost?: number;
   lastBottleVolume?: number;
+}
+
+export interface LaundryLevelConfig {
+  id: string;
+  companyId: string;
+  level: number;
+  subscriptionFee: number;
+  totalWashesAllowed: number;
 }
 
 export interface LaundryLevelConfig {

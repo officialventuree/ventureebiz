@@ -14,18 +14,14 @@ import {
   CheckCircle2, 
   Clock, 
   Trash2, 
-  TrendingUp, 
   Play, 
   Package, 
   ChevronLeft,
-  DollarSign,
-  Briefcase,
+  TrendingUp,
   Layers,
   ArrowRight,
   ShieldCheck,
   Zap,
-  BarChart3,
-  Star,
   QrCode,
   Upload,
   Settings2,
@@ -33,9 +29,11 @@ import {
   Banknote,
   User,
   Building2,
-  Wallet,
   Calculator,
-  RefreshCw
+  RefreshCw,
+  ShoppingCart,
+  Minus,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -47,7 +45,7 @@ import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMetho
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -64,7 +62,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('pipeline');
 
   // Booking Form State
@@ -76,11 +73,19 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const [referenceNumber, setReferenceNumber] = useState('');
   const [cashReceived, setCashReceived] = useState<number | string>('');
 
-  // Material Form State (Advanced Procurement)
+  // Material Form State
   const [matQuantity, setMatQuantity] = useState<string>('1');
   const [matMeasure, setMatMeasure] = useState<string>('');
   const [matUnit, setMatUnit] = useState<string>('pc');
   const [matCostPerItem, setMatCostPerItem] = useState<string>('');
+
+  // Start Service Workflow State
+  const [isStartWorkOpen, setIsStartWorkOpen] = useState(false);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [selectedMaterials, setSelectedMaterials] = useState<{ product: Product, qty: number }[]>([]);
+  const [selectedMartItems, setSelectedMartItems] = useState<{ product: Product, qty: number }[]>([]);
+  const [materialSearch, setMaterialSearch] = useState('');
+  const [martSearch, setMartSearch] = useState('');
 
   // Queries
   const serviceRef = useMemoFirebase(() => {
@@ -102,18 +107,18 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     );
   }, [firestore, user?.companyId, serviceId]);
 
-  const inventoryQuery = useMemoFirebase(() => {
+  const allProductsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
-    return query(
-      collection(firestore, 'companies', user.companyId, 'products'),
-      where('serviceTypeId', '==', serviceId)
-    );
-  }, [firestore, user?.companyId, serviceId]);
+    return collection(firestore, 'companies', user.companyId, 'products');
+  }, [firestore, user?.companyId]);
 
   const { data: serviceType } = useDoc<ServiceType>(serviceRef);
   const { data: bundles } = useCollection<ServicePriceBundle>(bundlesQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
-  const { data: materials } = useCollection<Product>(inventoryQuery);
+  const { data: allProducts } = useCollection<Product>(allProductsQuery);
+
+  const materials = allProducts?.filter(p => p.serviceTypeId === serviceId) || [];
+  const martProducts = allProducts?.filter(p => !p.serviceTypeId) || [];
 
   const pipeline = {
     pending: transactions?.filter(t => t.status === 'pending') || [],
@@ -121,6 +126,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     completed: transactions?.filter(t => t.status === 'completed') || []
   };
 
+  const activeOrder = transactions?.find(t => t.id === activeOrderId);
+
+  // Handlers
   const handlePlaceOrder = () => {
     if (!firestore || !user?.companyId || !customerName || !selectedBundle) return;
     
@@ -164,6 +172,62 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     setSelectedBundle(null);
   };
 
+  const handleOpenStartWork = (orderId: string) => {
+    setActiveOrderId(orderId);
+    setSelectedMaterials([]);
+    setSelectedMartItems([]);
+    setIsStartWorkOpen(true);
+  };
+
+  const handleConfirmStartWork = async () => {
+    if (!firestore || !user?.companyId || !activeOrder) return;
+
+    const totalMartSellingPrice = selectedMartItems.reduce((acc, item) => acc + (item.product.sellingPrice * item.qty), 0);
+    const totalMaterialCost = selectedMaterials.reduce((acc, item) => acc + (item.product.costPrice * item.qty), 0);
+    const totalMartCost = selectedMartItems.reduce((acc, item) => acc + (item.product.costPrice * item.qty), 0);
+
+    const serviceRevenue = Math.max(0, activeOrder.totalAmount - totalMartSellingPrice);
+    const martRevenue = totalMartSellingPrice;
+    
+    // Profit Calculation: (Service Revenue - Service Material Cost) + (Mart Revenue - Mart Cost)
+    const netProfit = (serviceRevenue - totalMaterialCost) + (martRevenue - totalMartCost);
+
+    try {
+      // 1. Update Transaction
+      const orderRef = doc(firestore, 'companies', user.companyId, 'transactions', activeOrder.id);
+      await updateDoc(orderRef, {
+        status: 'in-progress',
+        serviceRevenue,
+        martRevenue,
+        materialCost: totalMaterialCost,
+        profit: netProfit,
+        // Append used items to items array for logging
+        items: [
+          ...activeOrder.items,
+          ...selectedMaterials.map(m => ({ name: `[MAT] ${m.product.name}`, price: 0, quantity: m.qty, cost: m.product.costPrice })),
+          ...selectedMartItems.map(m => ({ name: `[MART] ${m.product.name}`, price: m.product.sellingPrice, quantity: m.qty, cost: m.product.costPrice }))
+        ]
+      });
+
+      // 2. Deduct Materials
+      for (const mat of selectedMaterials) {
+        const matRef = doc(firestore, 'companies', user.companyId, 'products', mat.product.id);
+        await updateDoc(matRef, { stock: increment(-mat.qty) });
+      }
+
+      // 3. Deduct Mart Items
+      for (const martItem of selectedMartItems) {
+        const martRef = doc(firestore, 'companies', user.companyId, 'products', martItem.product.id);
+        await updateDoc(martRef, { stock: increment(-martItem.qty) });
+      }
+
+      toast({ title: "Work Commenced", description: "Inventory synchronized and revenue split recorded." });
+      setIsStartWorkOpen(false);
+    } catch (e: any) {
+      toast({ title: "Operation failed", variant: "destructive" });
+    }
+  };
+
   const handleUpdateStatus = (id: string, newStatus: string) => {
     if (!firestore || !user?.companyId) return;
     const docRef = doc(firestore, 'companies', user.companyId, 'transactions', id);
@@ -175,26 +239,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       }));
     });
     toast({ title: "Pipeline Updated", description: `Service status is now ${newStatus}.` });
-  };
-
-  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !firestore || !user?.companyId) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const docRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId);
-      updateDoc(docRef, { duitNowQr: base64String }).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: docRef.path,
-          operation: 'update',
-          requestResourceData: { duitNowQr: '[IMAGE_DATA]' }
-        }));
-      });
-      toast({ title: "Billing QR Updated" });
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleCreateBundle = (e: React.FormEvent<HTMLFormElement>) => {
@@ -287,10 +331,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - (selectedBundle?.price || 0)) : 0;
 
-  // Real-time derived values for form
-  const totalMatVolume = (Number(matQuantity) || 0) * (Number(matMeasure) || 0);
-  const totalMatCost = (Number(matQuantity) || 0) * (Number(matCostPerItem) || 0);
-
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -336,7 +376,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             </TabsList>
 
             <TabsContent value="pipeline" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               <PipelineColumn title="Pending" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleUpdateStatus(id, 'in-progress')} actionLabel="Start Work" actionIcon={Play} />
+               <PipelineColumn title="Pending" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleOpenStartWork(id)} actionLabel="Start Work" actionIcon={Play} />
                <PipelineColumn title="In-Progress" color="bg-primary" orders={pipeline.inProgress} onAction={(id) => handleUpdateStatus(id, 'completed')} actionLabel="Deliver" actionIcon={CheckCircle2} />
                <PipelineColumn title="Delivered" color="bg-green-600" orders={pipeline.completed} completed />
             </TabsContent>
@@ -459,11 +499,11 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                     <div className="bg-primary/5 rounded-2xl p-4 space-y-2 border border-primary/10">
                        <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
                           <span>Total Stock Added</span>
-                          <span className="text-foreground font-black">{totalMatVolume.toFixed(1)} {matUnit}</span>
+                          <span className="text-foreground font-black">{((Number(matQuantity) || 0) * (Number(matMeasure) || 0)).toFixed(1)} {matUnit}</span>
                        </div>
                        <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
                           <span>Total Expenditure</span>
-                          <span className="text-primary font-black">${totalMatCost.toFixed(2)}</span>
+                          <span className="text-primary font-black">${((Number(matQuantity) || 0) * (Number(matCostPerItem) || 0)).toFixed(2)}</span>
                        </div>
                     </div>
 
@@ -550,14 +590,34 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                      <Image src={serviceType.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
                      <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity">
                         <Upload className="text-white w-8 h-8" />
-                        <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                        <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (!file || !firestore || !user?.companyId) return;
+                           const reader = new FileReader();
+                           reader.onloadend = () => {
+                             const base64String = reader.result as string;
+                             updateDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId), { duitNowQr: base64String });
+                             toast({ title: "Billing QR Updated" });
+                           };
+                           reader.readAsDataURL(file);
+                        }} />
                      </label>
                    </div>
                  ) : (
                    <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center mx-auto cursor-pointer hover:bg-secondary/20 transition-all gap-4">
                       <Plus className="w-8 h-8 text-primary" />
                       <p className="text-xs font-black uppercase">Upload Settlement QR</p>
-                      <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                      <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                         const file = e.target.files?.[0];
+                         if (!file || !firestore || !user?.companyId) return;
+                         const reader = new FileReader();
+                         reader.onloadend = () => {
+                           const base64String = reader.result as string;
+                           updateDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId), { duitNowQr: base64String });
+                           toast({ title: "Billing QR Uploaded" });
+                         };
+                         reader.readAsDataURL(file);
+                      }} />
                    </label>
                  )}
                </Card>
@@ -566,11 +626,11 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
         </div>
       </main>
 
-      {/* New Booking Dialog */}
+      {/* Booking Dialog */}
       <Dialog open={isBookingOpen} onOpenChange={setIsBookingOpen}>
         <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
           <div className="bg-primary p-12 text-primary-foreground text-center relative overflow-hidden">
-             <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Briefcase className="w-24 h-24" /></div>
+             <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Calculator className="w-24 h-24" /></div>
              <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Service Settlement</p>
              <h2 className="text-6xl font-black tracking-tighter relative z-10">${selectedBundle?.price.toFixed(2)}</h2>
              <div className="mt-4 inline-flex items-center gap-2 bg-black/10 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm relative z-10">
@@ -637,12 +697,212 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
           </div>
 
           <div className="p-10 pt-0">
-             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handlePlaceOrder} disabled={!customerName}>
+             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-xl" onClick={handlePlaceOrder} disabled={!customerName}>
                 Log & Authorize Service
              </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Start Service Workflow Dialog */}
+      <Dialog open={isStartWorkOpen} onOpenChange={setIsStartWorkOpen}>
+        <DialogContent className="rounded-[40px] max-w-4xl p-0 overflow-hidden bg-white border-none shadow-2xl">
+          <div className="bg-primary p-10 text-primary-foreground">
+             <div className="flex justify-between items-start">
+                <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Production Command</p>
+                   <DialogTitle className="text-3xl font-black tracking-tight">Configure Work Logistics</DialogTitle>
+                   <p className="text-sm font-bold opacity-70 mt-1">{activeOrder?.customerName} • {activeOrder?.items[0].name}</p>
+                </div>
+                <div className="bg-black/10 px-6 py-3 rounded-2xl text-right backdrop-blur-md">
+                   <p className="text-[10px] font-black uppercase opacity-60">Bundle Value</p>
+                   <p className="text-3xl font-black">${activeOrder?.totalAmount.toFixed(2)}</p>
+                </div>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-x h-[600px]">
+             {/* Left: Product/Material Selector */}
+             <div className="flex flex-col p-8 overflow-hidden">
+                <Tabs defaultValue="materials" className="flex-1 flex flex-col overflow-hidden">
+                   <TabsList className="bg-secondary/20 p-1 rounded-xl mb-6">
+                      <TabsTrigger value="materials" className="flex-1 rounded-lg font-black text-xs gap-2">
+                         <Layers className="w-3 h-3" /> Service Materials
+                      </TabsTrigger>
+                      <TabsTrigger value="mart" className="flex-1 rounded-lg font-black text-xs gap-2">
+                         <ShoppingCart className="w-3 h-3" /> Mart Inventory
+                      </TabsTrigger>
+                   </TabsList>
+
+                   <TabsContent value="materials" className="flex-1 flex flex-col overflow-hidden m-0">
+                      <div className="relative mb-4">
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                         <Input 
+                           placeholder="Search Materials..." 
+                           className="pl-10 h-10 rounded-xl bg-secondary/10 border-none font-bold text-xs" 
+                           value={materialSearch}
+                           onChange={(e) => setMaterialSearch(e.target.value)}
+                         />
+                      </div>
+                      <div className="flex-1 overflow-auto space-y-2">
+                         {materials.filter(m => m.name.toLowerCase().includes(materialSearch.toLowerCase())).map(m => (
+                           <ProductSelectorCard 
+                             key={m.id} 
+                             product={m} 
+                             onAdd={() => {
+                                const existing = selectedMaterials.find(item => item.product.id === m.id);
+                                if (existing) setSelectedMaterials(selectedMaterials.map(item => item.product.id === m.id ? { ...item, qty: item.qty + 1 } : item));
+                                else setSelectedMaterials([...selectedMaterials, { product: m, qty: 1 }]);
+                             }}
+                           />
+                         ))}
+                      </div>
+                   </TabsContent>
+
+                   <TabsContent value="mart" className="flex-1 flex flex-col overflow-hidden m-0">
+                      <div className="relative mb-4">
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                         <Input 
+                           placeholder="Search Mart Products..." 
+                           className="pl-10 h-10 rounded-xl bg-secondary/10 border-none font-bold text-xs" 
+                           value={martSearch}
+                           onChange={(e) => setMartSearch(e.target.value)}
+                         />
+                      </div>
+                      <div className="flex-1 overflow-auto space-y-2">
+                         {martProducts.filter(m => m.name.toLowerCase().includes(martSearch.toLowerCase())).map(m => (
+                           <ProductSelectorCard 
+                             key={m.id} 
+                             product={m} 
+                             isMart
+                             onAdd={() => {
+                                const existing = selectedMartItems.find(item => item.product.id === m.id);
+                                if (existing) setSelectedMartItems(selectedMartItems.map(item => item.product.id === m.id ? { ...item, qty: item.qty + 1 } : item));
+                                else setSelectedMartItems([...selectedMartItems, { product: m, qty: 1 }]);
+                             }}
+                           />
+                         ))}
+                      </div>
+                   </TabsContent>
+                </Tabs>
+             </div>
+
+             {/* Right: Selected Summary & Revenue Split */}
+             <div className="flex flex-col p-8 bg-secondary/5 overflow-hidden">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-4">Resource Consumption</h4>
+                <div className="flex-1 overflow-auto space-y-4">
+                   {selectedMaterials.length > 0 && (
+                     <div className="space-y-2">
+                        <p className="text-[9px] font-black text-primary uppercase">Service Materials (Internal)</p>
+                        {selectedMaterials.map(item => (
+                          <SelectedConsumptionRow 
+                            key={item.product.id} 
+                            item={item} 
+                            onUpdate={(qty) => {
+                               if (qty <= 0) setSelectedMaterials(selectedMaterials.filter(i => i.product.id !== item.product.id));
+                               else setSelectedMaterials(selectedMaterials.map(i => i.product.id === item.product.id ? { ...i, qty } : i));
+                            }}
+                          />
+                        ))}
+                     </div>
+                   )}
+
+                   {selectedMartItems.length > 0 && (
+                     <div className="space-y-2">
+                        <p className="text-[9px] font-black text-accent-foreground uppercase">Mart Products (Internal Purchase)</p>
+                        {selectedMartItems.map(item => (
+                          <SelectedConsumptionRow 
+                            key={item.product.id} 
+                            item={item} 
+                            isMart
+                            onUpdate={(qty) => {
+                               if (qty <= 0) setSelectedMartItems(selectedMartItems.filter(i => i.product.id !== item.product.id));
+                               else setSelectedMartItems(selectedMartItems.map(i => i.product.id === item.product.id ? { ...i, qty } : i));
+                            }}
+                          />
+                        ))}
+                     </div>
+                   )}
+
+                   {selectedMaterials.length === 0 && selectedMartItems.length === 0 && (
+                     <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
+                        <Zap className="w-12 h-12 mb-2" />
+                        <p className="text-xs font-black uppercase">No Resources Selected</p>
+                     </div>
+                   )}
+                </div>
+
+                <div className="mt-6 space-y-4">
+                   <div className="bg-white p-6 rounded-3xl border-2 border-primary/10 space-y-3">
+                      <div className="flex justify-between items-center">
+                         <span className="text-[10px] font-black text-muted-foreground uppercase">Mart Buy-In (Deduction)</span>
+                         <span className="text-sm font-black text-destructive">-${selectedMartItems.reduce((acc, i) => acc + (i.product.sellingPrice * i.qty), 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                         <span className="text-[10px] font-black text-muted-foreground uppercase">Service Revenue Split</span>
+                         <span className="text-sm font-black text-foreground">${Math.max(0, (activeOrder?.totalAmount || 0) - selectedMartItems.reduce((acc, i) => acc + (i.product.sellingPrice * i.qty), 0)).toFixed(2)}</span>
+                      </div>
+                      <Separator />
+                      <div className="flex justify-between items-end pt-1">
+                         <div>
+                            <p className="text-[10px] font-black text-primary uppercase">Estimated Net Profit</p>
+                            <p className="text-xs font-bold text-muted-foreground leading-tight">After material & mart costs</p>
+                         </div>
+                         <p className="text-3xl font-black text-primary">
+                            ${(
+                              (Math.max(0, (activeOrder?.totalAmount || 0) - selectedMartItems.reduce((acc, i) => acc + (i.product.sellingPrice * i.qty), 0)) - selectedMaterials.reduce((acc, i) => acc + (i.product.costPrice * i.qty), 0)) + 
+                              (selectedMartItems.reduce((acc, i) => acc + (i.product.sellingPrice * i.qty), 0) - selectedMartItems.reduce((acc, i) => acc + (i.product.costPrice * i.qty), 0))
+                            ).toFixed(2)}
+                         </p>
+                      </div>
+                   </div>
+                   <Button 
+                     className="w-full h-16 rounded-2xl font-black text-lg shadow-xl" 
+                     onClick={handleConfirmStartWork}
+                   >
+                      Confirm Setup & Start Service
+                   </Button>
+                </div>
+             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ProductSelectorCard({ product, onAdd, isMart }: { product: Product, onAdd: () => void, isMart?: boolean }) {
+  return (
+    <Card className="border-none shadow-sm bg-white p-4 group hover:shadow-md transition-all cursor-pointer" onClick={onAdd}>
+       <div className="flex justify-between items-start">
+          <div className="flex-1">
+             <p className="font-black text-xs text-foreground leading-tight">{product.name}</p>
+             <p className="text-[9px] font-bold text-muted-foreground uppercase mt-1">
+                Stock: {product.stock.toFixed(1)} {product.unit} • {isMart ? `Price: $${product.sellingPrice.toFixed(2)}` : `Cost: $${product.costPrice.toFixed(2)}`}
+             </p>
+          </div>
+          <div className="w-8 h-8 bg-secondary rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+             <Plus className="w-4 h-4 text-primary" />
+          </div>
+       </div>
+    </Card>
+  );
+}
+
+function SelectedConsumptionRow({ item, onUpdate, isMart }: { item: { product: Product, qty: number }, onUpdate: (qty: number) => void, isMart?: boolean }) {
+  return (
+    <div className="bg-white rounded-xl p-3 shadow-sm border flex items-center justify-between">
+       <div className="flex-1 min-w-0 pr-4">
+          <p className="text-[11px] font-black truncate">{item.product.name}</p>
+          <p className="text-[9px] font-bold text-muted-foreground uppercase">
+             {isMart ? `Buy-In Price: $${(item.product.sellingPrice * item.qty).toFixed(2)}` : `Internal Cost: $${(item.product.costPrice * item.qty).toFixed(2)}`}
+          </p>
+       </div>
+       <div className="flex items-center gap-3 bg-secondary/20 p-1 rounded-lg">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onUpdate(item.qty - 1)}><Minus className="w-3 h-3" /></Button>
+          <span className="text-xs font-black w-4 text-center">{item.qty}</span>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onUpdate(item.qty + 1)}><Plus className="w-3 h-3" /></Button>
+       </div>
     </div>
   );
 }
