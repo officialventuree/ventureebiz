@@ -1,32 +1,65 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CalendarDays, Plus, Search, History, CheckCircle2, Clock, Trash2, ArrowRightLeft, User, LayoutGrid, Info, Settings2 } from 'lucide-react';
+import { 
+  CalendarDays, 
+  Plus, 
+  Search, 
+  Clock, 
+  Trash2, 
+  ArrowRightLeft, 
+  User, 
+  LayoutGrid, 
+  Info, 
+  Settings2, 
+  Building2, 
+  CreditCard, 
+  Banknote, 
+  QrCode, 
+  Calendar as CalendarIcon,
+  Upload,
+  CheckCircle2
+} from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RentalItem, SaleTransaction } from '@/lib/types';
+import { RentalItem, SaleTransaction, Company, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import Image from 'next/image';
 
 export default function RentPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<RentalItem | null>(null);
-  const [duration, setDuration] = useState(1);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  
+  // Advanced Agreement State
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [referenceNumber, setReferenceNumber] = useState('');
+
+  const companyRef = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return doc(firestore, 'companies', user.companyId);
+  }, [firestore, user?.companyId]);
 
   const rentalItemsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -38,6 +71,7 @@ export default function RentPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
+  const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: rentalItems } = useCollection<RentalItem>(rentalItemsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
 
@@ -70,8 +104,8 @@ export default function RentPage() {
       await setDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', itemId), newItem);
       toast({ title: "Asset Registered", description: `${newItem.name} is now available for lease.` });
       setIsAddDialogOpen(false);
-    } catch (e) {
-      toast({ title: "Registration failed", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Registration failed", description: e.message, variant: "destructive" });
     }
   };
 
@@ -82,7 +116,23 @@ export default function RentPage() {
 
     const formData = new FormData(e.currentTarget);
     const customerName = formData.get('customer') as string;
+    const customerCompany = formData.get('company') as string;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Calculate total based on selected item unit
+    let duration = diffDays;
     const rate = selectedItem.unit === 'day' ? selectedItem.dailyRate! : selectedItem.unit === 'month' ? selectedItem.monthlyRate! : selectedItem.hourlyRate!;
+    
+    if (selectedItem.unit === 'month') {
+      duration = Math.ceil(diffDays / 30);
+    } else if (selectedItem.unit === 'hour') {
+      duration = diffDays * 24; // Approximation for date selector
+    }
+
     const totalAmount = rate * duration;
 
     try {
@@ -94,7 +144,9 @@ export default function RentPage() {
         totalAmount,
         profit: totalAmount * 0.95, 
         timestamp: new Date().toISOString(),
-        customerName,
+        customerName: customerCompany ? `${customerName} (${customerCompany})` : customerName,
+        paymentMethod,
+        referenceNumber: referenceNumber || undefined,
         status: 'in-progress',
         items: [{ 
           name: selectedItem.name, 
@@ -102,8 +154,8 @@ export default function RentPage() {
           quantity: 1, 
           duration,
           unit: selectedItem.unit,
-          startDate: new Date().toISOString(),
-          endDate: new Date(Date.now() + (duration * (selectedItem.unit === 'day' ? 24 : selectedItem.unit === 'month' ? 720 : 1) * 60 * 60 * 1000)).toISOString()
+          startDate: start.toISOString(),
+          endDate: end.toISOString()
         }]
       };
 
@@ -112,9 +164,10 @@ export default function RentPage() {
 
       toast({ title: "Agreement Launched", description: `Active lease for ${customerName} recorded.` });
       setSelectedItem(null);
-      setDuration(1);
-    } catch (e) {
-      toast({ title: "Launch failed", variant: "destructive" });
+      setReferenceNumber('');
+      setPaymentMethod('cash');
+    } catch (e: any) {
+      toast({ title: "Launch failed", description: e.message, variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
@@ -133,8 +186,8 @@ export default function RentPage() {
         await updateDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', itemToUpdate.id), { status: 'available' });
       }
       toast({ title: "Asset Returned", description: "Agreement fulfilled and item back in inventory." });
-    } catch (e) {
-      toast({ title: "Return failed", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Return failed", description: e.message, variant: "destructive" });
     }
   };
 
@@ -143,9 +196,28 @@ export default function RentPage() {
     try {
       await deleteDoc(doc(firestore, 'companies', user.companyId, 'rentalItems', itemId));
       toast({ title: "Asset Removed" });
-    } catch (e) {
-      toast({ title: "Deletion failed", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Deletion failed", description: e.message, variant: "destructive" });
     }
+  };
+
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !user?.companyId) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      try {
+        await updateDoc(doc(firestore, 'companies', user.companyId), {
+          duitNowQr: base64String
+        });
+        toast({ title: "QR Code Updated", description: "DuitNow QR has been saved to your rental profile." });
+      } catch (err: any) {
+        toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -155,7 +227,7 @@ export default function RentPage() {
         <div className="mb-8 flex justify-between items-end">
           <div>
             <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Leasing Terminal</h1>
-            <p className="text-muted-foreground font-bold text-sm">Agreement Creator & Workflow Control</p>
+            <p className="text-muted-foreground font-bold text-sm">Advanced Agreement & Billing Control</p>
           </div>
           <div className="flex gap-4">
              <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
@@ -173,13 +245,16 @@ export default function RentPage() {
         <Tabs defaultValue="workflow" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start mb-6">
             <TabsTrigger value="workflow" className="rounded-xl px-6 gap-2">
-              <ArrowRightLeft className="w-4 h-4" /> Active Workflow
+              <ArrowRightLeft className="w-4 h-4" /> Workflow
             </TabsTrigger>
             <TabsTrigger value="pos" className="rounded-xl px-6 gap-2">
-              <CalendarDays className="w-4 h-4" /> Agreement Creator
+              <CalendarDays className="w-4 h-4" /> Create Agreement
             </TabsTrigger>
             <TabsTrigger value="registry" className="rounded-xl px-6 gap-2">
-              <LayoutGrid className="w-4 h-4" /> Asset Registry
+              <LayoutGrid className="w-4 h-4" /> Assets
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="rounded-xl px-6 gap-2">
+              <Settings2 className="w-4 h-4" /> Billing Settings
             </TabsTrigger>
           </TabsList>
 
@@ -199,14 +274,14 @@ export default function RentPage() {
                             <User className="w-3.5 h-3.5" /> {rental.customerName}
                           </div>
                           <div className="flex items-center gap-2 text-[10px] font-black text-destructive uppercase tracking-widest">
-                            <Clock className="w-3.5 h-3.5" /> Due: {new Date(rental.items[0].endDate!).toLocaleDateString()}
+                            <Clock className="w-3.5 h-3.5" /> Period: {new Date(rental.items[0].startDate!).toLocaleDateString()} - {new Date(rental.items[0].endDate!).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-8">
                        <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Contract Value</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Value ({rental.paymentMethod})</p>
                           <p className="text-3xl font-black text-primary">${rental.totalAmount.toFixed(2)}</p>
                        </div>
                        <Button onClick={() => handleCheckIn(rental.id)} className="rounded-2xl font-black h-14 px-8 shadow-lg">Return Asset</Button>
@@ -217,7 +292,7 @@ export default function RentPage() {
               {activeRentals.length === 0 && (
                 <div className="py-24 text-center border-4 border-dashed rounded-[40px] bg-white/50">
                    <Clock className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                   <p className="font-black text-muted-foreground text-lg uppercase tracking-widest">Pipeline Clear</p>
+                   <p className="font-black text-muted-foreground text-lg uppercase tracking-widest">No Active Agreements</p>
                 </div>
               )}
             </div>
@@ -229,7 +304,7 @@ export default function RentPage() {
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary w-5 h-5" />
                   <Input 
-                    placeholder="FILTER ASSETS BY NAME..." 
+                    placeholder="FILTER ASSETS..." 
                     className="pl-16 h-16 rounded-2xl border-none bg-white shadow-lg text-xl font-black"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -260,68 +335,97 @@ export default function RentPage() {
                       </CardContent>
                     </Card>
                   ))}
-                  {filteredItems?.filter(i => i.status === 'available').length === 0 && (
-                    <div className="col-span-full py-20 text-center opacity-30">
-                       <Info className="w-12 h-12 mx-auto mb-2" />
-                       <p className="font-black text-lg">NO AVAILABLE ASSETS FOUND</p>
-                    </div>
-                  )}
                 </div>
               </div>
 
               <div className="lg:col-span-1 h-full">
                 <Card className="h-full flex flex-col border-none shadow-2xl bg-white rounded-[40px] overflow-hidden">
-                  <CardHeader className="bg-secondary/20 p-10">
-                    <CardTitle className="flex items-center gap-3 font-black text-2xl">
-                      <ArrowRightLeft className="w-7 h-7 text-primary" /> 
-                      Agreement
+                  <CardHeader className="bg-secondary/20 p-8">
+                    <CardTitle className="flex items-center gap-3 font-black text-xl">
+                      <ArrowRightLeft className="w-6 h-6 text-primary" /> 
+                      Agreement Creator
                     </CardTitle>
-                    <CardDescription className="font-bold text-xs uppercase tracking-tight">Contract Generation Terminal</CardDescription>
                   </CardHeader>
-                  <CardContent className="flex-1 p-10">
+                  <CardContent className="flex-1 p-8 overflow-y-auto space-y-6">
                     {selectedItem ? (
-                      <form id="agreement-form" onSubmit={handleCreateAgreement} className="space-y-8">
-                        <div className="p-6 bg-primary/5 border-2 border-primary/10 rounded-3xl relative overflow-hidden group">
-                          <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform">
-                             <CalendarDays className="w-32 h-32 text-primary" />
+                      <form id="agreement-form" onSubmit={handleCreateAgreement} className="space-y-6">
+                        <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl">
+                          <p className="text-[10px] font-black text-primary uppercase mb-1">Target Asset</p>
+                          <p className="text-lg font-black text-foreground">{selectedItem.name}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</label>
+                              <Input name="customer" placeholder="Full Name" required className="rounded-xl" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</label>
+                              <Input name="company" placeholder="Business Name" className="rounded-xl" />
+                            </div>
                           </div>
-                          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Target Asset</p>
-                          <p className="text-xl font-black text-foreground leading-tight">{selectedItem.name}</p>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Start Date</label>
+                              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-xl" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">End Date</label>
+                              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-xl" />
+                            </div>
+                          </div>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground px-2 tracking-widest">Client Name</label>
-                          <Input name="customer" placeholder="John Doe" required className="h-14 rounded-2xl bg-secondary/30 border-none font-bold text-lg" />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground px-2 tracking-widest">Duration ({selectedItem.unit}s)</label>
-                          <Input 
-                            type="number" 
-                            min="1" 
-                            value={duration} 
-                            onChange={(e) => setDuration(Number(e.target.value))}
-                            className="h-14 rounded-2xl bg-secondary/30 border-none font-black text-2xl"
-                          />
+
+                        <Separator />
+
+                        <div className="space-y-4">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Settlement Method</label>
+                          <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-2">
+                             <PaymentMiniOption value="cash" label="Cash" icon={Banknote} id="pay_cash" />
+                             <PaymentMiniOption value="card" label="Card" icon={CreditCard} id="pay_card" />
+                             <PaymentMiniOption value="duitnow" label="DuitNow" icon={QrCode} id="pay_qr" />
+                          </RadioGroup>
+
+                          {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                            <div className="mt-4 p-4 bg-secondary/20 rounded-2xl flex flex-col items-center">
+                              <p className="text-[10px] font-black uppercase text-muted-foreground mb-3">Scan to Pay</p>
+                              <Image 
+                                src={companyDoc.duitNowQr} 
+                                alt="DuitNow QR" 
+                                width={120} 
+                                height={120} 
+                                className="rounded-xl shadow-md"
+                              />
+                            </div>
+                          )}
+
+                          {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Reference / Trace ID</label>
+                              <Input 
+                                placeholder="TRX-XXXX" 
+                                className="rounded-xl" 
+                                value={referenceNumber}
+                                onChange={(e) => setReferenceNumber(e.target.value)}
+                                required
+                              />
+                            </div>
+                          )}
                         </div>
                       </form>
                     ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4">
-                        <CalendarDays className="w-20 h-20" />
-                        <p className="font-black text-lg uppercase tracking-widest">Select an available<br/>asset to begin</p>
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-30 space-y-4 py-12">
+                        <CalendarDays className="w-16 h-16" />
+                        <p className="font-black text-sm uppercase tracking-widest">Select an asset<br/>to generate contract</p>
                       </div>
                     )}
                   </CardContent>
                   {selectedItem && (
-                    <CardFooter className="flex-col gap-6 p-10 border-t bg-secondary/5">
-                      <div className="w-full flex justify-between items-end">
-                         <div>
-                            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Total Valuation</p>
-                            <p className="text-5xl font-black text-primary tracking-tighter">
-                              ${((selectedItem.unit === 'day' ? selectedItem.dailyRate! : selectedItem.unit === 'month' ? selectedItem.monthlyRate! : selectedItem.hourlyRate!) * duration).toFixed(2)}
-                            </p>
-                         </div>
-                      </div>
-                      <Button form="agreement-form" type="submit" disabled={isProcessing} className="w-full h-20 text-xl font-black rounded-3xl shadow-xl">
-                        Launch Agreement
+                    <CardFooter className="flex-col gap-4 p-8 border-t bg-secondary/5">
+                      <Button form="agreement-form" type="submit" disabled={isProcessing} className="w-full h-16 text-lg font-black rounded-2xl shadow-xl">
+                        {isProcessing ? "Processing..." : "Launch Agreement"}
                       </Button>
                     </CardFooter>
                   )}
@@ -336,7 +440,7 @@ export default function RentPage() {
                   <div className="flex flex-col gap-6">
                     <div className="space-y-1">
                       <h3 className="text-xl font-black">Strategic Reserve</h3>
-                      <p className="text-xs font-bold text-muted-foreground">Manage your rental pool inventory</p>
+                      <p className="text-xs font-bold text-muted-foreground">Rental pool management</p>
                     </div>
                     <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                       <DialogTrigger asChild>
@@ -347,12 +451,11 @@ export default function RentPage() {
                       <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden border-none shadow-2xl bg-white">
                          <div className="bg-primary p-10 text-primary-foreground">
                             <DialogTitle className="text-3xl font-black tracking-tight">New Asset Registration</DialogTitle>
-                            <DialogDescription className="text-primary-foreground/80 font-bold">Define billing logic and asset metadata</DialogDescription>
                          </div>
                          <form onSubmit={handleRegisterItem} className="p-10 space-y-8">
                            <div className="space-y-2">
                              <label className="text-[10px] font-black uppercase tracking-widest px-1">Legal Name / Model</label>
-                             <Input name="name" placeholder="Sony Alpha 7 IV" required className="h-14 rounded-2xl font-bold bg-secondary/20 border-none" />
+                             <Input name="name" placeholder="Asset Name" required className="h-14 rounded-2xl font-bold bg-secondary/20 border-none" />
                            </div>
                            <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
@@ -373,7 +476,7 @@ export default function RentPage() {
                                 <Input name="rate" type="number" step="0.01" placeholder="0.00" required className="h-14 rounded-2xl font-black bg-secondary/20 border-none text-lg" />
                               </div>
                            </div>
-                           <Button type="submit" className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl" disabled={isProcessing}>
+                           <Button type="submit" className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl">
                              Save to Registry
                            </Button>
                          </form>
@@ -388,7 +491,7 @@ export default function RentPage() {
                           <span className="font-black">{rentalItems?.length || 0}</span>
                        </div>
                        <div className="flex justify-between items-center text-sm">
-                          <span className="font-bold text-muted-foreground">In Use</span>
+                          <span className="font-bold text-muted-foreground">Active Leases</span>
                           <span className="font-black text-primary">{activeRentals.length}</span>
                        </div>
                     </div>
@@ -411,7 +514,6 @@ export default function RentPage() {
                            <tr key={item.id} className="hover:bg-secondary/5 transition-colors">
                              <td className="p-6">
                                 <p className="font-black text-foreground text-lg">{item.name}</p>
-                                <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">REF: {item.id.split('-')[0]}</p>
                              </td>
                              <td className="p-6">
                                 <div className="flex items-center gap-2">
@@ -427,28 +529,82 @@ export default function RentPage() {
                                 </Badge>
                              </td>
                              <td className="p-6 text-center">
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10 rounded-full h-10 w-10">
+                                <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10">
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
                              </td>
                            </tr>
                          ))}
-                         {(!rentalItems || rentalItems.length === 0) && (
-                           <tr>
-                             <td colSpan={4} className="py-24 text-center opacity-30">
-                               <LayoutGrid className="w-16 h-16 mx-auto mb-4" />
-                               <p className="font-black text-lg">REGISTRY EMPTY</p>
-                             </td>
-                           </tr>
-                         )}
                        </tbody>
                      </table>
                   </div>
                </div>
              </div>
           </TabsContent>
+
+          <TabsContent value="settings" className="flex-1 overflow-auto">
+             <div className="max-w-xl mx-auto space-y-8 py-12">
+               <div className="text-center">
+                 <h2 className="text-3xl font-black text-foreground">Billing Settings</h2>
+                 <p className="text-muted-foreground mt-2">Configure DuitNow QR for seamless digital rental payments</p>
+               </div>
+
+               <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden">
+                 <CardHeader className="bg-primary/10 p-8">
+                   <CardTitle className="text-lg font-black flex items-center gap-2">
+                     <QrCode className="w-5 h-5 text-primary" />
+                     DuitNow QR Profile
+                   </CardTitle>
+                 </CardHeader>
+                 <CardContent className="p-10 flex flex-col items-center gap-8">
+                   {companyDoc?.duitNowQr ? (
+                     <div className="relative group">
+                       <Image 
+                        src={companyDoc.duitNowQr} 
+                        alt="DuitNow QR" 
+                        width={250} 
+                        height={250} 
+                        className="rounded-3xl shadow-2xl border-4 border-white"
+                       />
+                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-3xl">
+                         <Button variant="secondary" className="rounded-xl font-black" asChild>
+                           <label className="cursor-pointer">
+                             <Upload className="w-4 h-4 mr-2" /> Replace
+                             <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                           </label>
+                         </Button>
+                       </div>
+                     </div>
+                   ) : (
+                     <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/20 transition-all gap-4">
+                       <div className="w-16 h-16 bg-secondary rounded-2xl flex items-center justify-center text-primary">
+                         <Plus className="w-8 h-8" />
+                       </div>
+                       <p className="text-xs font-black uppercase text-muted-foreground tracking-widest">Upload QR Image</p>
+                       <input type="file" className="hidden" accept="image/*" onChange={handleQrUpload} />
+                     </label>
+                   )}
+                   <p className="text-xs text-center font-bold text-muted-foreground max-w-xs">
+                     Upload your static DuitNow QR code from your bank. This will be shown to customers during the agreement process.
+                   </p>
+                 </CardContent>
+               </Card>
+             </div>
+          </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function PaymentMiniOption({ value, label, icon: Icon, id }: any) {
+  return (
+    <div>
+      <RadioGroupItem value={value} id={id} className="peer sr-only" />
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-xl border-2 border-transparent bg-secondary/30 p-3 hover:bg-secondary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10 cursor-pointer transition-all h-20">
+        <Icon className="mb-1 h-5 w-5 text-primary" />
+        <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
+      </Label>
     </div>
   );
 }
