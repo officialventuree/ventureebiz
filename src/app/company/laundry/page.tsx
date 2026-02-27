@@ -78,6 +78,9 @@ export default function LaundryPage() {
   const [walkInAmountReceived, setWalkInAmountReceived] = useState<number | string>('');
   const [walkInRef, setWalkInRef] = useState('');
 
+  // Restock State
+  const [restockCategory, setRestockCategory] = useState<'student' | 'payable'>('student');
+
   const studentsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return collection(firestore, 'companies', user.companyId, 'laundryStudents');
@@ -88,9 +91,9 @@ export default function LaundryPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
-  const inventoryRef = useMemoFirebase(() => {
+  const inventoryQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
-    return doc(firestore, 'companies', user.companyId, 'laundryInventory', 'soap');
+    return collection(firestore, 'companies', user.companyId, 'laundryInventory');
   }, [firestore, user?.companyId]);
 
   const companyRef = useMemoFirebase(() => {
@@ -100,16 +103,14 @@ export default function LaundryPage() {
 
   const { data: students } = useCollection<LaundryStudent>(studentsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
-  const { data: inventoryDoc } = useDoc<LaundryInventory>(inventoryRef);
+  const { data: inventoryItems } = useCollection<LaundryInventory>(inventoryQuery);
   const { data: companyDoc } = useDoc<Company>(companyRef);
+
+  const studentSoap = inventoryItems?.find(i => i.id === 'student_soap');
+  const payableSoap = inventoryItems?.find(i => i.id === 'payable_soap');
 
   const mlPerWash = 50;
   const washRate = 5.00;
-
-  const currentSoapMl = inventoryDoc?.soapStockMl || 0;
-  const capacityMl = inventoryDoc?.capacityMl || 50000;
-  const soapCostPerLitre = inventoryDoc?.soapCostPerLitre || 1.45;
-  const soapUtilization = Math.min(100, (currentSoapMl / capacityMl) * 100);
 
   const foundTopUpStudent = useMemo(() => {
     return students?.find(s => s.matrixNumber === topUpMatrix);
@@ -191,7 +192,7 @@ export default function LaundryPage() {
   };
 
   const handleChargeLaundry = async () => {
-    if (!selectedStudent || !firestore || !user?.companyId) return;
+    if (!selectedStudent || !firestore || !user?.companyId || !studentSoap) return;
     setIsProcessing(true);
 
     if (selectedStudent.balance < washRate) {
@@ -200,8 +201,8 @@ export default function LaundryPage() {
       return;
     }
 
-    if (currentSoapMl < mlPerWash) {
-       toast({ title: "Out of Soap", description: "Please refill soap inventory.", variant: "destructive" });
+    if (studentSoap.soapStockMl < mlPerWash) {
+       toast({ title: "Out of Student Soap", description: "Please refill student soap inventory.", variant: "destructive" });
        setIsProcessing(false);
        return;
     }
@@ -210,11 +211,10 @@ export default function LaundryPage() {
       const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', selectedStudent.id);
       await updateDoc(studentRef, { balance: increment(-washRate) });
       
-      if (inventoryRef) {
-        await updateDoc(inventoryRef, { soapStockMl: increment(-mlPerWash) });
-      }
+      const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'student_soap');
+      await updateDoc(invRef, { soapStockMl: increment(-mlPerWash) });
 
-      const soapCost = (mlPerWash / 1000) * soapCostPerLitre;
+      const soapCost = (mlPerWash / 1000) * studentSoap.soapCostPerLitre;
       const profit = washRate - soapCost;
 
       const transactionRef = collection(firestore, 'companies', user.companyId, 'transactions');
@@ -229,7 +229,7 @@ export default function LaundryPage() {
         items: [{ name: 'Standard Wash (Student)', price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
       });
 
-      toast({ title: "Wash Recorded", description: `Charged $${washRate.toFixed(2)} to ${selectedStudent.name}. 50ml soap deducted.` });
+      toast({ title: "Wash Recorded", description: `Charged $${washRate.toFixed(2)} to ${selectedStudent.name}. 50ml student soap deducted.` });
       setSelectedStudent({ ...selectedStudent, balance: selectedStudent.balance - washRate });
     } catch (e: any) {
       toast({ title: "Processing Error", variant: "destructive" });
@@ -239,13 +239,13 @@ export default function LaundryPage() {
   };
 
   const handleWalkInWash = async () => {
-    if (!firestore || !user?.companyId || !walkInName) {
-      toast({ title: "Incomplete Form", description: "Customer name is required.", variant: "destructive" });
+    if (!firestore || !user?.companyId || !walkInName || !payableSoap) {
+      toast({ title: "Incomplete Form", description: "Customer name is required and inventory must be loaded.", variant: "destructive" });
       return;
     }
     
-    if (currentSoapMl < mlPerWash) {
-       toast({ title: "Out of Soap", description: "Please refill soap inventory.", variant: "destructive" });
+    if (payableSoap.soapStockMl < mlPerWash) {
+       toast({ title: "Out of Payable Soap", description: "Please refill payable soap inventory.", variant: "destructive" });
        return;
     }
 
@@ -262,11 +262,10 @@ export default function LaundryPage() {
     setIsProcessing(true);
 
     try {
-      if (inventoryRef) {
-        await updateDoc(inventoryRef, { soapStockMl: increment(-mlPerWash) });
-      }
+      const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap');
+      await updateDoc(invRef, { soapStockMl: increment(-mlPerWash) });
 
-      const soapCost = (mlPerWash / 1000) * soapCostPerLitre;
+      const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
       const profit = washRate - soapCost;
 
       const transactionRef = collection(firestore, 'companies', user.companyId, 'transactions');
@@ -284,7 +283,7 @@ export default function LaundryPage() {
         items: [{ name: 'Standard Wash (Walk-in)', price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
       });
 
-      toast({ title: "Wash Recorded", description: `Payment collected from ${walkInName}. 50ml soap deducted.` });
+      toast({ title: "Wash Recorded", description: `Payment collected from ${walkInName}. 50ml payable soap deducted.` });
       
       // Reset walk-in form
       setWalkInName('');
@@ -342,19 +341,24 @@ export default function LaundryPage() {
     const formData = new FormData(e.currentTarget);
     const amountLitres = Number(formData.get('litres'));
     const cost = Number(formData.get('cost'));
+    const category = restockCategory;
     const amountMl = amountLitres * 1000;
+    const docId = category === 'student' ? 'student_soap' : 'payable_soap';
 
     try {
-      if (!inventoryDoc) {
-        await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', 'soap'), {
-          id: 'soap',
+      const existing = category === 'student' ? studentSoap : payableSoap;
+      
+      if (!existing) {
+        await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
+          id: docId,
           companyId: user.companyId,
           soapStockMl: amountMl,
           soapCostPerLitre: cost / amountLitres,
-          capacityMl: 50000
+          capacityMl: 50000,
+          category
         });
       } else {
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', 'soap'), {
+        await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
           soapStockMl: increment(amountMl),
           soapCostPerLitre: cost / amountLitres
         });
@@ -364,11 +368,11 @@ export default function LaundryPage() {
         id: crypto.randomUUID(),
         companyId: user.companyId,
         amount: cost,
-        description: `Laundry Restock: ${amountLitres}L Soap`,
+        description: `Laundry Restock (${category}): ${amountLitres}L Soap`,
         timestamp: new Date().toISOString()
       });
 
-      toast({ title: "Inventory Updated", description: `Added ${amountLitres}L to stock.` });
+      toast({ title: "Inventory Updated", description: `Added ${amountLitres}L to ${category} stock.` });
       (e.target as HTMLFormElement).reset();
     } catch (e: any) {
       toast({ title: "Restock failed", variant: "destructive" });
@@ -575,8 +579,8 @@ export default function LaundryPage() {
             <div className="lg:col-span-2 space-y-6">
               <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
                 <CardHeader className="bg-secondary/10 p-8">
-                  <CardTitle className="text-xl font-black">Usage Terminal</CardTitle>
-                  <CardDescription className="font-bold">Verify student identity and process washing charge</CardDescription>
+                  <CardTitle className="text-xl font-black">Usage Terminal (Student)</CardTitle>
+                  <CardDescription className="font-bold">Verify student identity and process washing charge from Student Soap Stock</CardDescription>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
                   <div className="flex gap-2">
@@ -612,7 +616,7 @@ export default function LaundryPage() {
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Button className="h-16 rounded-2xl text-xl font-black shadow-xl" onClick={handleChargeLaundry} disabled={isProcessing || currentSoapMl < mlPerWash}>
+                        <Button className="h-16 rounded-2xl text-xl font-black shadow-xl" onClick={handleChargeLaundry} disabled={isProcessing || !studentSoap || studentSoap.soapStockMl < mlPerWash}>
                           {isProcessing ? "Processing..." : `Standard Wash ($${washRate.toFixed(2)})`}
                         </Button>
                         <Button variant="outline" className="h-16 rounded-2xl font-black bg-white border-2">
@@ -667,16 +671,16 @@ export default function LaundryPage() {
                 <CardHeader className="p-8">
                   <CardTitle className="flex items-center gap-3 text-xl font-black">
                     <Droplet className="w-6 h-6" />
-                    Soap Levels
+                    Student Soap Level
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-8 pt-0 space-y-8 relative z-10">
                   <div className="space-y-3">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest opacity-80">
                       <span>Inventory Balance</span>
-                      <span>{(currentSoapMl / 1000).toFixed(1)}L / {(capacityMl / 1000).toFixed(0)}L</span>
+                      <span>{studentSoap ? (studentSoap.soapStockMl / 1000).toFixed(1) : 0}L / {studentSoap ? (studentSoap.capacityMl / 1000).toFixed(0) : 50}L</span>
                     </div>
-                    <Progress value={soapUtilization} className="h-4 bg-white/20" />
+                    <Progress value={studentSoap ? Math.min(100, (studentSoap.soapStockMl / studentSoap.capacityMl) * 100) : 0} className="h-4 bg-white/20" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm">
@@ -685,7 +689,7 @@ export default function LaundryPage() {
                     </div>
                     <div className="bg-white/10 p-5 rounded-2xl backdrop-blur-sm">
                       <p className="text-[10px] font-black opacity-60 uppercase mb-1 tracking-widest">Remaining</p>
-                      <p className="text-2xl font-black">{Math.floor(currentSoapMl / mlPerWash)} <span className="text-xs">Washes</span></p>
+                      <p className="text-2xl font-black">{studentSoap ? Math.floor(studentSoap.soapStockMl / mlPerWash) : 0} <span className="text-xs">Washes</span></p>
                     </div>
                   </div>
                 </CardContent>
@@ -700,7 +704,7 @@ export default function LaundryPage() {
                   <CardTitle className="text-xl font-black flex items-center gap-2">
                     <Banknote className="w-6 h-6 text-primary" /> Payable Wash Terminal
                   </CardTitle>
-                  <CardDescription className="font-bold">Record laundry services for walk-in customers</CardDescription>
+                  <CardDescription className="font-bold">Record laundry services from Payable Soap Stock</CardDescription>
                 </CardHeader>
                 <CardContent className="p-10 space-y-8">
                    <div className="space-y-2">
@@ -778,7 +782,7 @@ export default function LaundryPage() {
                       </div>
                       <Button 
                         className="h-16 px-12 rounded-2xl font-black text-xl shadow-xl gap-2 group"
-                        disabled={isProcessing || currentSoapMl < mlPerWash || !walkInName}
+                        disabled={isProcessing || !payableSoap || payableSoap.soapStockMl < mlPerWash || !walkInName}
                         onClick={handleWalkInWash}
                       >
                          {isProcessing ? "Processing..." : (
@@ -795,17 +799,17 @@ export default function LaundryPage() {
             <div className="lg:col-span-1 space-y-6">
                <Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] overflow-hidden">
                   <CardHeader className="p-8 pb-4">
-                     <CardTitle className="text-xl font-black">Supply Chain Info</CardTitle>
+                     <CardTitle className="text-xl font-black">Payable Soap Level</CardTitle>
                   </CardHeader>
                   <CardContent className="p-8 pt-0 space-y-6">
                      <div className="bg-white/10 p-6 rounded-2xl">
                         <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Soap Level</p>
-                        <p className="text-3xl font-black">{(currentSoapMl / 1000).toFixed(2)}L</p>
-                        <Progress value={soapUtilization} className="h-2 bg-white/20 mt-3" />
+                        <p className="text-3xl font-black">{payableSoap ? (payableSoap.soapStockMl / 1000).toFixed(2) : 0}L</p>
+                        <Progress value={payableSoap ? Math.min(100, (payableSoap.soapStockMl / payableSoap.capacityMl) * 100) : 0} className="h-2 bg-white/20 mt-3" />
                      </div>
                      <div className="flex items-center gap-3 text-xs font-bold opacity-80">
                         <ShieldCheck className="w-5 h-5" />
-                        System deducting 50ml per recorded wash.
+                        System deducting from Payable stock pool.
                      </div>
                   </CardContent>
                </Card>
@@ -984,6 +988,18 @@ export default function LaundryPage() {
                   <CardContent className="px-0 pb-0">
                     <form onSubmit={handleRestockSoap} className="space-y-5">
                       <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Soap Category</label>
+                        <Select value={restockCategory} onValueChange={(v: any) => setRestockCategory(v)}>
+                          <SelectTrigger className="h-12 rounded-xl font-bold">
+                            <SelectValue placeholder="Select Category" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            <SelectItem value="student">Student Usage</SelectItem>
+                            <SelectItem value="payable">Payable Laundry</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
                         <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Quantity (Litres)</label>
                         <Input name="litres" type="number" placeholder="5" required className="h-12 rounded-xl font-bold" />
                       </div>
@@ -1000,22 +1016,43 @@ export default function LaundryPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                      <Card className="p-10 border-none shadow-sm bg-primary text-primary-foreground rounded-[40px] relative overflow-hidden">
                         <Droplet className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10" />
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Live Soap Volume</p>
-                        <h4 className="text-6xl font-black tracking-tighter">{(currentSoapMl / 1000).toFixed(2)}<span className="text-2xl ml-2">Litres</span></h4>
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Student Soap Volume</p>
+                        <h4 className="text-6xl font-black tracking-tighter">{studentSoap ? (studentSoap.soapStockMl / 1000).toFixed(2) : 0}<span className="text-2xl ml-2">Litres</span></h4>
                         <div className="mt-8 flex items-center gap-4">
                            <div className="flex-1 bg-white/20 h-3 rounded-full overflow-hidden">
-                              <div className="bg-white h-full" style={{ width: `${soapUtilization}%` }} />
+                              <div className="bg-white h-full" style={{ width: `${studentSoap ? Math.min(100, (studentSoap.soapStockMl / studentSoap.capacityMl) * 100) : 0}%` }} />
                            </div>
-                           <span className="text-sm font-black">{soapUtilization.toFixed(0)}%</span>
+                           <span className="text-sm font-black">{studentSoap ? (Math.min(100, (studentSoap.soapStockMl / studentSoap.capacityMl) * 100)).toFixed(0) : 0}%</span>
                         </div>
                      </Card>
                      
-                     <Card className="p-10 border-none shadow-sm bg-white rounded-[40px]">
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">Procurement Pricing</p>
-                        <h4 className="text-6xl font-black tracking-tighter text-foreground">${soapCostPerLitre.toFixed(2)}<span className="text-2xl ml-2 text-muted-foreground">/ Litre</span></h4>
-                        <p className="mt-4 text-sm font-bold text-muted-foreground">Weighted average based on latest restocking logs.</p>
+                     <Card className="p-10 border-none shadow-sm bg-accent text-accent-foreground rounded-[40px] relative overflow-hidden">
+                        <Droplet className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10" />
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Payable Soap Volume</p>
+                        <h4 className="text-6xl font-black tracking-tighter">{payableSoap ? (payableSoap.soapStockMl / 1000).toFixed(2) : 0}<span className="text-2xl ml-2">Litres</span></h4>
+                        <div className="mt-8 flex items-center gap-4">
+                           <div className="flex-1 bg-black/10 h-3 rounded-full overflow-hidden">
+                              <div className="bg-black/40 h-full" style={{ width: `${payableSoap ? Math.min(100, (payableSoap.soapStockMl / payableSoap.capacityMl) * 100) : 0}%` }} />
+                           </div>
+                           <span className="text-sm font-black">{payableSoap ? (Math.min(100, (payableSoap.soapStockMl / payableSoap.capacityMl) * 100)).toFixed(0) : 0}%</span>
+                        </div>
                      </Card>
                   </div>
+
+                  <Card className="p-10 border-none shadow-sm bg-white rounded-[40px]">
+                    <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-4">Inventory Pricing Overview</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-primary tracking-widest mb-1">Student Stock Cost</p>
+                        <h4 className="text-4xl font-black text-foreground">${studentSoap ? studentSoap.soapCostPerLitre.toFixed(2) : '0.00'}<span className="text-lg ml-2 text-muted-foreground">/ Litre</span></h4>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-accent tracking-widest mb-1">Payable Stock Cost</p>
+                        <h4 className="text-4xl font-black text-foreground">${payableSoap ? payableSoap.soapCostPerLitre.toFixed(2) : '0.00'}<span className="text-lg ml-2 text-muted-foreground">/ Litre</span></h4>
+                      </div>
+                    </div>
+                    <p className="mt-8 text-sm font-bold text-muted-foreground">Weighted average based on categorized restocking logs.</p>
+                  </Card>
                 </div>
              </div>
           </TabsContent>

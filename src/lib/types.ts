@@ -106,6 +106,7 @@ export interface LaundryInventory {
   soapStockMl: number;
   soapCostPerLitre: number;
   capacityMl: number;
+  category: 'student' | 'payable';
 }
 
 export interface CapitalPurchase {
