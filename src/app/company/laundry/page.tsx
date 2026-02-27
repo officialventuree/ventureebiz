@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Waves, UserPlus, CreditCard, Droplet, Search, History, Trash2, ArrowRightLeft, Info, TrendingUp, DollarSign, Wallet } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -16,6 +17,9 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 
+const CLASSES = ['Biruni', 'Dinawari', 'Farabi', 'Ghazali', 'Khawarizmi', 'Razi'];
+const LEVELS = [1, 2, 3, 4, 5];
+
 export default function LaundryPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
@@ -23,6 +27,10 @@ export default function LaundryPage() {
   const [matrixSearch, setMatrixSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<LaundryStudent | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Registration Form State
+  const [selectedLevel, setSelectedLevel] = useState<string>('');
+  const [selectedClass, setSelectedClass] = useState<string>('');
 
   const studentsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -56,20 +64,30 @@ export default function LaundryPage() {
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
     const studentId = crypto.randomUUID();
-    const student = {
+    
+    if (!selectedLevel || !selectedClass) {
+      toast({ title: "Registration incomplete", description: "Please select Level and Class.", variant: "destructive" });
+      return;
+    }
+
+    const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
       balance: Number(formData.get('initialBalance')) || 0,
+      level: Number(selectedLevel),
+      class: selectedClass,
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student);
-      toast({ title: "Student Registered", description: `${student.name} added.` });
+      toast({ title: "Student Registered", description: `${student.name} from ${student.class} (Level ${student.level}) added.` });
       (e.target as HTMLFormElement).reset();
-    } catch (e) {
-      toast({ title: "Registration failed", variant: "destructive" });
+      setSelectedLevel('');
+      setSelectedClass('');
+    } catch (e: any) {
+      toast({ title: "Registration failed", description: e.message, variant: "destructive" });
     }
   };
 
@@ -127,7 +145,7 @@ export default function LaundryPage() {
 
       toast({ title: "Wash Recorded", description: `Charged $${washRate.toFixed(2)} to ${selectedStudent.name}. 50ml soap deducted.` });
       setSelectedStudent({ ...selectedStudent, balance: selectedStudent.balance - washRate });
-    } catch (e) {
+    } catch (e: any) {
       toast({ title: "Processing Error", variant: "destructive" });
     } finally {
       setIsProcessing(false);
@@ -168,7 +186,7 @@ export default function LaundryPage() {
 
       toast({ title: "Inventory Updated", description: `Added ${amountLitres}L to stock.` });
       (e.target as HTMLFormElement).reset();
-    } catch (e) {
+    } catch (e: any) {
       toast({ title: "Restock failed", variant: "destructive" });
     }
   };
@@ -178,7 +196,7 @@ export default function LaundryPage() {
     try {
       await deleteDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', id));
       toast({ title: "Record Deleted" });
-    } catch (e) {
+    } catch (e: any) {
       toast({ title: "Deletion failed", variant: "destructive" });
     }
   };
@@ -242,6 +260,7 @@ export default function LaundryPage() {
                           <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Subscriber Status: Active</p>
                           <h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4>
                           <p className="text-sm font-bold text-muted-foreground font-mono mt-1">Matrix: {selectedStudent.matrixNumber}</p>
+                          <p className="text-xs font-black text-primary uppercase mt-1">Level {selectedStudent.level} • {selectedStudent.class}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Account Balance</p>
@@ -373,6 +392,36 @@ export default function LaundryPage() {
                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Matrix No.</label>
                        <Input name="matrix" placeholder="2024-001" required className="h-12 rounded-xl font-bold" />
                      </div>
+                     
+                     <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Level</label>
+                          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                            <SelectTrigger className="h-12 rounded-xl font-bold">
+                              <SelectValue placeholder="Lv" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {LEVELS.map(lv => (
+                                <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Class</label>
+                          <Select value={selectedClass} onValueChange={setSelectedClass}>
+                            <SelectTrigger className="h-12 rounded-xl font-bold">
+                              <SelectValue placeholder="Class" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {CLASSES.map(cls => (
+                                <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                     </div>
+
                      <div className="space-y-1.5">
                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Initial Deposit ($)</label>
                        <Input name="initialBalance" type="number" placeholder="50.00" className="h-12 rounded-xl font-bold" />
@@ -392,7 +441,7 @@ export default function LaundryPage() {
                      <thead className="bg-secondary/20 border-b">
                        <tr>
                          <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Subscriber Identity</th>
-                         <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Matrix</th>
+                         <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest text-center">Group</th>
                          <th className="p-6 text-right font-black uppercase text-[10px] text-muted-foreground tracking-widest">Balance</th>
                          <th className="p-6 text-center font-black uppercase text-[10px] text-muted-foreground tracking-widest">Action</th>
                        </tr>
@@ -400,8 +449,13 @@ export default function LaundryPage() {
                      <tbody className="divide-y">
                        {students?.map(s => (
                          <tr key={s.id} className="hover:bg-secondary/5 transition-colors">
-                           <td className="p-6 font-black text-foreground text-lg">{s.name}</td>
-                           <td className="p-6 font-mono text-muted-foreground font-bold">{s.matrixNumber}</td>
+                           <td className="p-6">
+                              <p className="font-black text-foreground text-lg">{s.name}</p>
+                              <p className="text-[10px] text-muted-foreground font-bold font-mono">Matrix: {s.matrixNumber}</p>
+                           </td>
+                           <td className="p-6 text-center">
+                              <Badge variant="outline" className="font-black text-[9px] uppercase tracking-tighter">Level {s.level} • {s.class}</Badge>
+                           </td>
                            <td className="p-6 text-right">
                               <span className={cn(
                                 "text-xl font-black tracking-tighter",

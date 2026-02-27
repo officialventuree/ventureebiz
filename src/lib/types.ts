@@ -96,6 +96,8 @@ export interface LaundryStudent {
   name: string;
   matrixNumber: string;
   balance: number;
+  level: number;
+  class: string;
 }
 
 export interface LaundryInventory {

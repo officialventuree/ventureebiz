@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Company": {
@@ -61,6 +60,20 @@
         "status": { "type": "string", "enum": ["unused", "used"] }
       }
     },
+    "LaundryStudent": {
+      "title": "LaundryStudent",
+      "type": "object",
+      "description": "Student laundry subscribers.",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "matrixNumber": { "type": "string" },
+        "balance": { "type": "number" },
+        "level": { "type": "number" },
+        "class": { "type": "string" }
+      }
+    },
     "LuckyDrawEntry": {
       "title": "LuckyDrawEntry",
       "type": "object",
@@ -108,6 +121,10 @@
     "/companies/{companyId}/coupons/{couponId}": {
       "schema": "Coupon",
       "description": "Promotional codes."
+    },
+    "/companies/{companyId}/laundryStudents/{studentId}": {
+      "schema": "LaundryStudent",
+      "description": "Student laundry accounts."
     },
     "/companies/{companyId}/luckyDraws/{entryId}": {
       "schema": "LuckyDrawEntry",
