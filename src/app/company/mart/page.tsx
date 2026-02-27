@@ -1,12 +1,12 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
@@ -31,12 +31,15 @@ export default function MartPage() {
   const [cart, setCart] = useState<{ product: Product, quantity: number }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [scanValue, setScanValue] = useState('');
   const [couponCode, setCouponCode] = useState('');
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  
+  const scanInputRef = useRef<HTMLInputElement>(null);
 
   const companyRef = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -63,6 +66,13 @@ export default function MartPage() {
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
+  // Auto-focus barcode scanner on load and after checkout
+  useEffect(() => {
+    if (scanInputRef.current) {
+      scanInputRef.current.focus();
+    }
+  }, [showCheckoutDialog]);
+
   const filteredProducts = products?.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -71,18 +81,35 @@ export default function MartPage() {
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) {
-      toast({ title: "Out of stock", variant: "destructive" });
+      toast({ title: "Out of stock", description: `${product.name} is unavailable.`, variant: "destructive" });
       return;
     }
     const existing = cart.find(item => item.product.id === product.id);
     if (existing) {
       if (existing.quantity >= product.stock) {
-        toast({ title: "Stock limit reached", variant: "destructive" });
+        toast({ title: "Stock limit reached", description: `Cannot add more ${product.name}.`, variant: "destructive" });
         return;
       }
       setCart(cart.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
     } else {
       setCart([...cart, { product, quantity: 1 }]);
+    }
+  };
+
+  const handleBarcodeScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const barcode = scanValue.trim();
+      if (!barcode) return;
+
+      const matchedProduct = products?.find(p => p.barcode === barcode);
+      if (matchedProduct) {
+        addToCart(matchedProduct);
+        toast({ title: "Item Scanned", description: `${matchedProduct.name} added to cart.` });
+        setScanValue('');
+      } else {
+        toast({ title: "Product Not Found", description: `No item matches barcode: ${barcode}`, variant: "destructive" });
+        setScanValue('');
+      }
     }
   };
 
@@ -260,17 +287,35 @@ export default function MartPage() {
           <TabsContent value="pos" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
+                {/* Dedicated Barcode Scanner Bar */}
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary group-focus-within:bg-primary group-focus-within:text-white transition-all">
+                    <Scan className="w-5 h-5" />
+                  </div>
+                  <Input 
+                    ref={scanInputRef}
+                    placeholder="SCAN BARCODE FOR INSTANT ADD..." 
+                    className="pl-16 h-16 rounded-2xl border-2 border-primary/20 bg-white shadow-lg text-xl font-black placeholder:text-muted-foreground/40 focus:border-primary focus:ring-4 focus:ring-primary/10 tracking-widest uppercase"
+                    value={scanValue}
+                    onChange={(e) => setScanValue(e.target.value)}
+                    onKeyDown={handleBarcodeScan}
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase bg-secondary px-3 py-1 rounded-md opacity-50">
+                    Scanner Ready
+                  </div>
+                </div>
+
                 <div className="relative group">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 transition-colors group-focus-within:text-primary" />
                   <Input 
-                    placeholder="Search inventory by name, SKU or barcode..." 
-                    className="pl-12 h-14 rounded-2xl border-none bg-white shadow-sm text-lg font-bold"
+                    placeholder="Manual Search (Name or SKU)..." 
+                    className="pl-12 h-12 rounded-xl border-none bg-white/70 shadow-sm text-sm font-bold"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 
-                <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+                <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 mt-2">
                   {filteredProducts?.map((product) => (
                     <Card 
                       key={product.id} 
