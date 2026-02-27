@@ -28,7 +28,11 @@ import {
   ShieldCheck,
   Zap,
   AlertCircle,
-  Clock
+  Clock,
+  PieChart,
+  BarChart3,
+  Users,
+  ShoppingBag
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -359,6 +363,18 @@ export default function LaundryPage() {
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
   const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
   const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
+
+  // Analytics Breakdowns
+  const studentWashTransactions = laundryTransactions.filter(t => t.items[0]?.name.startsWith('Service Wash'));
+  const payableWashTransactions = laundryTransactions.filter(t => t.items[0]?.name === 'Payable Service Wash');
+  
+  const studentRevenue = studentWashTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
+  const studentProfit = studentWashTransactions.reduce((acc, t) => acc + t.profit, 0);
+  
+  const payableRevenue = payableWashTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
+  const payableProfit = payableWashTransactions.reduce((acc, t) => acc + t.profit, 0);
+
+  const totalWashCount = studentWashTransactions.length + payableWashTransactions.length;
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -1041,21 +1057,128 @@ export default function LaundryPage() {
              </div>
           </TabsContent>
 
-          <TabsContent value="profits">
+          <TabsContent value="profits" className="space-y-8">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="p-10 border-none shadow-sm bg-white rounded-[40px]">
-                   <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">Cumulative Revenue</p>
-                   <h4 className="text-5xl font-black tracking-tighter">${totalRevenue.toFixed(2)}</h4>
+                <Card className="p-8 border-none shadow-sm bg-white rounded-[32px] relative overflow-hidden">
+                   <div className="absolute top-0 right-0 p-6 opacity-5"><TrendingUp className="w-16 h-16" /></div>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest">Aggregate Revenue</p>
+                   <h4 className="text-4xl font-black tracking-tighter text-foreground">${totalRevenue.toFixed(2)}</h4>
+                   <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase">
+                     <History className="w-3 h-3" /> {laundryTransactions.length} Total Logs
+                   </div>
                 </Card>
-                <Card className="p-10 border-none shadow-sm bg-white rounded-[40px]">
-                   <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">Chemical Overhead</p>
-                   <h4 className="text-5xl font-black tracking-tighter text-destructive">-${(totalRevenue - totalProfit).toFixed(2)}</h4>
+                <Card className="p-8 border-none shadow-sm bg-white rounded-[32px] relative overflow-hidden">
+                   <div className="absolute top-0 right-0 p-6 opacity-5"><Droplet className="w-16 h-16" /></div>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest">Chemical Overhead</p>
+                   <h4 className="text-4xl font-black tracking-tighter text-destructive">-${(totalRevenue - totalProfit).toFixed(2)}</h4>
+                   <p className="mt-4 text-[10px] font-bold text-muted-foreground uppercase">Estimated Consumable Cost</p>
                 </Card>
-                <Card className="p-10 border-none shadow-sm bg-white rounded-[40px]">
-                   <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">Net Yield</p>
-                   <h4 className="text-5xl font-black tracking-tighter text-primary">${totalProfit.toFixed(2)}</h4>
+                <Card className="p-8 border-none shadow-sm bg-primary text-primary-foreground rounded-[32px] relative overflow-hidden">
+                   <div className="absolute top-0 right-0 p-6 opacity-10"><ShieldCheck className="w-16 h-16" /></div>
+                   <p className="text-[10px] font-black uppercase opacity-60 mb-1 tracking-widest">Net Business Yield</p>
+                   <h4 className="text-4xl font-black tracking-tighter">${totalProfit.toFixed(2)}</h4>
+                   <p className="mt-4 text-[10px] font-bold opacity-60 uppercase">Realized Profit After Chemical Cost</p>
                 </Card>
              </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Student Segment */}
+                <Card className="border-none shadow-sm bg-white rounded-[40px] p-8 space-y-8">
+                   <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-black flex items-center gap-2">
+                           <Users className="w-5 h-5 text-primary" /> Student Usage Segment
+                        </h3>
+                        <p className="text-sm font-medium text-muted-foreground">Institutional quota-based performance</p>
+                      </div>
+                      <Badge variant="secondary" className="font-black h-8 px-4 rounded-xl">{studentWashTransactions.length} Washes</Badge>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="p-6 bg-secondary/10 rounded-3xl">
+                         <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Segment Revenue</p>
+                         <p className="text-2xl font-black">${studentRevenue.toFixed(2)}</p>
+                      </div>
+                      <div className="p-6 bg-primary/5 border-2 border-primary/10 rounded-3xl">
+                         <p className="text-[10px] font-black uppercase text-primary mb-1">Segment Profit</p>
+                         <p className="text-2xl font-black text-primary">${studentProfit.toFixed(2)}</p>
+                      </div>
+                   </div>
+
+                   <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-black uppercase">
+                         <span>Volume Contribution</span>
+                         <span>{totalWashCount > 0 ? ((studentWashTransactions.length / totalWashCount) * 100).toFixed(0) : 0}%</span>
+                      </div>
+                      <Progress value={totalWashCount > 0 ? (studentWashTransactions.length / totalWashCount) * 100 : 0} className="h-2" />
+                   </div>
+                </Card>
+
+                {/* Payable Segment */}
+                <Card className="border-none shadow-sm bg-white rounded-[40px] p-8 space-y-8">
+                   <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-black flex items-center gap-2">
+                           <ShoppingBag className="w-5 h-5 text-accent-foreground" /> Walk-in Segment
+                        </h3>
+                        <p className="text-sm font-medium text-muted-foreground">Retail walk-in service performance</p>
+                      </div>
+                      <Badge variant="secondary" className="font-black h-8 px-4 rounded-xl">{payableWashTransactions.length} Washes</Badge>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="p-6 bg-secondary/10 rounded-3xl">
+                         <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Segment Revenue</p>
+                         <p className="text-2xl font-black">${payableRevenue.toFixed(2)}</p>
+                      </div>
+                      <div className="p-6 bg-accent/10 border-2 border-accent/20 rounded-3xl">
+                         <p className="text-[10px] font-black uppercase text-accent-foreground mb-1">Segment Profit</p>
+                         <p className="text-2xl font-black text-foreground">${payableProfit.toFixed(2)}</p>
+                      </div>
+                   </div>
+
+                   <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-black uppercase">
+                         <span>Volume Contribution</span>
+                         <span>{totalWashCount > 0 ? ((payableWashTransactions.length / totalWashCount) * 100).toFixed(0) : 0}%</span>
+                      </div>
+                      <Progress value={totalWashCount > 0 ? (payableWashTransactions.length / totalWashCount) * 100 : 0} className="h-2 bg-accent/20 [&>div]:bg-accent" />
+                   </div>
+                </Card>
+             </div>
+
+             <Card className="border-none shadow-sm bg-white rounded-[32px] p-10">
+                <div className="flex justify-between items-center mb-10">
+                   <div>
+                      <h3 className="text-xl font-black">Strategic Performance Audit</h3>
+                      <p className="text-sm text-muted-foreground font-medium">Comparative yield and volume breakdown</p>
+                   </div>
+                   <PieChart className="w-10 h-10 text-primary opacity-20" />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+                   <div className="text-center space-y-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Total Service Volume</p>
+                      <p className="text-5xl font-black tracking-tighter">{totalWashCount}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Washes Processed</p>
+                   </div>
+                   <div className="text-center space-y-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Avg. Yield / Wash</p>
+                      <p className="text-5xl font-black tracking-tighter text-primary">${totalWashCount > 0 ? (totalProfit / totalWashCount).toFixed(2) : '0.00'}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Net Profit Margin</p>
+                   </div>
+                   <div className="text-center space-y-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Subscriber Conversion</p>
+                      <p className="text-5xl font-black tracking-tighter">${totalWashCount > 0 ? (studentRevenue / totalWashCount).toFixed(2) : '0.00'}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Rev per total wash</p>
+                   </div>
+                   <div className="text-center space-y-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">Retail Contribution</p>
+                      <p className="text-5xl font-black tracking-tighter text-accent-foreground">{totalRevenue > 0 ? ((payableRevenue / totalRevenue) * 100).toFixed(0) : 0}%</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Gross Rev Percentage</p>
+                   </div>
+                </div>
+             </Card>
           </TabsContent>
 
           <TabsContent value="billing">
