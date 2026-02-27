@@ -23,12 +23,13 @@ import {
   ShieldCheck, 
   CheckCircle2, 
   Banknote,
-  User
+  User,
+  Edit2
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod } from '@/lib/types';
@@ -56,6 +57,12 @@ export default function LaundryPage() {
   // Registration Form State
   const [selectedLevel, setSelectedLevel] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
+
+  // Edit Student State
+  const [editingStudent, setEditingStudent] = useState<LaundryStudent | null>(null);
+  const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
+  const [editLevel, setEditLevel] = useState<string>('');
+  const [editClass, setEditClass] = useState<string>('');
 
   // Top Up Dialog State
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
@@ -133,6 +140,35 @@ export default function LaundryPage() {
       setSelectedClass('');
     } catch (e: any) {
       toast({ title: "Registration failed", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleOpenEdit = (student: LaundryStudent) => {
+    setEditingStudent(student);
+    setEditLevel(student.level.toString());
+    setEditClass(student.class);
+    setIsEditStudentOpen(true);
+  };
+
+  const handleUpdateStudent = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !user?.companyId || !editingStudent) return;
+    const formData = new FormData(e.currentTarget);
+    
+    const updatedData = {
+      name: formData.get('name') as string,
+      matrixNumber: formData.get('matrix') as string,
+      level: Number(editLevel),
+      class: editClass,
+    };
+
+    try {
+      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', editingStudent.id), updatedData);
+      toast({ title: "Record Updated", description: `Information for ${updatedData.name} saved.` });
+      setIsEditStudentOpen(false);
+      setEditingStudent(null);
+    } catch (e: any) {
+      toast({ title: "Update failed", variant: "destructive" });
     }
   };
 
@@ -293,6 +329,7 @@ export default function LaundryPage() {
 
   const handleDeleteStudent = async (id: string) => {
     if (!firestore || !user?.companyId) return;
+    if (!confirm("Remove this student account and all balance data?")) return;
     try {
       await deleteDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', id));
       toast({ title: "Record Deleted" });
@@ -654,7 +691,7 @@ export default function LaundryPage() {
                          <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest">Subscriber Identity</th>
                          <th className="p-6 font-black uppercase text-[10px] text-muted-foreground tracking-widest text-center">Group</th>
                          <th className="p-6 text-right font-black uppercase text-[10px] text-muted-foreground tracking-widest">Balance</th>
-                         <th className="p-6 text-center font-black uppercase text-[10px] text-muted-foreground tracking-widest">Action</th>
+                         <th className="p-6 text-center font-black uppercase text-[10px] text-muted-foreground tracking-widest">Actions</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y">
@@ -674,9 +711,14 @@ export default function LaundryPage() {
                               )}>${s.balance.toFixed(2)}</span>
                            </td>
                            <td className="p-6 text-center">
-                              <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 rounded-xl" onClick={() => handleDeleteStudent(s.id)}>
-                                <Trash2 className="w-5 h-5" />
-                              </Button>
+                              <div className="flex items-center justify-center gap-2">
+                                <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10 rounded-xl" onClick={() => handleOpenEdit(s)}>
+                                  <Edit2 className="w-5 h-5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 rounded-xl" onClick={() => handleDeleteStudent(s.id)}>
+                                  <Trash2 className="w-5 h-5" />
+                                </Button>
+                              </div>
                            </td>
                          </tr>
                        ))}
@@ -685,6 +727,62 @@ export default function LaundryPage() {
                  </div>
                </div>
              </div>
+
+             <Dialog open={isEditStudentOpen} onOpenChange={setIsEditStudentOpen}>
+               <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden border-none shadow-2xl bg-white">
+                  <div className="bg-primary p-10 text-primary-foreground">
+                    <DialogTitle className="text-2xl font-black tracking-tight flex items-center gap-3">
+                      <Edit2 className="w-6 h-6" /> Edit Student Info
+                    </DialogTitle>
+                    <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
+                      Updating Matrix {editingStudent?.matrixNumber}
+                    </DialogDescription>
+                  </div>
+                  <form onSubmit={handleUpdateStudent} className="p-10 space-y-6">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Full Name</label>
+                      <Input name="name" defaultValue={editingStudent?.name} placeholder="Alice Smith" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Matrix No.</label>
+                      <Input name="matrix" defaultValue={editingStudent?.matrixNumber} placeholder="2024-001" required className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Level</label>
+                        <Select value={editLevel} onValueChange={setEditLevel}>
+                          <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none">
+                            <SelectValue placeholder="Lv" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {LEVELS.map(lv => (
+                              <SelectItem key={lv} value={lv.toString()}>Level {lv}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Class</label>
+                        <Select value={editClass} onValueChange={setEditClass}>
+                          <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none">
+                            <SelectValue placeholder="Class" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {CLASSES.map(cls => (
+                              <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <Button type="submit" className="w-full h-14 rounded-2xl font-black text-lg shadow-xl mt-4">
+                      Save Changes
+                    </Button>
+                  </form>
+               </DialogContent>
+             </Dialog>
           </TabsContent>
 
           <TabsContent value="consumables">
