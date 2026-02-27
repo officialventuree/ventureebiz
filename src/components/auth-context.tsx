@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -7,10 +6,11 @@ import { useRouter } from 'next/navigation';
 import { useFirestore, useAuth as useFirebaseAuth } from '@/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password?: string) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -43,6 +43,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const userDoc = await getDoc(doc(firestore, 'company_users', firebaseUser.uid));
             if (userDoc.exists()) {
               setUser(userDoc.data() as User);
+            } else {
+              // Fallback if doc doesn't exist yet but user is authenticated
+              setUser({
+                id: firebaseUser.uid,
+                name: firebaseUser.displayName || 'User',
+                email: firebaseUser.email || '',
+                role: 'company' // Default to company for auto-provisioned users
+              });
             }
           } catch (e) {
             console.error("Error fetching user data:", e);
@@ -58,28 +66,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [auth, firestore]);
 
   const login = async (email: string, password?: string) => {
-    if (!auth || !password) return false;
+    if (!auth || !password) return { success: false, error: 'Missing credentials' };
 
     try {
       // Actually sign into Firebase Auth
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      // The onAuthStateChanged listener will handle redirecting and setting state
-      // but we help it along with immediate navigation
-      const userDoc = await getDocs(query(collection(firestore, 'company_users'), where('email', '==', email)));
-      
-      if (!userDoc.empty) {
-        const userData = userDoc.docs[0].data() as User;
-        if (userData.role === 'company') router.push('/company');
-        else if (userData.role === 'viewer') router.push('/viewer');
-      } else if (email === 'admin@ventureebiz.com') {
+      // Navigate based on role
+      if (email === 'admin@ventureebiz.com') {
         router.push('/admin');
+      } else {
+        // We query to find the role for navigation redirection
+        const userDoc = await getDoc(doc(firestore, 'company_users', userCredential.user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as User;
+          if (userData.role === 'company') router.push('/company');
+          else if (userData.role === 'viewer') router.push('/viewer');
+        } else {
+          // If doc not found, it might be a newly created company
+          router.push('/company');
+        }
       }
       
-      return true;
-    } catch (e) {
-      console.error("Firebase Auth login error:", e);
-      return false;
+      return { success: true };
+    } catch (e: any) {
+      let errorMessage = "Invalid credentials. Please try again.";
+      
+      if (e instanceof FirebaseError) {
+        // 'auth/invalid-credential' is the standard error for wrong email/password or disabled provider
+        if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
+          errorMessage = "Login failed. Ensure the 'Email/Password' provider is enabled in Firebase Console and the user exists.";
+        }
+      }
+      
+      return { success: false, error: errorMessage };
     }
   };
 

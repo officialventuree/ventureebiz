@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Leaf } from 'lucide-react';
+import { Leaf, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -19,11 +20,12 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const success = await login(email, password);
-    if (!success) {
+    const result = await login(email, password);
+    
+    if (!result.success) {
       toast({
         title: "Login Failed",
-        description: "Invalid credentials. Please try again.",
+        description: result.error || "Invalid credentials. Please try again.",
         variant: "destructive",
       });
     }
@@ -69,6 +71,16 @@ export default function LoginPage() {
                   required
                 />
               </div>
+              
+              {email === 'admin@ventureebiz.com' && (
+                <Alert className="bg-amber-50 border-amber-200 text-amber-800">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-xs font-bold uppercase tracking-tight">Admin Note</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    Ensure the admin user is created in the Firebase Auth console and the Email/Password provider is enabled.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full font-semibold h-11" disabled={loading}>
@@ -78,8 +90,13 @@ export default function LoginPage() {
           </form>
         </Card>
         
-        <div className="mt-8 text-center text-sm text-muted-foreground">
-          <p>Admin: admin@ventureebiz.com / admin</p>
+        <div className="mt-8 text-center text-sm text-muted-foreground bg-white/50 p-4 rounded-xl border border-dashed">
+          <p className="font-bold mb-1 text-primary">Next Steps</p>
+          <div className="text-[10px] leading-relaxed">
+            <p>1. Go to <b>Firebase Console</b> &gt; <b>Authentication</b>.</p>
+            <p>2. Enable the <b>Email/Password</b> sign-in provider.</p>
+            <p>3. Add a user: <b>admin@ventureebiz.com</b> / <b>admin</b>.</p>
+          </div>
         </div>
       </div>
     </div>
