@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc } from 'firebase/firestore';
@@ -105,7 +105,7 @@ export default function MartPage() {
     
     const q = query(
       collection(firestore, 'companies', user.companyId, 'coupons'),
-      where('code', '==', couponCode),
+      where('code', '==', couponCode.toUpperCase()),
       where('status', '==', 'unused')
     );
     
@@ -120,14 +120,14 @@ export default function MartPage() {
         return;
       }
       setActiveCoupon(couponData);
-      toast({ title: "Coupon Applied", description: `Discount: $${couponData.value.toFixed(2)}` });
+      toast({ title: "Coupon Applied", description: `Discount of $${couponData.value.toFixed(2)} added.` });
     }
   };
 
   const initiateCheckout = () => {
     if (cart.length === 0 || !user?.companyId || !firestore) return;
     if (totalAmount >= LUCKY_DRAW_MIN_SPEND && !customerName) {
-      toast({ title: "Lucky Draw Eligible!", description: "Please enter customer name to proceed.", variant: "destructive" });
+      toast({ title: "Lucky Draw Entry Required", description: "This high-value purchase qualifies for the Lucky Draw. Please enter the customer's name.", variant: "destructive" });
       return;
     }
     setShowCheckoutDialog(true);
@@ -137,7 +137,7 @@ export default function MartPage() {
     if (!user?.companyId || !firestore) return;
     
     if ((paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber) {
-      toast({ title: "Reference Required", description: "Please enter the payment reference number.", variant: "destructive" });
+      toast({ title: "Audit Trail Required", description: "Please enter the payment reference/trace number.", variant: "destructive" });
       return;
     }
 
@@ -155,10 +155,11 @@ export default function MartPage() {
         profit: totalProfit,
         discountApplied: discount,
         couponCode: activeCoupon?.code || undefined,
-        customerName: customerName || 'Walk-in',
+        customerName: customerName || 'Walk-in Customer',
         timestamp: new Date().toISOString(),
         paymentMethod,
         referenceNumber: referenceNumber || undefined,
+        status: 'completed',
         items: cart.map(item => ({
           name: item.product.name,
           price: item.product.sellingPrice,
@@ -169,18 +170,18 @@ export default function MartPage() {
 
       await setDoc(transactionRef, transactionData);
 
-      // Deduct stock
+      // Inventory adjustment
       for (const item of cart) {
         const productRef = doc(firestore, 'companies', user.companyId, 'products', item.product.id);
         await updateDoc(productRef, { stock: increment(-item.quantity) });
       }
 
-      // Mark coupon used
+      // Finalize coupon
       if (activeCoupon) {
         await updateDoc(doc(firestore, 'companies', user.companyId, 'coupons', activeCoupon.id), { status: 'used' });
       }
 
-      // Record Lucky Draw
+      // Register Lucky Draw
       if (totalAmount >= LUCKY_DRAW_MIN_SPEND) {
         const drawRef = collection(firestore, 'companies', user.companyId, 'luckyDraws');
         await addDoc(drawRef, {
@@ -193,7 +194,7 @@ export default function MartPage() {
         });
       }
 
-      toast({ title: "Sale Completed", description: `Order total: $${totalAmount.toFixed(2)} (${paymentMethod.toUpperCase()})` });
+      toast({ title: "Transaction Successful", description: `Captured $${totalAmount.toFixed(2)} via ${paymentMethod.toUpperCase()}.` });
       setCart([]);
       setActiveCoupon(null);
       setCouponCode('');
@@ -201,7 +202,7 @@ export default function MartPage() {
       setReferenceNumber('');
       setShowCheckoutDialog(false);
     } catch (e) {
-      toast({ title: "Checkout failed", variant: "destructive" });
+      toast({ title: "Finalization Failed", variant: "destructive" });
     } finally {
       setIsProcessing(false);
     }
@@ -214,52 +215,54 @@ export default function MartPage() {
   })) || [];
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background font-body">
       <Sidebar />
       <main className="flex-1 overflow-hidden p-8 flex flex-col">
         <div className="mb-6 flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-black font-headline text-foreground">Mart Management</h1>
-            <p className="text-muted-foreground font-medium">Operations, Loyalty & Logistics</p>
+            <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Mart Control</h1>
+            <p className="text-muted-foreground font-bold text-sm">Retail Logistics & Customer Engagement</p>
           </div>
           <div className="flex gap-4">
-             <Card className="p-4 border-none shadow-sm bg-white/50 flex items-center gap-3">
-                <Trophy className="w-5 h-5 text-accent" />
+             <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
+                <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center text-accent-foreground">
+                   <Trophy className="w-5 h-5" />
+                </div>
                 <div>
-                   <p className="text-[10px] font-black uppercase text-muted-foreground">Lucky Draw Min.</p>
-                   <p className="text-sm font-black text-foreground">${LUCKY_DRAW_MIN_SPEND}</p>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Lucky Draw Min.</p>
+                   <p className="text-lg font-black text-foreground">${LUCKY_DRAW_MIN_SPEND}</p>
                 </div>
              </Card>
           </div>
         </div>
 
         <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-xl">
-            <TabsTrigger value="pos" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Receipt className="w-4 h-4" /> POS
+          <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm">
+            <TabsTrigger value="pos" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Receipt className="w-4 h-4" /> POS Terminal
             </TabsTrigger>
-            <TabsTrigger value="inventory" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Package className="w-4 h-4" /> Stock
+            <TabsTrigger value="inventory" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Package className="w-4 h-4" /> Stock Control
             </TabsTrigger>
-            <TabsTrigger value="coupons" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <Ticket className="w-4 h-4" /> Coupons
+            <TabsTrigger value="coupons" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Ticket className="w-4 h-4" /> Promotions
             </TabsTrigger>
-            <TabsTrigger value="billing" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <CreditCard className="w-4 h-4" /> Billing
+            <TabsTrigger value="billing" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Wallet className="w-4 h-4" /> Billing Config
             </TabsTrigger>
-            <TabsTrigger value="profit" className="gap-2 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <TrendingUp className="w-4 h-4" /> Analytics
+            <TabsTrigger value="profit" className="gap-2 rounded-xl px-6 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <TrendingUp className="w-4 h-4" /> Profit Analytics
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pos" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <div className="relative group">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 transition-colors group-focus-within:text-primary" />
                   <Input 
-                    placeholder="Quick search products..." 
-                    className="pl-10 h-12 rounded-xl border-none bg-white shadow-sm"
+                    placeholder="Search inventory by name or SKU..." 
+                    className="pl-12 h-14 rounded-2xl border-none bg-white shadow-sm text-lg font-bold"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -270,19 +273,19 @@ export default function MartPage() {
                     <Card 
                       key={product.id} 
                       className={cn(
-                        "cursor-pointer hover:border-primary border-transparent transition-all bg-white shadow-sm",
-                        product.stock <= 0 && "opacity-50 grayscale"
+                        "cursor-pointer hover:border-primary border-2 border-transparent transition-all bg-white shadow-sm rounded-3xl group",
+                        product.stock <= 0 && "opacity-50 grayscale cursor-not-allowed"
                       )}
                       onClick={() => addToCart(product)}
                     >
                       <CardContent className="p-6 flex justify-between items-center">
                         <div className="space-y-1">
-                          <h3 className="font-black text-lg">{product.name}</h3>
-                          <p className="text-xl font-black text-primary">${product.sellingPrice.toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground font-bold uppercase">SKU: {product.sku || 'N/A'}</p>
+                          <h3 className="font-black text-xl group-hover:text-primary transition-colors">{product.name}</h3>
+                          <p className="text-2xl font-black text-primary">${product.sellingPrice.toFixed(2)}</p>
+                          <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {product.sku || 'N/A'}</p>
                         </div>
                         <div className="text-right">
-                           <Badge variant={product.stock > 10 ? "outline" : "destructive"} className="mb-2 uppercase font-black">
+                           <Badge variant={product.stock > 10 ? "secondary" : "destructive"} className="mb-2 uppercase font-black text-[10px] tracking-tighter px-3 py-1">
                              {product.stock} Units
                            </Badge>
                         </div>
@@ -293,70 +296,77 @@ export default function MartPage() {
               </div>
 
               <div className="lg:col-span-1 h-full">
-                <Card className="h-full flex flex-col border-none shadow-xl bg-white rounded-3xl overflow-hidden">
-                  <CardHeader className="bg-secondary/10">
-                    <CardTitle className="flex items-center gap-2 text-xl font-black">
-                      <ShoppingCart className="w-5 h-5 text-primary" />
-                      Checkout
+                <Card className="h-full flex flex-col border-none shadow-2xl bg-white rounded-[32px] overflow-hidden">
+                  <CardHeader className="bg-secondary/20 p-8">
+                    <CardTitle className="flex items-center gap-2 text-2xl font-black">
+                      <ShoppingCart className="w-6 h-6 text-primary" />
+                      Active Cart
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex-1 overflow-auto p-6 space-y-4">
+                  <CardContent className="flex-1 overflow-auto p-8 space-y-4">
                     {cart.map((item) => (
-                      <div key={item.product.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/20">
+                      <div key={item.product.id} className="flex items-center justify-between p-4 rounded-2xl bg-secondary/10 group hover:bg-secondary/20 transition-colors">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black truncate">{item.product.name}</p>
-                          <p className="text-xs text-primary font-bold">${(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
+                          <p className="text-sm font-black truncate text-foreground">{item.product.name}</p>
+                          <p className="text-sm text-primary font-black">${(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <Button size="icon" variant="ghost" className="h-8 w-8 bg-white" onClick={() => updateQuantity(item.product.id, -1)}>
-                            <Minus className="w-3 h-3" />
+                        <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => updateQuantity(item.product.id, -1)}>
+                            <Minus className="w-4 h-4" />
                           </Button>
-                          <span className="font-black w-4 text-center">{item.quantity}</span>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 bg-white" onClick={() => updateQuantity(item.product.id, 1)}>
-                            <Plus className="w-3 h-3" />
+                          <span className="font-black w-4 text-center text-lg">{item.quantity}</span>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-primary/10 hover:text-primary" onClick={() => updateQuantity(item.product.id, 1)}>
+                            <Plus className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
                     ))}
-                    {cart.length === 0 && <p className="text-center py-20 text-muted-foreground font-bold">Cart is empty</p>}
+                    {cart.length === 0 && (
+                      <div className="py-20 text-center opacity-20">
+                         <ShoppingCart className="w-20 h-20 mx-auto mb-4" />
+                         <p className="font-black text-lg">Empty Cart</p>
+                      </div>
+                    )}
                   </CardContent>
-                  <CardFooter className="flex-col gap-4 p-6 border-t bg-secondary/5">
-                    <div className="w-full space-y-3">
+                  <CardFooter className="flex-col gap-6 p-8 border-t bg-secondary/5">
+                    <div className="w-full space-y-4">
                       {totalAmount >= LUCKY_DRAW_MIN_SPEND && (
-                        <div className="space-y-1">
-                           <label className="text-[10px] font-black uppercase text-accent">Customer Name (Lucky Draw Entry)</label>
+                        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                           <div className="flex items-center gap-2 text-[10px] font-black uppercase text-accent-foreground tracking-widest bg-accent/20 px-3 py-1.5 rounded-full w-fit">
+                             <Trophy className="w-3 h-3" /> Lucky Draw Qualified
+                           </div>
                            <Input 
-                             placeholder="Required for entries..." 
-                             className="h-10 rounded-xl border-accent bg-accent/5 font-bold"
+                             placeholder="Enter customer name..." 
+                             className="h-12 rounded-xl border-accent border-2 bg-white font-bold"
                              value={customerName}
                              onChange={(e) => setCustomerName(e.target.value)}
                            />
                         </div>
                       )}
 
-                      <div className="pt-2 space-y-2">
-                        <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm font-bold text-muted-foreground uppercase tracking-widest">
                           <span>Subtotal</span>
                           <span>${subtotal.toFixed(2)}</span>
                         </div>
                         {discount > 0 && (
-                          <div className="flex justify-between text-xs font-bold text-green-600">
-                            <span>Discount ({activeCoupon?.code})</span>
+                          <div className="flex justify-between text-sm font-black text-green-600 uppercase tracking-widest">
+                            <span>Discount</span>
                             <span>-${discount.toFixed(2)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between text-2xl font-black text-foreground">
-                          <span>Total</span>
-                          <span className="text-primary">${totalAmount.toFixed(2)}</span>
+                        <div className="flex justify-between items-end pt-2">
+                          <span className="text-xs font-black uppercase text-muted-foreground mb-1">Payable Total</span>
+                          <span className="text-5xl font-black text-foreground tracking-tighter">${totalAmount.toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
                     <Button 
-                      className="w-full h-14 text-lg font-black rounded-xl shadow-lg" 
+                      className="w-full h-16 text-xl font-black rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98]" 
                       disabled={cart.length === 0 || isProcessing}
                       onClick={initiateCheckout}
                     >
-                      {isProcessing ? "Processing..." : "Complete Order"}
+                      {isProcessing ? "Persisting..." : "Initiate Checkout"}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -364,127 +374,85 @@ export default function MartPage() {
             </div>
 
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
-              <DialogContent className="rounded-3xl border-none shadow-2xl max-w-lg">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl font-black">Finalize Checkout</DialogTitle>
-                  <DialogDescription className="font-bold">Total Amount Due: ${totalAmount.toFixed(2)}</DialogDescription>
-                </DialogHeader>
+              <DialogContent className="rounded-[40px] border-none shadow-[0_32px_128px_rgba(0,0,0,0.1)] max-w-xl p-0 overflow-hidden bg-white">
+                <div className="bg-primary p-12 text-primary-foreground flex flex-col items-center gap-2">
+                   <p className="text-xs font-black uppercase tracking-[0.2em] opacity-80">Payment Settlement</p>
+                   <h2 className="text-6xl font-black tracking-tighter">${totalAmount.toFixed(2)}</h2>
+                   <div className="mt-4 flex gap-2">
+                      <Badge variant="outline" className="border-white/20 text-white font-bold px-3">{cart.length} Items</Badge>
+                      {discount > 0 && <Badge className="bg-white text-primary font-black">-{discount.toFixed(2)}</Badge>}
+                   </div>
+                </div>
                 
-                <div className="py-4 space-y-6">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Select Payment Method</label>
-                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <RadioGroupItem value="cash" id="cash" className="peer sr-only" />
-                        <Label
-                          htmlFor="cash"
-                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                        >
-                          <Banknote className="mb-2 h-5 w-5 text-primary" />
-                          <span className="text-xs font-black">Cash</span>
-                        </Label>
-                      </div>
-                      <div>
-                        <RadioGroupItem value="card" id="card" className="peer sr-only" />
-                        <Label
-                          htmlFor="card"
-                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                        >
-                          <CreditCard className="mb-2 h-5 w-5 text-primary" />
-                          <span className="text-xs font-black">Card</span>
-                        </Label>
-                      </div>
-                      <div>
-                        <RadioGroupItem value="duitnow" id="duitnow" className="peer sr-only" />
-                        <Label
-                          htmlFor="duitnow"
-                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                        >
-                          <QrCode className="mb-2 h-5 w-5 text-primary" />
-                          <span className="text-xs font-black">DuitNow</span>
-                        </Label>
-                      </div>
-                      <div>
-                        <RadioGroupItem value="coupon" id="coupon_method" className="peer sr-only" />
-                        <Label
-                          htmlFor="coupon_method"
-                          className="flex flex-col items-center justify-center rounded-2xl border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer transition-all"
-                        >
-                          <Ticket className="mb-2 h-5 w-5 text-primary" />
-                          <span className="text-xs font-black">Voucher</span>
-                        </Label>
-                      </div>
+                <div className="p-12 space-y-10">
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] px-1">Payment Channel</label>
+                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 gap-4">
+                      <PaymentOption value="cash" label="Cash" icon={Banknote} id="cash_final" />
+                      <PaymentOption value="card" label="Card" icon={CreditCard} id="card_final" />
+                      <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
+                      <PaymentOption value="coupon" label="Voucher" icon={Ticket} id="coupon_final" />
                     </RadioGroup>
                   </div>
 
+                  <Separator className="opacity-10" />
+
                   {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                       <div className="space-y-1.5">
-                          <label className="text-[10px] font-black uppercase text-muted-foreground">Transaction Reference #</label>
+                    <div className="space-y-6 animate-in zoom-in-95 duration-300">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Audit Reference / Trace ID</label>
                           <Input 
-                            placeholder="Enter Trace ID / Reference" 
-                            className="h-11 rounded-xl font-bold bg-secondary/10 border-none"
+                            placeholder="Enter transaction reference..." 
+                            className="h-14 rounded-2xl font-black text-lg bg-secondary/10 border-none px-6"
                             value={referenceNumber}
                             onChange={(e) => setReferenceNumber(e.target.value)}
                             required
                           />
                        </div>
                        {paymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                         <div className="bg-secondary/10 p-4 rounded-2xl flex flex-col items-center gap-2">
-                            <p className="text-[10px] font-black uppercase text-muted-foreground">Merchant QR</p>
-                            <img src={companyDoc.duitNowQr} alt="DuitNow QR" className="w-32 h-32 object-contain bg-white p-2 rounded-xl shadow-sm" />
+                         <div className="bg-secondary/10 p-8 rounded-3xl flex flex-col items-center gap-4 border-2 border-dashed border-primary/20">
+                            <p className="text-[10px] font-black uppercase text-primary tracking-widest">Scan Merchant QR</p>
+                            <img src={companyDoc.duitNowQr} alt="DuitNow QR" className="w-48 h-48 object-contain bg-white p-4 rounded-2xl shadow-2xl" />
                          </div>
                        )}
                     </div>
                   )}
 
-                  <Separator />
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Apply Promotion</label>
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Redeem Promotion</label>
                     <div className="flex gap-2">
                       <Input 
-                        placeholder="Enter Promo Code" 
-                        className="h-11 rounded-xl bg-secondary/10 border-none font-bold"
+                        placeholder="ENTER PROMO CODE" 
+                        className="h-14 rounded-2xl bg-secondary/10 border-none font-black uppercase px-6 tracking-widest"
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value)}
                       />
-                      <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-xl font-black h-11 px-6">Verify</Button>
+                      <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-2xl font-black h-14 px-8 text-xs uppercase tracking-widest shadow-lg">Verify</Button>
                     </div>
                     {activeCoupon && (
-                       <Badge className="bg-green-100 text-green-700 hover:bg-green-100 font-black gap-2 py-1 px-3">
-                         <Ticket className="w-3 h-3" /> {activeCoupon.code} Applied (-${activeCoupon.value.toFixed(2)})
-                       </Badge>
+                       <div className="flex items-center gap-3 bg-green-50 text-green-700 p-4 rounded-2xl border border-green-200 animate-in slide-in-from-left-4">
+                         <div className="w-10 h-10 bg-green-200 rounded-xl flex items-center justify-center">
+                            <CheckCircle2 className="w-5 h-5" />
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest">Active Discount</p>
+                            <p className="font-black text-lg">{activeCoupon.code} (-${activeCoupon.value.toFixed(2)})</p>
+                         </div>
+                       </div>
                     )}
-                  </div>
-
-                  <div className="bg-primary/5 p-4 rounded-2xl space-y-2">
-                     <div className="flex justify-between text-xs font-bold text-muted-foreground">
-                        <span>Items Subtotal</span>
-                        <span>${subtotal.toFixed(2)}</span>
-                     </div>
-                     {discount > 0 && (
-                        <div className="flex justify-between text-xs font-black text-green-600">
-                           <span>Promotional Discount</span>
-                           <span>-${discount.toFixed(2)}</span>
-                        </div>
-                     )}
-                     <div className="flex justify-between items-end border-t border-primary/10 pt-2">
-                        <span className="text-sm font-black uppercase text-primary">Final Payable</span>
-                        <span className="text-3xl font-black text-foreground">${totalAmount.toFixed(2)}</span>
-                     </div>
                   </div>
                 </div>
 
-                <DialogFooter>
+                <div className="p-12 pt-0">
                   <Button 
                     onClick={handleFinalCheckout} 
-                    className="w-full h-14 rounded-xl font-black text-lg shadow-lg" 
+                    className="w-full h-20 rounded-[28px] font-black text-xl shadow-[0_16px_48px_rgba(var(--primary),0.2)] flex items-center justify-center gap-4 group" 
                     disabled={isProcessing}
                   >
-                    {isProcessing ? "Finalizing Transaction..." : "Confirm & Record Sale"}
+                    {isProcessing ? "Finalizing Transaction..." : "Complete & Record Sale"}
+                    {!isProcessing && <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />}
                   </Button>
-                </DialogFooter>
+                </div>
               </DialogContent>
             </Dialog>
           </TabsContent>
@@ -501,25 +469,38 @@ export default function MartPage() {
             <BillingManager companyId={user?.companyId} companyDoc={companyDoc} />
           </TabsContent>
 
-          <TabsContent value="profit" className="space-y-6 overflow-auto pb-8">
+          <TabsContent value="profit" className="space-y-8 overflow-auto pb-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-               <ReportStat label="Weekly Revenue" value={`$${profitData.reduce((acc, d) => acc + d.revenue, 0).toFixed(2)}`} />
-               <ReportStat label="Net Profit" value={`$${profitData.reduce((acc, d) => acc + d.profit, 0).toFixed(2)}`} color="text-primary" />
-               <ReportStat label="Lucky Draws" value={`${transactions?.filter(t => t.totalAmount >= LUCKY_DRAW_MIN_SPEND).length || 0} entries`} />
+               <ReportStat label="Weekly Performance" value={`$${profitData.reduce((acc, d) => acc + d.revenue, 0).toFixed(2)}`} />
+               <ReportStat label="Realized Profit" value={`$${profitData.reduce((acc, d) => acc + d.profit, 0).toFixed(2)}`} color="text-primary" />
+               <ReportStat label="Event Pipeline" value={`${transactions?.filter(t => t.totalAmount >= LUCKY_DRAW_MIN_SPEND).length || 0} Qualifiers`} />
             </div>
-            <Card className="border-none shadow-sm p-8 bg-white rounded-3xl">
-               <CardHeader className="px-0 pt-0">
-                  <CardTitle className="text-lg font-black">Growth Analytics</CardTitle>
+            <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
+               <CardHeader className="px-0 pt-0 mb-8">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-2xl font-black">Growth Analytics</CardTitle>
+                      <CardDescription className="font-bold">Historical data across your business modules</CardDescription>
+                    </div>
+                    <div className="flex gap-4">
+                       <div className="flex items-center gap-2 text-[10px] font-black uppercase">
+                          <div className="w-3 h-3 bg-secondary rounded-full" /> Revenue
+                       </div>
+                       <div className="flex items-center gap-2 text-[10px] font-black uppercase">
+                          <div className="w-3 h-3 bg-primary rounded-full" /> Profit
+                       </div>
+                    </div>
+                  </div>
                </CardHeader>
-               <div className="h-[350px]">
+               <div className="h-[400px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={profitData}>
+                    <BarChart data={profitData} barGap={8}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} />
-                      <YAxis axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
-                      <Bar dataKey="revenue" fill="hsl(var(--secondary))" radius={[8, 8, 0, 0]} name="Revenue" />
-                      <Bar dataKey="profit" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} name="Profit" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 700, fill: 'hsl(var(--muted-foreground))' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700, fill: 'hsl(var(--muted-foreground))' }} />
+                      <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
+                      <Bar dataKey="revenue" fill="hsl(var(--secondary))" radius={[12, 12, 0, 0]} name="Gross Revenue" />
+                      <Bar dataKey="profit" fill="hsl(var(--primary))" radius={[12, 12, 0, 0]} name="Net Profit" />
                     </BarChart>
                   </ResponsiveContainer>
                </div>
@@ -527,6 +508,21 @@ export default function MartPage() {
           </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function PaymentOption({ value, label, icon: Icon, id }: any) {
+  return (
+    <div>
+      <RadioGroupItem value={value} id={id} className="peer sr-only" />
+      <Label
+        htmlFor={id}
+        className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-6 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32"
+      >
+        <Icon className="mb-2 h-8 w-8 text-primary" />
+        <span className="text-sm font-black uppercase tracking-widest">{label}</span>
+      </Label>
     </div>
   );
 }
@@ -548,9 +544,9 @@ function BillingManager({ companyId, companyDoc }: { companyId?: string, company
         await updateDoc(doc(firestore, 'companies', companyId), {
           duitNowQr: base64String
         });
-        toast({ title: "QR Code Updated", description: "Successfully saved to billing settings." });
+        toast({ title: "Configuration Updated", description: "Payment QR code is now active in POS." });
       } catch (err) {
-        toast({ title: "Upload failed", variant: "destructive" });
+        toast({ title: "Configuration failed", variant: "destructive" });
       } finally {
         setIsUploading(false);
       }
@@ -560,23 +556,25 @@ function BillingManager({ companyId, companyDoc }: { companyId?: string, company
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      <Card className="border-none shadow-sm rounded-3xl bg-white">
-        <CardHeader>
-          <CardTitle className="text-xl font-black flex items-center gap-2">
-            <QrCode className="w-5 h-5 text-primary" /> DuitNow QR Configuration
+      <Card className="border-none shadow-sm rounded-[40px] bg-white">
+        <CardHeader className="p-10">
+          <CardTitle className="text-2xl font-black flex items-center gap-3">
+            <QrCode className="w-8 h-8 text-primary" /> Digital Settlement Setup
           </CardTitle>
-          <CardDescription className="font-bold">Upload your business QR code for cashless POS payments</CardDescription>
+          <CardDescription className="font-bold text-lg">Centralize your business DuitNow identity</CardDescription>
         </CardHeader>
-        <CardContent className="p-6 space-y-6">
-          <div className="p-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 bg-secondary/10 relative overflow-hidden">
+        <CardContent className="p-10 pt-0 space-y-8">
+          <div className="p-16 border-4 border-dashed rounded-[32px] flex flex-col items-center justify-center gap-6 bg-secondary/10 relative overflow-hidden group hover:bg-secondary/20 transition-colors">
             {companyDoc?.duitNowQr ? (
-              <img src={companyDoc.duitNowQr} alt="Current QR" className="w-48 h-48 object-contain rounded-xl shadow-md bg-white p-2" />
+              <img src={companyDoc.duitNowQr} alt="Active QR" className="w-64 h-64 object-contain rounded-3xl shadow-2xl bg-white p-6 transition-transform group-hover:scale-105" />
             ) : (
-              <ImageIcon className="w-16 h-16 text-muted-foreground opacity-20" />
+              <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center">
+                 <ImageIcon className="w-12 h-12 text-primary opacity-30" />
+              </div>
             )}
             <div className="text-center">
-              <p className="font-black text-sm text-foreground">{companyDoc?.duitNowQr ? "Replace QR Code" : "No QR Configured"}</p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Recommended size: 500x500px</p>
+              <p className="font-black text-xl text-foreground">{companyDoc?.duitNowQr ? "Update Settlement QR" : "Configure Settlement QR"}</p>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-2">Preferred Format: JPG/PNG @ 1:1 Aspect</p>
             </div>
             <input
               type="file"
@@ -586,43 +584,43 @@ function BillingManager({ companyId, companyDoc }: { companyId?: string, company
               disabled={isUploading}
             />
           </div>
-          <div className="bg-primary/5 p-4 rounded-2xl flex items-start gap-3">
-             <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
+          <div className="bg-primary/5 p-6 rounded-3xl flex items-start gap-4">
+             <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
              </div>
              <div>
-                <p className="text-xs font-black text-foreground uppercase tracking-tighter">Automatic Integration</p>
-                <p className="text-[10px] font-bold text-muted-foreground leading-relaxed mt-1">Once uploaded, the "DuitNow QR" payment method will instantly display this image during the checkout process.</p>
+                <p className="text-sm font-black text-foreground uppercase tracking-widest">Automatic POS Integration</p>
+                <p className="text-xs font-bold text-muted-foreground leading-relaxed mt-2">When DuitNow is selected at checkout, this QR code will be dynamically projected to the customer for immediate cashless fulfillment.</p>
              </div>
           </div>
         </CardContent>
       </Card>
 
       <div className="space-y-6">
-        <Card className="border-none shadow-sm rounded-3xl bg-white">
-          <CardHeader>
-            <CardTitle className="text-lg font-black">Payment Audit Settings</CardTitle>
+        <Card className="border-none shadow-sm rounded-[40px] bg-white">
+          <CardHeader className="p-10">
+            <CardTitle className="text-xl font-black">Operational Guardrails</CardTitle>
           </CardHeader>
-          <CardContent className="p-6 space-y-4">
-             <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl">
+          <CardContent className="p-10 pt-0 space-y-4">
+             <div className="flex items-center justify-between p-6 bg-secondary/10 rounded-3xl">
                 <div>
-                   <p className="font-black">Cash & Card Tracking</p>
-                   <p className="text-[10px] font-bold text-muted-foreground">Reference numbers enabled</p>
+                   <p className="font-black text-lg">Hybrid Tracking</p>
+                   <p className="text-xs font-bold text-muted-foreground">Trace IDs required for Card/QR</p>
                 </div>
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white">
-                   <CheckCircle2 className="w-6 h-6" />
+                <div className="w-12 h-12 bg-green-500 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                   <CheckCircle2 className="w-7 h-7" />
                 </div>
              </div>
-             <div className="flex items-center justify-between p-4 bg-secondary/20 rounded-2xl">
+             <div className="flex items-center justify-between p-6 bg-secondary/10 rounded-3xl">
                 <div>
-                   <p className="font-black">DuitNow QR</p>
-                   <p className="text-[10px] font-bold text-muted-foreground">Requires QR upload</p>
+                   <p className="font-black text-lg">Settlement Active</p>
+                   <p className="text-xs font-bold text-muted-foreground">Digital payment infrastructure</p>
                 </div>
                 <div className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center text-white",
+                  "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg transition-colors",
                   companyDoc?.duitNowQr ? "bg-green-500" : "bg-muted text-muted-foreground"
                 )}>
-                   <CheckCircle2 className="w-6 h-6" />
+                   <CheckCircle2 className="w-7 h-7" />
                 </div>
              </div>
           </CardContent>
@@ -666,11 +664,11 @@ function InventoryManager({ companyId }: { companyId?: string }) {
         id: crypto.randomUUID(),
         companyId,
         amount: cost,
-        description: `Restock: ${qty} units of ${selectedProduct.name}`,
+        description: `Batch Restock: ${qty} units of ${selectedProduct.name}`,
         timestamp: new Date().toISOString()
       });
 
-      toast({ title: "Inventory Restocked", description: `Added ${qty} units to ${selectedProduct.name}` });
+      toast({ title: "Logistics Updated", description: `Added ${qty} units to ${selectedProduct.name} catalog.` });
       setSelectedProduct(null);
       (e.target as HTMLFormElement).reset();
     } catch (err) {
@@ -698,10 +696,10 @@ function InventoryManager({ companyId }: { companyId?: string }) {
 
     try {
       await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
-      toast({ title: "Product Registered" });
+      toast({ title: "Catalog Entry Saved" });
       (e.target as HTMLFormElement).reset();
     } catch (err) {
-      toast({ title: "Save failed", variant: "destructive" });
+      toast({ title: "Entry failed", variant: "destructive" });
     } finally {
       setIsAdding(false);
     }
@@ -711,86 +709,93 @@ function InventoryManager({ companyId }: { companyId?: string }) {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-8">
       <div className="space-y-6">
         <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden">
-          <CardHeader className="bg-primary/5">
-            <CardTitle className="text-lg font-black flex items-center gap-2">
-               <Truck className="w-5 h-5" /> Replenish Stock
+          <CardHeader className="bg-primary/5 p-8">
+            <CardTitle className="text-xl font-black flex items-center gap-3">
+               <Truck className="w-6 h-6" /> Batch Replenishment
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-8">
              {selectedProduct ? (
-               <form onSubmit={handleReplenish} className="space-y-4">
+               <form onSubmit={handleReplenish} className="space-y-6">
                   <div className="p-4 bg-secondary/20 rounded-2xl">
-                     <p className="text-[10px] font-black uppercase text-muted-foreground">Product</p>
-                     <p className="font-black">{selectedProduct.name}</p>
+                     <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Batch</p>
+                     <p className="font-black text-lg">{selectedProduct.name}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase">Units</label>
-                        <Input name="quantity" type="number" required className="rounded-xl h-12" />
+                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Units</label>
+                        <Input name="quantity" type="number" required className="rounded-xl h-12 font-bold" />
                      </div>
                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase">Total Cost ($)</label>
-                        <Input name="cost" type="number" step="0.01" required className="rounded-xl h-12" />
+                        <label className="text-[10px] font-black uppercase tracking-widest px-1">Total Cost ($)</label>
+                        <Input name="cost" type="number" step="0.01" required className="rounded-xl h-12 font-bold" />
                      </div>
                   </div>
-                  <div className="flex gap-2">
-                     <Button type="submit" className="flex-1 rounded-xl font-black h-12" disabled={isAdding}>Confirm</Button>
+                  <div className="flex gap-3">
+                     <Button type="submit" className="flex-1 rounded-xl font-black h-12 shadow-lg" disabled={isAdding}>Confirm</Button>
                      <Button type="button" variant="outline" className="rounded-xl font-black h-12" onClick={() => setSelectedProduct(null)}>Cancel</Button>
                   </div>
                </form>
              ) : (
-               <div className="py-12 text-center text-muted-foreground bg-secondary/10 rounded-2xl border-2 border-dashed">
-                  <p className="text-sm font-bold">Select a product from the list to replenish stock</p>
+               <div className="py-16 text-center text-muted-foreground bg-secondary/5 rounded-3xl border-4 border-dashed border-secondary/20">
+                  <p className="text-sm font-black uppercase tracking-widest opacity-60">Ready for Selection</p>
+                  <p className="text-xs font-bold mt-2">Pick an item from the registry</p>
                </div>
              )}
           </CardContent>
         </Card>
 
         <Card className="border-none shadow-sm rounded-3xl bg-white">
-          <CardHeader>
-            <CardTitle className="text-lg font-black">New Product Entry</CardTitle>
+          <CardHeader className="p-8">
+            <CardTitle className="text-xl font-black">Product Registration</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-8 pt-0">
              <form onSubmit={handleAddNew} className="space-y-4">
-                <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
-                <Input name="sku" placeholder="SKU/Barcode" className="h-12 rounded-xl" />
+                <Input name="name" placeholder="Legal Product Name" required className="h-12 rounded-xl font-bold" />
+                <Input name="sku" placeholder="EAN / SKU Barcode" className="h-12 rounded-xl font-bold" />
                 <div className="grid grid-cols-2 gap-4">
-                   <Input name="cost" type="number" placeholder="Cost" step="0.01" required className="h-12 rounded-xl" />
-                   <Input name="price" type="number" placeholder="Price" step="0.01" required className="h-12 rounded-xl" />
+                   <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest px-2">Cost Price</label>
+                      <Input name="cost" type="number" placeholder="0.00" step="0.01" required className="h-12 rounded-xl font-bold" />
+                   </div>
+                   <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest px-2">Sale Price</label>
+                      <Input name="price" type="number" placeholder="0.00" step="0.01" required className="h-12 rounded-xl font-bold" />
+                   </div>
                 </div>
-                <Input name="stock" type="number" placeholder="Initial Stock" required className="h-12 rounded-xl" />
-                <Button type="submit" className="w-full h-12 rounded-xl font-black" disabled={isAdding}>Save Product</Button>
+                <Input name="stock" type="number" placeholder="Opening Stock Level" required className="h-12 rounded-xl font-bold" />
+                <Button type="submit" className="w-full h-14 rounded-xl font-black shadow-xl" disabled={isAdding}>Save Entry</Button>
              </form>
           </CardContent>
         </Card>
       </div>
 
       <div className="lg:col-span-2">
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+        <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden">
           <table className="w-full text-sm text-left">
             <thead className="bg-secondary/20 border-b">
               <tr>
-                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Product</th>
-                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Stock</th>
-                <th className="p-4 font-black uppercase text-muted-foreground tracking-tighter">Value</th>
-                <th className="p-4 text-center font-black uppercase text-muted-foreground tracking-tighter">Action</th>
+                <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Product Information</th>
+                <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Stock Status</th>
+                <th className="p-6 font-black uppercase text-muted-foreground tracking-widest text-[10px]">Asset Value</th>
+                <th className="p-6 text-center font-black uppercase text-muted-foreground tracking-widest text-[10px]">Operations</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {products?.map(p => (
-                <tr key={p.id} className="hover:bg-secondary/5 transition-colors">
-                  <td className="p-4">
-                    <p className="font-black text-foreground">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">SKU: {p.sku || 'N/A'}</p>
+                <tr key={p.id} className="hover:bg-secondary/5 transition-colors group">
+                  <td className="p-6">
+                    <p className="font-black text-lg text-foreground">{p.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">SKU: {p.sku || 'N/A'}</p>
                   </td>
-                  <td className="p-4">
-                    <Badge variant={p.stock < 10 ? "destructive" : "outline"} className="font-black uppercase text-[10px]">
+                  <td className="p-6">
+                    <Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-black uppercase text-[10px] px-3 py-1">
                       {p.stock} Units
                     </Badge>
                   </td>
-                  <td className="p-4 font-black text-primary">${(p.stock * p.costPrice).toFixed(2)}</td>
-                  <td className="p-4 text-center">
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedProduct(p)} className="rounded-xl font-black gap-2">
+                  <td className="p-6 font-black text-primary text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
+                  <td className="p-6 text-center">
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedProduct(p)} className="rounded-xl font-black gap-2 hover:bg-primary hover:text-white transition-all">
                       <Truck className="w-4 h-4" /> Restock
                     </Button>
                   </td>
@@ -825,7 +830,7 @@ function CouponManager({ companyId }: { companyId?: string }) {
     const couponData = {
       id,
       companyId,
-      code: formData.get('code') as string,
+      code: (formData.get('code') as string).toUpperCase(),
       value: Number(formData.get('value')),
       expiryDate: formData.get('expiry') as string,
       status: 'unused'
@@ -833,10 +838,10 @@ function CouponManager({ companyId }: { companyId?: string }) {
 
     try {
       await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), couponData);
-      toast({ title: "Coupon Created" });
+      toast({ title: "Promotion Active" });
       (e.target as HTMLFormElement).reset();
     } catch (err) {
-      toast({ title: "Save failed", variant: "destructive" });
+      toast({ title: "Promotion failed", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -845,41 +850,47 @@ function CouponManager({ companyId }: { companyId?: string }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
        <Card className="border-none shadow-sm rounded-3xl bg-white h-fit">
-          <CardHeader>
-             <CardTitle className="text-lg font-black">Generate Coupon</CardTitle>
+          <CardHeader className="p-8">
+             <CardTitle className="text-xl font-black">Generate Promotions</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-             <form onSubmit={handleCreateCoupon} className="space-y-4">
-                <Input name="code" placeholder="Code (e.g. SAVE20)" required className="h-12 rounded-xl font-black uppercase" />
-                <Input name="value" type="number" step="0.01" placeholder="Discount Amount ($)" required className="h-12 rounded-xl" />
+          <CardContent className="p-8 pt-0">
+             <form onSubmit={handleCreateCoupon} className="space-y-6">
                 <div className="space-y-1.5">
-                   <label className="text-[10px] font-black uppercase text-muted-foreground px-1">Expiry Date</label>
-                   <Input name="expiry" type="date" required className="h-12 rounded-xl" />
+                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Voucher Code</label>
+                   <Input name="code" placeholder="SAVE20" required className="h-14 rounded-2xl font-black uppercase tracking-widest text-lg" />
                 </div>
-                <Button type="submit" className="w-full h-12 rounded-xl font-black" disabled={isSaving}>Create Coupon</Button>
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Discount Magnitude ($)</label>
+                   <Input name="value" type="number" step="0.01" placeholder="0.00" required className="h-14 rounded-2xl font-black text-lg" />
+                </div>
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Expiration Timeline</label>
+                   <Input name="expiry" type="date" required className="h-14 rounded-2xl font-bold" />
+                </div>
+                <Button type="submit" className="w-full h-16 rounded-2xl font-black shadow-xl" disabled={isSaving}>Activate Coupon</Button>
              </form>
           </CardContent>
        </Card>
 
        <div className="lg:col-span-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              {coupons?.map(c => (
-               <Card key={c.id} className={cn("border-none shadow-sm rounded-3xl p-6 relative overflow-hidden", c.status === 'used' ? "opacity-50 grayscale" : "bg-white")}>
-                  <div className="absolute -right-4 -top-4 opacity-5 rotate-12">
-                     <Ticket className="w-24 h-24" />
+               <Card key={c.id} className={cn("border-none shadow-sm rounded-[32px] p-8 relative overflow-hidden transition-all", c.status === 'used' ? "opacity-50 grayscale" : "bg-white hover:shadow-xl")}>
+                  <div className="absolute -right-8 -top-8 opacity-5 rotate-12">
+                     <Ticket className="w-40 h-40" />
                   </div>
-                  <div className="flex justify-between items-start mb-4">
-                     <Badge className="font-black uppercase text-[10px]">{c.status}</Badge>
-                     <p className="text-xl font-black text-primary">-${c.value.toFixed(2)}</p>
+                  <div className="flex justify-between items-start mb-6">
+                     <Badge className="font-black uppercase text-[10px] tracking-widest px-3 py-1">{c.status}</Badge>
+                     <p className="text-3xl font-black text-primary">-${c.value.toFixed(2)}</p>
                   </div>
-                  <h4 className="text-2xl font-black font-mono tracking-tighter">{c.code}</h4>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Expires: {c.expiryDate}</p>
+                  <h4 className="text-3xl font-black font-mono tracking-tighter text-foreground">{c.code}</h4>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mt-2">Validity: {new Date(c.expiryDate).toLocaleDateString()}</p>
                </Card>
              ))}
              {(!coupons || coupons.length === 0) && (
-               <div className="col-span-full py-20 text-center border-2 border-dashed rounded-3xl bg-white/50">
-                  <Ticket className="w-12 h-12 mx-auto mb-2 opacity-10" />
-                  <p className="font-bold text-muted-foreground">No promotional coupons found.</p>
+               <div className="col-span-full py-24 text-center border-4 border-dashed rounded-[40px] bg-white/50">
+                  <Ticket className="w-20 h-20 mx-auto mb-4 opacity-10" />
+                  <p className="font-black text-muted-foreground uppercase tracking-widest">No active campaigns</p>
                </div>
              )}
           </div>
@@ -890,9 +901,9 @@ function CouponManager({ companyId }: { companyId?: string }) {
 
 function ReportStat({ label, value, color = "text-foreground" }: any) {
   return (
-    <Card className="border-none shadow-sm p-6 bg-white rounded-2xl group hover:shadow-md transition-shadow">
-       <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest">{label}</p>
-       <h4 className={cn("text-3xl font-black", color)}>{value}</h4>
+    <Card className="border-none shadow-sm p-8 bg-white rounded-[32px] group hover:shadow-xl transition-all">
+       <p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-[0.2em]">{label}</p>
+       <h4 className={cn("text-4xl font-black tracking-tighter", color)}>{value}</h4>
     </Card>
   );
 }
