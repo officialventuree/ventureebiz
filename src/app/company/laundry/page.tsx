@@ -14,22 +14,22 @@ import {
   History, 
   Trash2, 
   ArrowRightLeft, 
-  Info, 
   TrendingUp, 
   DollarSign, 
   Wallet, 
   QrCode, 
   Upload, 
   ShieldCheck, 
-  CheckCircle2, 
   Banknote,
   User,
-  Edit2
+  Edit2,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod } from '@/lib/types';
@@ -72,6 +72,12 @@ export default function LaundryPage() {
   const [amountReceived, setAmountReceived] = useState<number | string>('');
   const [transactionNo, setTransactionNo] = useState('');
 
+  // Walk-in State
+  const [walkInName, setWalkInName] = useState('');
+  const [walkInPaymentMethod, setWalkInPaymentMethod] = useState<PaymentMethod>('cash');
+  const [walkInAmountReceived, setWalkInAmountReceived] = useState<number | string>('');
+  const [walkInRef, setWalkInRef] = useState('');
+
   const studentsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return collection(firestore, 'companies', user.companyId, 'laundryStudents');
@@ -110,6 +116,7 @@ export default function LaundryPage() {
   }, [students, topUpMatrix]);
 
   const changeAmount = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
+  const walkInChangeAmount = walkInPaymentMethod === 'cash' ? Math.max(0, (Number(walkInAmountReceived) || 0) - washRate) : 0;
 
   const handleRegisterStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -218,11 +225,72 @@ export default function LaundryPage() {
         totalAmount: washRate,
         profit: profit,
         timestamp: new Date().toISOString(),
-        items: [{ name: 'Standard Wash', price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
+        customerName: selectedStudent.name,
+        items: [{ name: 'Standard Wash (Student)', price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
       });
 
       toast({ title: "Wash Recorded", description: `Charged $${washRate.toFixed(2)} to ${selectedStudent.name}. 50ml soap deducted.` });
       setSelectedStudent({ ...selectedStudent, balance: selectedStudent.balance - washRate });
+    } catch (e: any) {
+      toast({ title: "Processing Error", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleWalkInWash = async () => {
+    if (!firestore || !user?.companyId || !walkInName) {
+      toast({ title: "Incomplete Form", description: "Customer name is required.", variant: "destructive" });
+      return;
+    }
+    
+    if (currentSoapMl < mlPerWash) {
+       toast({ title: "Out of Soap", description: "Please refill soap inventory.", variant: "destructive" });
+       return;
+    }
+
+    if (walkInPaymentMethod === 'cash' && (Number(walkInAmountReceived) || 0) < washRate) {
+      toast({ title: "Insufficient Cash", description: "Amount received is less than wash rate.", variant: "destructive" });
+      return;
+    }
+
+    if ((walkInPaymentMethod === 'card' || walkInPaymentMethod === 'duitnow') && !walkInRef) {
+      toast({ title: "Reference Required", description: "Please enter transaction reference number.", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      if (inventoryRef) {
+        await updateDoc(inventoryRef, { soapStockMl: increment(-mlPerWash) });
+      }
+
+      const soapCost = (mlPerWash / 1000) * soapCostPerLitre;
+      const profit = washRate - soapCost;
+
+      const transactionRef = collection(firestore, 'companies', user.companyId, 'transactions');
+      await addDoc(transactionRef, {
+        id: crypto.randomUUID(),
+        companyId: user.companyId,
+        module: 'laundry',
+        totalAmount: washRate,
+        profit: profit,
+        timestamp: new Date().toISOString(),
+        customerName: walkInName,
+        paymentMethod: walkInPaymentMethod,
+        referenceNumber: walkInRef || undefined,
+        status: 'completed',
+        items: [{ name: 'Standard Wash (Walk-in)', price: washRate, quantity: 1, soapUsedMl: mlPerWash }]
+      });
+
+      toast({ title: "Wash Recorded", description: `Payment collected from ${walkInName}. 50ml soap deducted.` });
+      
+      // Reset walk-in form
+      setWalkInName('');
+      setWalkInAmountReceived('');
+      setWalkInRef('');
+      setWalkInPaymentMethod('cash');
     } catch (e: any) {
       toast({ title: "Processing Error", variant: "destructive" });
     } finally {
@@ -245,7 +313,7 @@ export default function LaundryPage() {
         companyId: user.companyId,
         module: 'laundry',
         totalAmount: amount,
-        profit: amount, // Top ups are 100% revenue/balance increase
+        profit: amount,
         timestamp: new Date().toISOString(),
         customerName: foundTopUpStudent.name,
         paymentMethod: topUpPaymentMethod,
@@ -256,7 +324,6 @@ export default function LaundryPage() {
 
       toast({ title: "Top-Up Successful", description: `$${amount.toFixed(2)} added to ${foundTopUpStudent.name}'s balance.` });
       
-      // Reset
       setIsTopUpOpen(false);
       setTopUpMatrix('');
       setTopUpAmount('');
@@ -487,6 +554,9 @@ export default function LaundryPage() {
             <TabsTrigger value="pos" className="rounded-lg gap-2">
               <CreditCard className="w-4 h-4" /> Laundry POS
             </TabsTrigger>
+            <TabsTrigger value="walkin" className="rounded-lg gap-2">
+              <Banknote className="w-4 h-4" /> Payable Laundry
+            </TabsTrigger>
             <TabsTrigger value="students" className="rounded-lg gap-2">
               <UserPlus className="w-4 h-4" /> Students
             </TabsTrigger>
@@ -574,13 +644,13 @@ export default function LaundryPage() {
                             <Waves className="w-6 h-6" />
                           </div>
                           <div>
-                            <p className="text-sm font-black text-foreground">Standard Wash</p>
+                            <p className="text-sm font-black text-foreground">{t.items[0].name}</p>
                             <p className="text-[10px] text-muted-foreground font-bold">{new Date(t.timestamp).toLocaleString()}</p>
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="font-black text-primary text-lg">+${t.totalAmount.toFixed(2)}</p>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase">Paid by Student</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase">Paid by {t.customerName}</p>
                         </div>
                       </div>
                     ))}
@@ -620,6 +690,125 @@ export default function LaundryPage() {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="walkin" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="border-none shadow-sm bg-white rounded-[32px] overflow-hidden">
+                <CardHeader className="bg-secondary/10 p-8">
+                  <CardTitle className="text-xl font-black flex items-center gap-2">
+                    <Banknote className="w-6 h-6 text-primary" /> Payable Wash Terminal
+                  </CardTitle>
+                  <CardDescription className="font-bold">Record laundry services for walk-in customers</CardDescription>
+                </CardHeader>
+                <CardContent className="p-10 space-y-8">
+                   <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Customer Name</Label>
+                      <Input 
+                        placeholder="WALK-IN CUSTOMER NAME..." 
+                        className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6"
+                        value={walkInName}
+                        onChange={(e) => setWalkInName(e.target.value)}
+                      />
+                   </div>
+
+                   <div className="space-y-4">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Select Payment Mode</Label>
+                      <RadioGroup value={walkInPaymentMethod} onValueChange={(v) => setWalkInPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-4">
+                        <PaymentOption value="cash" label="Cash" icon={Banknote} id="walkin_cash" />
+                        <PaymentOption value="card" label="Card" icon={CreditCard} id="walkin_card" />
+                        <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="walkin_qr" />
+                      </RadioGroup>
+                   </div>
+
+                   <Separator className="bg-secondary/50" />
+
+                   {walkInPaymentMethod === 'cash' && (
+                     <div className="space-y-6 animate-in slide-in-from-top-2">
+                        <div className="space-y-2">
+                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Amount Received ($)</Label>
+                           <Input 
+                              type="number" 
+                              className="h-16 rounded-2xl font-black text-3xl bg-secondary/10 border-none px-8"
+                              value={walkInAmountReceived}
+                              onChange={(e) => setWalkInAmountReceived(e.target.value)}
+                              placeholder="0.00"
+                           />
+                        </div>
+                        {Number(walkInAmountReceived) >= washRate && (
+                          <div className="bg-primary/5 p-8 rounded-3xl border-2 border-primary/20 flex justify-between items-center">
+                             <p className="text-[10px] font-black uppercase text-primary tracking-widest">Change Due</p>
+                             <p className="text-4xl font-black text-foreground">${walkInChangeAmount.toFixed(2)}</p>
+                          </div>
+                        )}
+                     </div>
+                   )}
+
+                   {(walkInPaymentMethod === 'card' || walkInPaymentMethod === 'duitnow') && (
+                     <div className="space-y-6 animate-in slide-in-from-top-2">
+                        {walkInPaymentMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                          <div className="flex flex-col items-center bg-secondary/5 p-8 rounded-[40px] border-2 border-dashed border-primary/10">
+                             <Image 
+                                src={companyDoc.duitNowQr} 
+                                alt="DuitNow QR" 
+                                width={180} 
+                                height={180} 
+                                className="rounded-3xl shadow-xl border-4 border-white mb-4"
+                             />
+                             <p className="text-[10px] font-black text-primary uppercase tracking-widest">Scan to Pay Now</p>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction Ref / Trace ID</Label>
+                           <Input 
+                              placeholder="TRX-XXXXXX" 
+                              className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6"
+                              value={walkInRef}
+                              onChange={(e) => setWalkInRef(e.target.value)}
+                           />
+                        </div>
+                     </div>
+                   )}
+
+                   <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 flex justify-between items-end">
+                      <div>
+                         <p className="text-[10px] font-black uppercase text-primary tracking-widest mb-1">Total Fee</p>
+                         <p className="text-5xl font-black text-foreground tracking-tighter">${washRate.toFixed(2)}</p>
+                      </div>
+                      <Button 
+                        className="h-16 px-12 rounded-2xl font-black text-xl shadow-xl gap-2 group"
+                        disabled={isProcessing || currentSoapMl < mlPerWash || !walkInName}
+                        onClick={handleWalkInWash}
+                      >
+                         {isProcessing ? "Processing..." : (
+                           <>
+                             Record & Fulfill <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                           </>
+                         )}
+                      </Button>
+                   </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-1 space-y-6">
+               <Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] overflow-hidden">
+                  <CardHeader className="p-8 pb-4">
+                     <CardTitle className="text-xl font-black">Supply Chain Info</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-8 pt-0 space-y-6">
+                     <div className="bg-white/10 p-6 rounded-2xl">
+                        <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Soap Level</p>
+                        <p className="text-3xl font-black">{(currentSoapMl / 1000).toFixed(2)}L</p>
+                        <Progress value={soapUtilization} className="h-2 bg-white/20 mt-3" />
+                     </div>
+                     <div className="flex items-center gap-3 text-xs font-bold opacity-80">
+                        <ShieldCheck className="w-5 h-5" />
+                        System deducting 50ml per recorded wash.
+                     </div>
+                  </CardContent>
+               </Card>
             </div>
           </TabsContent>
 
@@ -910,7 +1099,7 @@ export default function LaundryPage() {
                      </label>
                    )}
                    <p className="text-xs text-center font-bold text-muted-foreground max-w-xs">
-                     This QR code will be shown to students during top-up sessions when they choose DuitNow as their payment method.
+                     This QR code will be shown during top-up and walk-in sessions when DuitNow is chosen as the payment method.
                    </p>
                  </CardContent>
                </Card>
