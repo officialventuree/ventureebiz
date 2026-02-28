@@ -12,7 +12,7 @@ import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod, LuckyDrawEvent } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, LuckyDrawEvent, Company, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
@@ -132,8 +132,10 @@ export default function MartPage() {
   
   // Stored Value Logic
   const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
+  // totalAmount reflects the ACTUAL cash/card received now (Revenue recognized now)
   const totalAmount = Math.max(0, subtotal - voucherDiscount);
-  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - voucherDiscount;
+  // Net Profit realized now from inventory sold, regardless of payment source (Issuance deferred profit)
+  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < totalAmount;
@@ -149,8 +151,8 @@ export default function MartPage() {
       id: transactionId,
       companyId: user.companyId,
       module: 'mart',
-      totalAmount,
-      profit: totalProfit,
+      totalAmount, // Recognized revenue (new money)
+      profit: totalProfit, // Realized margin
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || undefined,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
@@ -700,14 +702,14 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     setIsProcessing(true);
 
     try {
-      // Record the sale of vouchers
+      // Record the cash inflow for vouchers
       const transactionId = crypto.randomUUID();
       await setDoc(doc(firestore, 'companies', companyId, 'transactions', transactionId), {
         id: transactionId,
         companyId,
         module: 'mart',
-        totalAmount: subtotal,
-        profit: subtotal, // Vouchers are 100% upfront profit until used
+        totalAmount: subtotal, // Full revenue recognized now
+        profit: 0, // 0 profit recognized at issuance; realized only upon redemption of inventory
         timestamp: new Date().toISOString(),
         customerName,
         customerCompany: customerCompany || undefined,
