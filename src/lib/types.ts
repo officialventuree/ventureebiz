@@ -176,6 +176,7 @@ export interface LaundryLevelConfig {
   companyId: string;
   level: number;
   subscriptionFee: number;
+  serviceRate?: number;
   totalWashesAllowed: number;
 }
 

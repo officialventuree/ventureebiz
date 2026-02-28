@@ -185,18 +185,22 @@ export default function LaundryPage() {
     if (selectedLevel && !editingStudent) {
       const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
       if (config) {
-        setEnrollmentDebt(config.subscriptionFee);
+        const quota = levelQuotas[Number(selectedLevel)] || 0;
+        // Logic: Debt = Rate * Quota
+        setEnrollmentDebt(config.serviceRate ? config.serviceRate * quota : config.subscriptionFee);
       } else {
         setEnrollmentDebt(0);
       }
     }
-  }, [selectedLevel, levelConfigs, editingStudent]);
+  }, [selectedLevel, levelConfigs, editingStudent, levelQuotas]);
 
   const mlPerWash = 50;
   const defaultWashRate = 5.00;
 
   const getWashRateForLevel = (level: number) => {
     const config = levelConfigs?.find(c => c.level === level);
+    if (config?.serviceRate) return config.serviceRate;
+    
     const quota = levelQuotas[level] || 0;
     if (config && quota > 0) {
       return config.subscriptionFee / quota;
@@ -236,7 +240,7 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: editingStudent ? editingStudent.balance : 0, // Wallet starts at 0, debt is tracked via initialAmount - balance
+      balance: editingStudent ? editingStudent.balance : 0, 
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
@@ -1045,15 +1049,15 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const saveConfig = (level: number, fee: number) => {
+  const saveConfig = (level: number, rate: number) => {
     if (!firestore || !companyId) return;
     setIsUpdating(true);
     const id = `LV${level}_CONFIG`;
     const docRef = doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id);
     const quota = levelQuotas[level] || 0;
-    const data = { id, companyId, level, subscriptionFee: fee, totalWashesAllowed: quota };
+    const data = { id, companyId, level, serviceRate: rate, subscriptionFee: rate * quota, totalWashesAllowed: quota };
     setDoc(docRef, data)
-      .then(() => toast({ title: `Level ${level} Updated` }))
+      .then(() => toast({ title: `Level ${level} Policy Updated` }))
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: data }));
       })
@@ -1063,13 +1067,14 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
   return (
     <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
        <div className="mb-10 text-center">
-          <h3 className="text-2xl font-black">Quota & Pricing Policy</h3>
-          <p className="text-sm font-bold text-muted-foreground">Define departmental wash limits and subscription rates</p>
+          <h3 className="text-2xl font-black">Service Rate & Strategic Policy</h3>
+          <p className="text-sm font-bold text-muted-foreground">Define departmental wash rates. Subscription fees are derived from quotas.</p>
        </div>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {LEVELS.map(lv => {
             const config = levelConfigs?.find(c => c.level === lv);
             const quota = levelQuotas[lv] || 0;
+            const currentRate = config?.serviceRate || (config?.subscriptionFee && quota > 0 ? config.subscriptionFee / quota : 0);
             return (
               <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
                  <div className="flex justify-between items-center">
@@ -1078,10 +1083,11 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                       <Label className="text-[10px] font-black uppercase px-1">Sub. Fee ($)</Label>
+                       <Label className="text-[10px] font-black uppercase px-1 text-primary">Service Rate ($)</Label>
                        <input 
                         type="number" 
-                        defaultValue={config?.subscriptionFee || 0} 
+                        step="0.01"
+                        defaultValue={currentRate} 
                         onBlur={(e) => saveConfig(lv, Number(e.target.value))}
                         className="h-11 rounded-xl font-bold bg-white border-none w-full px-4 outline-none focus:ring-2 focus:ring-primary/20"
                        />
@@ -1089,14 +1095,14 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
                     <div className="space-y-1">
                        <Label className="text-[10px] font-black uppercase px-1">Wash Quota (Auto)</Label>
                        <div className="h-11 rounded-xl font-bold bg-secondary/20 flex items-center px-4 text-sm">
-                          {quota} Days
+                          {quota} Turns
                        </div>
                     </div>
                  </div>
-                 <div className="pt-2">
+                 <div className="pt-2 border-t border-white/50">
                     <div className="flex justify-between items-center px-1">
-                       <span className="text-[9px] font-black text-muted-foreground uppercase">Internal Service Rate</span>
-                       <span className="text-sm font-black text-primary">${((config?.subscriptionFee || 0) / (quota || 1)).toFixed(2)}/wash</span>
+                       <span className="text-[9px] font-black text-muted-foreground uppercase">Enrollment Debt (Calculated)</span>
+                       <span className="text-sm font-black text-foreground">${(currentRate * quota).toFixed(2)}</span>
                     </div>
                  </div>
               </div>
