@@ -1,218 +1,672 @@
-
 {
   "entities": {
     "Company": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Company",
       "type": "object",
-      "description": "Core company profile and login credentials.",
+      "description": "Represents a company registered on the Venturee Biz SaaS platform, including its subscription status and administrative user.",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "password": { "type": "string" },
-        "cancellationPassword": { "type": "string", "description": "8-character alphanumeric ID for resetting locked configurations." },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "capitalLimit": { "type": "number", "description": "The base budget limit set at the start of the cycle." },
-        "injectedCapital": { "type": "number", "description": "Extra funds added to the spending capacity mid-cycle." },
-        "capitalPeriod": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
-        "capitalStartDate": { "type": "string", "format": "date" },
-        "capitalEndDate": { "type": "string", "format": "date" },
-        "duitNowQr": { "type": "string" },
-        "nextCapitalAmount": { "type": "number", "description": "The reinvestment pool balance available for allocation or injection." },
-        "enabledModules": {
-          "type": "array",
-          "items": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] },
-          "description": "Business units enabled for this company dashboard."
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Company entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The official name of the company."
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "The automatically generated primary contact email for the company (e.g., 'companyname@ventureebiz.com'). This email is used for the company owner's login.",
+          "format": "email"
+        },
+        "companyOwnerUserId": {
+          "type": "string",
+          "description": "Reference to the User entity who is the primary administrator/owner for this company. (Relationship: User 1:N Company)"
+        },
+        "currentSubscriptionId": {
+          "type": "string",
+          "description": "Reference to the currently active CompanySubscription entity for this company. (Relationship: CompanySubscription 1:N Company)"
+        },
+        "status": {
+          "type": "string",
+          "description": "The current operational status of the company's account (e.g., 'Active', 'Expired', 'Suspended')."
+        },
+        "registrationDate": {
+          "type": "string",
+          "description": "The date and time when the company was first registered on the platform.",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when this company record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when this company record was last updated.",
+          "format": "date-time"
         }
       },
-      "required": ["id", "name", "email", "createdAt", "cancellationPassword"]
+      "required": [
+        "id",
+        "name",
+        "contactEmail",
+        "companyOwnerUserId",
+        "status",
+        "registrationDate"
+      ]
     },
     "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "User account records for manual login system.",
+      "description": "Represents a user account within the Venturee Biz platform, which can be a Platform Admin, Company Owner, or Company Viewer. Passwords are handled by an external authentication system and not stored here.",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "username": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "password": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "company", "viewer"] },
-        "companyId": { "type": "string" },
-        "enabledModules": {
-          "type": "array",
-          "items": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "companyId": {
+          "type": "string",
+          "description": "Reference to the Company entity this user belongs to, if applicable (e.g., for Company Owners and Viewers). This field is null for PlatformAdmin users. (Relationship: Company 1:N User)"
+        },
+        "email": {
+          "type": "string",
+          "description": "The automatically generated email for the user (e.g., 'username_companyname@ventureebiz.com' for viewers, or 'companyname@ventureebiz.com' for company owners).",
+          "format": "email"
+        },
+        "username": {
+          "type": "string",
+          "description": "A unique identifier or preferred name for the user, especially for Viewer roles."
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user within the platform (e.g., 'PlatformAdmin', 'CompanyOwner', 'CompanyViewer')."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the user."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the user."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when this user record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when this user record was last updated.",
+          "format": "date-time"
         }
       },
-      "required": ["id", "name", "email", "password", "role"]
+      "required": [
+        "id",
+        "email",
+        "username",
+        "role"
+      ]
     },
-    "Product": {
-      "title": "Product",
+    "PricingCycle": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PricingCycle",
       "type": "object",
-      "description": "Retail products or service materials.",
+      "description": "Defines the available subscription duration units (e.g., Daily, Weekly, Monthly, Yearly) that companies can choose from for their plans.",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "serviceTypeId": { "type": "string", "description": "Optional link to a service category." },
-        "name": { "type": "string" },
-        "costPrice": { "type": "number" },
-        "sellingPrice": { "type": "number" },
-        "stock": { "type": "number" },
-        "sku": { "type": "string" },
-        "barcode": { "type": "string" },
-        "unit": { "type": "string" },
-        "itemsPerUnit": { "type": "number", "description": "Number of individual items per bulk unit (e.g. items per box)." }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PricingCycle entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The human-readable name of the pricing cycle (e.g., 'Monthly', 'Yearly')."
+        },
+        "durationInDays": {
+          "type": "number",
+          "description": "The duration of this pricing cycle in days (e.g., 30 for Monthly, 365 for Yearly)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the pricing cycle."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "durationInDays"
+      ]
     },
-    "ServiceType": {
-      "title": "ServiceType",
+    "Module": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Module",
       "type": "object",
-      "description": "Broad categories of services offered by the business.",
+      "description": "Represents a distinct functional module or feature offered by the Venturee Biz platform (e.g., Mart, Laundry, Rent, Services).",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "duitNowQr": { "type": "string" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Module entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the module (e.g., 'Mart', 'Laundry', 'Rent', 'Services')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of what the module provides."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ]
     },
-    "ServicePriceBundle": {
-      "title": "ServicePriceBundle",
+    "ModulePricing": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ModulePricing",
       "type": "object",
-      "description": "Standardized pricing packages within a service type.",
+      "description": "Defines the price of a specific module when purchased under a particular pricing cycle.",
       "properties": {
-        "id": { "type": "string" },
-        "serviceTypeId": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "price": { "type": "number" },
-        "estimatedProfit": { "type": "number" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ModulePricing entity."
+        },
+        "moduleId": {
+          "type": "string",
+          "description": "Reference to the Module entity this pricing applies to. (Relationship: Module 1:N ModulePricing)"
+        },
+        "pricingCycleId": {
+          "type": "string",
+          "description": "Reference to the PricingCycle entity for which this module price is set (e.g., 'Monthly'). (Relationship: PricingCycle 1:N ModulePricing)"
+        },
+        "price": {
+          "type": "number",
+          "description": "The price of the module for the specified pricing cycle."
+        },
+        "currencyId": {
+          "type": "string",
+          "description": "Reference to the Currency entity in which the price is denominated. (Relationship: Currency 1:N ModulePricing)"
+        },
+        "description": {
+          "type": "string",
+          "description": "A description for this specific module pricing entry."
+        }
+      },
+      "required": [
+        "id",
+        "moduleId",
+        "pricingCycleId",
+        "price",
+        "currencyId"
+      ]
     },
-    "LaundryInventory": {
-      "title": "LaundryInventory",
+    "CompanySubscription": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CompanySubscription",
       "type": "object",
-      "description": "Consumables for laundry services.",
+      "description": "Records a specific subscription period for a company, including chosen modules, start/end dates, and associated payment.",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "soapStockMl": { "type": "number" },
-        "soapCostPerLitre": { "type": "number" },
-        "capacityMl": { "type": "number" },
-        "category": { "type": "string", "enum": ["student", "payable"] },
-        "lastBottleCost": { "type": "number" },
-        "lastBottleVolume": { "type": "number" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the CompanySubscription entity."
+        },
+        "companyId": {
+          "type": "string",
+          "description": "Reference to the Company entity that owns this subscription. (Relationship: Company 1:N CompanySubscription)"
+        },
+        "pricingCycleId": {
+          "type": "string",
+          "description": "Reference to the PricingCycle entity (e.g., 'Monthly') chosen for this subscription. (Relationship: PricingCycle 1:N CompanySubscription)"
+        },
+        "startDate": {
+          "type": "string",
+          "description": "The date and time when this subscription period began.",
+          "format": "date-time"
+        },
+        "endDate": {
+          "type": "string",
+          "description": "The date and time when this subscription period is set to expire. This is the 'expiryDate'.",
+          "format": "date-time"
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "The total amount billed for this specific subscription period."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the subscription (e.g., 'Active', 'Expired', 'PendingRenewal', 'Canceled')."
+        },
+        "selectedModuleIds": {
+          "type": "array",
+          "description": "An array of references to Module entities that are included in this company's subscription. (Relationship: Module N:N CompanySubscription)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paymentTransactionId": {
+          "type": "string",
+          "description": "Reference to the PaymentTransaction entity that corresponds to the payment for this subscription period. (Relationship: PaymentTransaction 1:N CompanySubscription)"
+        },
+        "isRenewal": {
+          "type": "boolean",
+          "description": "Indicates if this subscription was a renewal of a previous subscription."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when this subscription record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when this subscription record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "companyId",
+        "pricingCycleId",
+        "startDate",
+        "endDate",
+        "totalAmount",
+        "status",
+        "selectedModuleIds"
+      ]
     },
-    "Coupon": {
-      "title": "Coupon",
+    "PaymentTransaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PaymentTransaction",
       "type": "object",
-      "description": "Promotional discounts for POS.",
+      "description": "Records all financial transactions related to the platform, especially for company registrations and renewals.",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "code": { "type": "string" },
-        "value": { "type": "number" },
-        "expiryDate": { "type": "string", "format": "date" },
-        "status": { "type": "string", "enum": ["unused", "used"] }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PaymentTransaction entity."
+        },
+        "companyId": {
+          "type": "string",
+          "description": "Reference to the Company entity associated with this transaction, if applicable. (Relationship: Company 1:N PaymentTransaction)"
+        },
+        "companySubscriptionId": {
+          "type": "string",
+          "description": "Reference to the CompanySubscription entity if this payment is for a subscription. (Relationship: CompanySubscription 1:N PaymentTransaction)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The monetary amount of the transaction."
+        },
+        "currencyId": {
+          "type": "string",
+          "description": "Reference to the Currency entity in which the transaction amount is denominated. (Relationship: Currency 1:N PaymentTransaction)"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method used for the payment (e.g., 'Cash', 'Card', 'DuitNow')."
+        },
+        "referenceCode": {
+          "type": "string",
+          "description": "A unique reference code or transaction ID from the payment gateway or system."
+        },
+        "transactionDate": {
+          "type": "string",
+          "description": "The date and time when the payment transaction occurred.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the transaction (e.g., 'Success', 'Pending', 'Failed', 'Refunded')."
+        },
+        "recordedByUserId": {
+          "type": "string",
+          "description": "Reference to the User entity (typically a PlatformAdmin) who recorded or processed this payment, especially for cash transactions. (Relationship: User 1:N PaymentTransaction)"
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the payment purpose (e.g., 'Initial subscription payment', 'Monthly renewal')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when this payment transaction record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "amount",
+        "currencyId",
+        "paymentMethod",
+        "transactionDate",
+        "status"
+      ]
     },
-    "LaundryStudent": {
-      "title": "LaundryStudent",
+    "PlatformProfitEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlatformProfitEntry",
       "type": "object",
-      "description": "Student laundry subscribers.",
+      "description": "Tracks individual revenue entries for the SaaS platform itself, providing data for the 'Profits' tab.",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "matrixNumber": { "type": "string" },
-        "balance": { "type": "number" },
-        "level": { "type": "number" },
-        "class": { "type": "string" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PlatformProfitEntry entity."
+        },
+        "paymentTransactionId": {
+          "type": "string",
+          "description": "Reference to the PaymentTransaction entity that generated this profit entry. (Relationship: PaymentTransaction 1:N PlatformProfitEntry)"
+        },
+        "companyId": {
+          "type": "string",
+          "description": "Reference to the Company entity associated with this profit, if applicable. (Relationship: Company 1:N PlatformProfitEntry)"
+        },
+        "companySubscriptionId": {
+          "type": "string",
+          "description": "Reference to the CompanySubscription entity if this profit is from a subscription. (Relationship: CompanySubscription 1:N PlatformProfitEntry)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of profit recorded for this entry."
+        },
+        "currencyId": {
+          "type": "string",
+          "description": "Reference to the Currency entity in which the profit amount is denominated. (Relationship: Currency 1:N PlatformProfitEntry)"
+        },
+        "entryDate": {
+          "type": "string",
+          "description": "The date and time when this profit entry was recorded.",
+          "format": "date-time"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of profit entry (e.g., 'InitialSubscription', 'Renewal', 'Refund')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the profit entry."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when this profit entry record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "paymentTransactionId",
+        "amount",
+        "currencyId",
+        "entryDate",
+        "type"
+      ]
     },
-    "LaundryLevelConfig": {
-      "title": "LaundryLevelConfig",
+    "Currency": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Currency",
       "type": "object",
-      "description": "Fee and quota settings per level.",
+      "description": "Defines supported currencies on the platform, allowing for setting the platform's operating currency.",
       "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "level": { "type": "number" },
-        "subscriptionFee": { "type": "number" },
-        "totalWashesAllowed": { "type": "number" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Currency entity."
+        },
+        "code": {
+          "type": "string",
+          "description": "The international currency code (e.g., 'MYR', 'USD', 'EUR')."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the currency (e.g., 'Malaysian Ringgit', 'United States Dollar')."
+        },
+        "symbol": {
+          "type": "string",
+          "description": "The symbol used for the currency (e.g., 'RM', '$', '€')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the currency."
+        },
+        "isPlatformOperatingCurrency": {
+          "type": "boolean",
+          "description": "A boolean indicating if this currency is currently set as the primary operating currency for the Venturee Biz platform. Only one currency should have this set to true at a time."
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "symbol",
+        "isPlatformOperatingCurrency"
+      ]
     },
-    "LaundrySchedule": {
-      "title": "LaundrySchedule",
+    "PlatformConfiguration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PlatformConfiguration",
       "type": "object",
-      "description": "Dates assigned for laundry usage by level.",
+      "description": "Stores platform-wide settings and configurations managed by the Platform Admin, such as payment gateway details.",
       "properties": {
-        "id": { "type": "string" },
-        "date": { "type": "string", "format": "date" },
-        "level": { "type": "number" }
-      }
-    },
-    "LuckyDrawEntry": {
-      "title": "LuckyDrawEntry",
-      "type": "object",
-      "description": "Customers eligible for events.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "customerName": { "type": "string" },
-        "transactionId": { "type": "string" },
-        "eventId": { "type": "string" },
-        "amount": { "type": "number" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      }
-    },
-    "LuckyDrawEvent": {
-      "title": "LuckyDrawEvent",
-      "type": "object",
-      "description": "Marketing events for customer engagement.",
-      "properties": {
-        "id": { "type": "string" },
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "minSpend": { "type": "number" },
-        "isActive": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PlatformConfiguration entity (could be a fixed ID for a singleton record)."
+        },
+        "key": {
+          "type": "string",
+          "description": "The key name for the configuration setting (e.g., 'duitnowQrCodeUrl', 'platformOperatingCurrencyId')."
+        },
+        "value": {
+          "type": "string",
+          "description": "The value of the configuration setting (e.g., a URL for a QR code image, or a Currency ID)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of what this configuration setting represents."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when this configuration setting was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "value",
+        "description"
+      ]
     }
   },
   "auth": {
-    "providers": ["password", "anonymous"]
+    "providers": [
+      "password",
+      "anonymous"
+    ]
   },
   "firestore": {
-    "/companies/{companyId}": {
-      "schema": "Company",
-      "description": "Root company data."
-    },
-    "/company_users/{userId}": {
-      "schema": "User",
-      "description": "Manual login lookup records."
-    },
-    "/companies/{companyId}/products/{productId}": {
-      "schema": "Product",
-      "description": "Retail stock and service materials."
-    },
-    "/companies/{companyId}/serviceTypes/{serviceId}": {
-      "schema": "ServiceType",
-      "description": "Service categories."
-    },
-    "/companies/{companyId}/serviceTypes/{serviceId}/priceBundles/{bundleId}": {
-      "schema": "ServicePriceBundle",
-      "description": "Fixed packages for a service."
-    },
-    "/companies/{companyId}/coupons/{couponId}": { "schema": "Coupon", "description": "Promotional codes." },
-    "/companies/{companyId}/laundryStudents/{studentId}": { "schema": "LaundryStudent", "description": "Student laundry accounts." },
-    "/companies/{companyId}/laundryInventory/{inventoryId}": { "schema": "LaundryInventory", "description": "Soap stocks." },
-    "/companies/{companyId}/laundryLevelConfigs/{configId}": { "schema": "LaundryLevelConfig", "description": "Quota settings." },
-    "/companies/{companyId}/laundrySchedules/{scheduleId}": { "schema": "LaundrySchedule", "description": "Scheduled laundry days." },
-    "/companies/{companyId}/luckyDraws/{entryId}": { "schema": "LuckyDrawEntry", "description": "Event participant list." },
-    "/companies/{companyId}/luckyDrawEvents/{eventId}": { "schema": "LuckyDrawEvent", "description": "Business marketing events." },
-    "/companies/{companyId}/transactions/{transactionId}": { "schema": "SaleTransaction", "description": "Cross-module ledger." },
-    "/companies/{companyId}/purchases/{purchaseId}": { "schema": "CapitalPurchase", "description": "Stock replenishment logs." }
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores individual user profiles, including their global role (PlatformAdmin, CompanyOwner, CompanyViewer) and the companyId they belong to, if applicable. User ID (`userId`) corresponds to `request.auth.uid`.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user, matching Firebase Authentication UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/platform_admins/{platformAdminId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "A dedicated collection to store the UIDs of users who have the 'PlatformAdmin' role. Used for efficient `exists()` checks in security rules to grant global administrative privileges, adhering to DBAC and Authorization Independence.",
+          "params": [
+            {
+              "name": "platformAdminId",
+              "description": "The unique identifier of a Platform Admin user, matching their Firebase Authentication UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/companies/{companyId}",
+        "definition": {
+          "entityName": "Company",
+          "schema": {
+            "$ref": "#/backend/entities/Company"
+          },
+          "description": "Stores core company details. Includes `companyOwnerUserId` for direct ownership checks and `status` for the platform-wide lock-out system. This collection is managed by Platform Admins and accessible by the respective Company Owner and Viewers.",
+          "params": [
+            {
+              "name": "companyId",
+              "description": "Unique identifier for a company."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/companies/{companyId}/subscriptions/{subscriptionId}",
+        "definition": {
+          "entityName": "CompanySubscription",
+          "schema": {
+            "$ref": "#/backend/entities/CompanySubscription"
+          },
+          "description": "Records individual subscription periods for a company. Includes `companyId` (from path) and **denormalizes** `companyOwnerUserId` from the parent Company document to ensure Authorization Independence for owner-based access rules. This facilitates QAPs for listing subscriptions.",
+          "params": [
+            {
+              "name": "companyId",
+              "description": "Unique identifier of the parent company."
+            },
+            {
+              "name": "subscriptionId",
+              "description": "Unique identifier for a specific company subscription."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/companies/{companyId}/payment_transactions/{transactionId}",
+        "definition": {
+          "entityName": "PaymentTransaction",
+          "schema": {
+            "$ref": "#/backend/entities/PaymentTransaction"
+          },
+          "description": "Records all financial transactions related to a company's subscriptions and renewals. Includes `companyId` (from path) and **denormalizes** `companyOwnerUserId` from the parent Company document for Authorization Independence. Facilitates QAPs for listing company transactions.",
+          "params": [
+            {
+              "name": "companyId",
+              "description": "Unique identifier of the parent company."
+            },
+            {
+              "name": "transactionId",
+              "description": "Unique identifier for a specific payment transaction."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/platform_profit_entries/{profitEntryId}",
+        "definition": {
+          "entityName": "PlatformProfitEntry",
+          "schema": {
+            "$ref": "#/backend/entities/PlatformProfitEntry"
+          },
+          "description": "Tracks individual revenue entries for the SaaS platform itself ('Profits' tab). This collection is accessible only by Platform Admins.",
+          "params": [
+            {
+              "name": "profitEntryId",
+              "description": "Unique identifier for a platform profit entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/currencies/{currencyId}",
+        "definition": {
+          "entityName": "Currency",
+          "schema": {
+            "$ref": "#/backend/entities/Currency"
+          },
+          "description": "Defines supported currencies on the platform. Documents are publicly readable (QAPs) for displaying currency options during checkout and configuration, but only writable by Platform Admins.",
+          "params": [
+            {
+              "name": "currencyId",
+              "description": "Unique identifier for a currency."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/pricing_cycles/{pricingCycleId}",
+        "definition": {
+          "entityName": "PricingCycle",
+          "schema": {
+            "$ref": "#/backend/entities/PricingCycle"
+          },
+          "description": "Defines the available subscription duration units (e.g., Daily, Monthly, Yearly). Documents are publicly readable (QAPs) for displaying subscription options, but only writable by Platform Admins.",
+          "params": [
+            {
+              "name": "pricingCycleId",
+              "description": "Unique identifier for a pricing cycle."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/modules/{moduleId}",
+        "definition": {
+          "entityName": "Module",
+          "schema": {
+            "$ref": "#/backend/entities/Module"
+          },
+          "description": "Lists distinct functional modules or features offered by the platform (e.g., Mart, Laundry). Documents are publicly readable (QAPs) for displaying module options, but only writable by Platform Admins.",
+          "params": [
+            {
+              "name": "moduleId",
+              "description": "Unique identifier for a module."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/module_pricings/{modulePricingId}",
+        "definition": {
+          "entityName": "ModulePricing",
+          "schema": {
+            "$ref": "#/backend/entities/ModulePricing"
+          },
+          "description": "Defines the price of a specific module when purchased under a particular pricing cycle. Documents are publicly readable (QAPs) for client-side display and price calculation, but only writable by Platform Admins.",
+          "params": [
+            {
+              "name": "modulePricingId",
+              "description": "Unique identifier for a specific module pricing entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/platform_configurations/{configId}",
+        "definition": {
+          "entityName": "PlatformConfiguration",
+          "schema": {
+            "$ref": "#/backend/entities/PlatformConfiguration"
+          },
+          "description": "Stores platform-wide settings and configurations managed by the Platform Admin, such as DuitNow QR URL or platform operating currency. This collection is accessible only by Platform Admins.",
+          "params": [
+            {
+              "name": "configId",
+              "description": "Unique identifier for a platform configuration setting (e.g., 'duitnow_qr_url')."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure for Venturee Biz is designed with a strong emphasis on **Authorization Independence** and **Structural Segregation** to ensure robust, scalable, and debuggable security rules. \n\n**Authorization Independence via Denormalization:**\n\n1.  **Company-Owned Subcollections:** For entities like `CompanySubscription` and `PaymentTransaction` that exist within a company's context (e.g., `/companies/{companyId}/subscriptions/{subscriptionId}`), the `companyOwnerUserId` from the parent `Company` document is **denormalized** directly into each subdocument. This critical step eliminates the need for `get()` calls in security rules to check the parent `Company` document's owner, thereby enabling atomic operations (transactions/batches) and simplifying debugging. Rules can directly check `request.auth.uid == resource.data.companyOwnerUserId`.\n2.  **Platform Admin Role:** To achieve authorization independence for platform administrators, a dedicated top-level collection, `/platform_admins/{platformAdminId}`, is used. Membership in this collection is determined by the `platformAdminId` being equal to `request.auth.uid`. Security rules can then use an efficient `exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid))` check to grant platform-wide administrative access without needing to `get()` a user's `role` from the `/users` collection for every admin action.\n\n**Support for Querying and Access Patterns (QAPs):**\n\n1.  **Structural Segregation:** Data is segregated into collections based on its security posture. For example, global configuration data (`/currencies`, `/modules`, `/pricing_cycles`, `/module_pricings`) are mostly publicly readable (for displaying subscription options) but only writable by `PlatformAdmin`. This allows `list` operations to be securely performed without requiring filtering logic in the rules.\n2.  **Path-Based Ownership:** For `Company`-level data (`/companies/{companyId}`), the `companyId` is embedded in the path, ensuring that all documents under that path implicitly belong to that company. This facilitates simple security rules where users (owners/viewers) can only access data pertaining to their `companyId`.\n3.  **Explicit Status for Lock-out:** The `status` field in the `Company` entity (e.g., 'Active', 'Expired') directly supports the 'Lock-out System'. While this *does* necessitate a `get()` call to the parent `Company` document in rules to check its active status for any access to its subcollections (e.g., `get(/companies/$(companyId)).data.status == 'Active'`), this is a necessary system-wide invariant check for a core business requirement. This specific `get()` is deemed acceptable as it enforces a global operational state rather than an authorization dependency that could be denormalized. It applies universally to all data under a given company.\n4.  **Company Viewer Role:** For `CompanyViewer` roles, security rules will perform a `get()` on the `/users/$(request.auth.uid)` document to verify `request.auth.uid`'s `companyId` and `role`. This `get()` on the global `users` collection for role resolution is a common and acceptable pattern, as the user's profile is fixed for the request and does not introduce the same transactional risks as a `get()` on a hierarchical parent document.\n\n**Other Principles:**\n\n*   **DBAC:** Roles are stored in the database (`/platform_admins` collection and `role` field in `/users`). Authorization relies purely on `request.auth.uid`.\n*   **Clarity of Intent:** Paths are semantically named (e.g., `companyId`, `subscriptionId`), and document descriptions explicitly state denormalized fields and their purpose.\n*   **Predictable Schema & Invariants:** Use of explicit `status` fields, consistent naming (`ownerId`), and `createdAt`/`updatedAt` timestamps enforce data integrity and predictability."
   }
 }
