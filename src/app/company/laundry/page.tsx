@@ -287,9 +287,9 @@ export default function LaundryPage() {
     
     const washRate = getWashRateForLevel(selectedStudent.level);
     
-    // Warn but allow override for prototype testing as requested "enable all action buttons"
     if (!isLevelAllowedToday(selectedStudent.level)) {
-      toast({ title: "Note: Out of Schedule", description: `Level ${selectedStudent.level} is not officially scheduled for today, but processing anyway.`, variant: "default" });
+      toast({ title: "Unauthorized Turn", description: "This level is not scheduled for today.", variant: "destructive" });
+      return;
     }
 
     if (studentSoap.soapStockMl < mlPerWash) {
@@ -587,13 +587,9 @@ export default function LaundryPage() {
                                 <CheckCircle2 className="w-4 h-4" /> Turn Authorized
                               </Badge>
                             ) : (
-                              <div className="bg-destructive/10 border-2 border-destructive p-4 rounded-2xl flex items-start gap-3">
-                                 <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                                 <div>
-                                    <p className="font-black text-destructive text-sm uppercase">Manual Override Active</p>
-                                    <p className="text-xs font-bold text-destructive/80 mt-1">Note: This is not officially Level {selectedStudent.level}'s turn today, but you can proceed with the wash manually.</p>
-                                 </div>
-                              </div>
+                              <Badge variant="destructive" className="h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
+                                <AlertCircle className="w-4 h-4" /> Unauthorized Turn Today
+                              </Badge>
                             )}
                           </div>
                         </div>
@@ -612,7 +608,7 @@ export default function LaundryPage() {
                       <Button 
                         className="w-full h-16 rounded-2xl text-xl font-black shadow-xl group" 
                         onClick={handleChargeLaundry} 
-                        disabled={isProcessing}
+                        disabled={isProcessing || !isBudgetActive || !isLevelAllowedToday(selectedStudent.level)}
                       >
                         {isProcessing ? "Authorizing..." : (
                           <span className="flex items-center gap-3">
@@ -742,7 +738,7 @@ export default function LaundryPage() {
                          <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
                          <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
                       </div>
-                      <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Save Subscriber</Button>
+                      <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive || isProcessing}>Save Subscriber</Button>
                    </form>
                 </Card>
              </div>
@@ -851,7 +847,7 @@ export default function LaundryPage() {
                            </div>
                          )}
 
-                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
+                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
                             {isProcessing ? "Processing..." : "Confirm Stock Refill"}
                          </Button>
                       </form>

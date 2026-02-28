@@ -622,7 +622,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
 
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setSelectedProduct(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
-                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing}>Confirm</Button>
+                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive}>Confirm</Button>
                 </div>
               </form>
             ) : (
@@ -640,7 +640,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="rounded-xl font-black shadow-lg">
+              <Button className="rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>
@@ -660,7 +660,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                    <Input name="stock" type="number" placeholder="Initial Stock" required className="h-12 rounded-xl" />
                    <Input name="ipu" type="number" placeholder="Qty/Box (Optional)" className="h-12 rounded-xl" />
                  </div>
-                 <Button type="submit" className="w-full h-14 rounded-2xl font-black">Save Product</Button>
+                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={!isBudgetActive || isProcessing}>Save Product</Button>
                </form>
             </DialogContent>
           </Dialog>

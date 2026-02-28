@@ -402,7 +402,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                               <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
-                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Log Material</Button>
+                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Log Material</Button>
                      </form>
                   </Card>
                </div>
@@ -453,7 +453,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                                 const file = e.target.files?.[0];
                                 if(!file || !firestore || !user?.companyId) return;
                                 const reader = new FileReader();
-                                reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!, 'serviceTypes', serviceId), { duitNowQr: reader.result as string });
+                                reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string });
                                 reader.readAsDataURL(file);
                              }} />
                           </label>
