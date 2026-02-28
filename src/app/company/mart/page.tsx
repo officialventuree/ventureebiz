@@ -924,9 +924,11 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-1 space-y-6">
-          <Card className="border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
-            <h3 className="text-xl font-black mb-6">Batch Issue Stored Value</h3>
-            <div className="space-y-6">
+          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col h-[calc(100vh-200px)] sticky top-8">
+            <div className="p-8 pb-4">
+              <h3 className="text-xl font-black">Batch Issue Stored Value</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 pt-0 space-y-6">
               <div className="space-y-4">
                  <div className="space-y-1.5">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
