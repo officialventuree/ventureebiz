@@ -171,6 +171,9 @@ export default function LaundryPage() {
     if (item) {
       setRefillVolPerBottle(item.lastBottleVolume?.toString() || '');
       setRefillCostPerBottle(item.lastBottleCost?.toString() || '');
+    } else {
+      setRefillVolPerBottle('');
+      setRefillCostPerBottle('');
     }
   }, [refillCategory, !!studentSoap, !!payableSoap]);
 
@@ -290,8 +293,14 @@ export default function LaundryPage() {
         const currentStockMl = existing.soapStockMl || 0;
         const currentCostPerLitre = existing.soapCostPerLitre || 0;
         const totalMl = currentStockMl + newAmountMl;
+        
+        // Cost Price per Litre for the new batch
         const newBatchCostPerLitre = (newTotalCost / (newAmountMl / 1000)) || 0;
-        const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
+        
+        // Weighted Average Cost Price per Litre
+        const currentTotalValue = (currentStockMl / 1000) * currentCostPerLitre;
+        const totalValue = currentTotalValue + newTotalCost;
+        const weightedCostPerLitre = totalValue / (totalMl / 1000);
 
         updateData.soapStockMl = increment(newAmountMl);
         updateData.soapCostPerLitre = weightedCostPerLitre || 0;
@@ -929,6 +938,12 @@ export default function LaundryPage() {
                                <SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent>
                             </Select>
                          </div>
+                         <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 mb-4">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-muted-foreground">
+                               <span>Current Pool Stock</span>
+                               <span className="text-foreground">{(refillCategory === 'student' ? studentSoap?.soapStockMl : payableSoap?.soapStockMl)?.toLocaleString() || 0} ml</span>
+                            </div>
+                         </div>
                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                                <Label className="text-[10px] font-black uppercase text-muted-foreground">Units (Bottles)</Label>
@@ -1408,7 +1423,7 @@ function InventoryGauge({ label, item }: { label: string, item?: LaundryInventor
           </div>
        </div>
 
-       {item?.soapCostPerLitre && (
+       {item?.soapCostPerLitre !== undefined && (
          <div className="flex justify-between items-center mt-4 border-t pt-4 border-secondary/20">
             <p className="text-[10px] font-black text-primary uppercase">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>
             <p className="text-[9px] font-bold text-muted-foreground uppercase">{(stock / 1000).toFixed(1)}L Total</p>
