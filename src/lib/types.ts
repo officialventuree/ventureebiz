@@ -101,11 +101,11 @@ export interface RentalItem {
   id: string;
   companyId: string;
   name: string;
-  hourlyRate?: number;
-  dailyRate?: number;
-  weeklyRate?: number;
-  monthlyRate?: number;
-  yearlyRate?: number;
+  hourlyRate?: number | null;
+  dailyRate?: number | null;
+  weeklyRate?: number | null;
+  monthlyRate?: number | null;
+  yearlyRate?: number | null;
   unit: 'hour' | 'day' | 'week' | 'month' | 'year';
   status: RentalStatus;
 }
@@ -138,7 +138,7 @@ export interface Coupon {
   customerName: string;
   createdAt: string;
   paymentMethod?: PaymentMethod;
-  customerCompany?: string;
+  customerCompany?: string | null;
 }
 
 export interface CapitalPurchase {
@@ -154,7 +154,8 @@ export interface LaundryStudent {
   companyId: string;
   name: string;
   matrixNumber: string;
-  balance: number;
+  balance: number; // Total Deposited (Laundry Bank Original Amount)
+  totalSpent?: number; // Total Service Fees Used
   initialAmount: number;
   level: number;
   class: string;

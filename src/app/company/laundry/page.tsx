@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
   Waves, 
-  UserPlus, 
-  CreditCard, 
   Droplet, 
   Search, 
   History, 
@@ -21,31 +19,22 @@ import {
   Edit2,
   CalendarDays,
   Plus,
-  Settings2,
   CheckCircle2,
   ArrowRight,
   User,
   ShieldCheck,
-  Zap,
   AlertCircle,
   Clock,
-  PieChart,
-  BarChart3,
-  Users,
   ShoppingBag,
   RefreshCw,
-  XCircle,
-  ChevronRight,
-  DollarSign,
   Calculator,
   ListFilter,
   Info,
   AlertTriangle,
-  Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, addDoc, updateDoc, increment } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -92,7 +81,6 @@ export default function LaundryPage() {
 
   // Editing State
   const [editingStudent, setEditingStudent] = useState<LaundryStudent | null>(null);
-  const [isEnrollDialogOpen, setIsEnrollDialogOpen] = useState(false);
 
   // Refill States
   const [refillCategory, setRefillCategory] = useState<'student' | 'payable'>('student');
@@ -186,7 +174,8 @@ export default function LaundryPage() {
       const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
       if (config) {
         const quota = levelQuotas[Number(selectedLevel)] || 0;
-        setEnrollmentDebt(config.serviceRate ? config.serviceRate * quota : 0);
+        const rate = config.serviceRate || 5.00;
+        setEnrollmentDebt(rate * quota);
       } else {
         setEnrollmentDebt(0);
       }
@@ -194,12 +183,10 @@ export default function LaundryPage() {
   }, [selectedLevel, levelConfigs, editingStudent, levelQuotas]);
 
   const mlPerWash = 50;
-  const defaultWashRate = 5.00;
 
   const getWashRateForLevel = (level: number) => {
     const config = levelConfigs?.find(c => c.level === level);
-    if (config?.serviceRate) return config.serviceRate;
-    return defaultWashRate;
+    return config?.serviceRate || 5.00;
   };
 
   const isLevelAllowedToday = (level: number) => {
@@ -227,7 +214,6 @@ export default function LaundryPage() {
       return;
     }
 
-    // Benchmark never changes once set. Legacy records fallback to current calculated debt.
     const initialFee = (editingStudent ? editingStudent.initialAmount : enrollmentDebt) ?? 0;
 
     const student: LaundryStudent = {
@@ -235,8 +221,8 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      // Current Bank Balance is deposit amount added. New enrollment starts at 0.
       balance: (editingStudent ? (editingStudent.balance ?? 0) : 0), 
+      totalSpent: (editingStudent ? (editingStudent.totalSpent ?? 0) : 0),
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
@@ -299,48 +285,28 @@ export default function LaundryPage() {
         lastBottleCost: costPerBottle,
         lastBottleVolume: volPerBottle
       };
-      setDoc(invRef, data).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: invRef.path,
-          operation: 'create',
-          requestResourceData: data
-        }));
-      });
+      setDoc(invRef, data);
     } else {
       const currentStockMl = existing.soapStockMl;
       const currentCostPerLitre = existing.soapCostPerLitre || 0;
       const totalMl = currentStockMl + newAmountMl;
       const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
 
-      const updateData = {
+      updateDoc(invRef, {
         soapStockMl: increment(newAmountMl),
         soapCostPerLitre: weightedCostPerLitre || 0,
         lastBottleCost: costPerBottle,
         lastBottleVolume: volPerBottle
-      };
-      updateDoc(invRef, updateData).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: invRef.path,
-          operation: 'update',
-          requestResourceData: updateData
-        }));
       });
     }
 
     const purchaseRef = collection(firestore, 'companies', user.companyId, 'purchases');
-    const purchaseData = {
+    addDoc(purchaseRef, {
       id: crypto.randomUUID(),
       companyId: user.companyId,
       amount: newTotalCost,
       description: `${refillCategory.toUpperCase()} Soap Refill (${bottles}x ${volPerBottle}L)`,
       timestamp: new Date().toISOString()
-    };
-    addDoc(purchaseRef, purchaseData).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: purchaseRef.path,
-        operation: 'create',
-        requestResourceData: purchaseData
-      }));
     });
 
     toast({ title: "Inventory Replenished" });
@@ -352,6 +318,7 @@ export default function LaundryPage() {
     if (!selectedStudent || !firestore || !user?.companyId || !studentSoap) return;
     
     const washRate = getWashRateForLevel(selectedStudent.level);
+    const washBankBalance = (selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0);
     
     if (!isLevelAllowedToday(selectedStudent.level)) {
       toast({ title: "Unauthorized Turn", description: "This level is not scheduled for today.", variant: "destructive" });
@@ -361,6 +328,11 @@ export default function LaundryPage() {
     if (studentSoap.soapStockMl < mlPerWash) {
        toast({ title: "Refill Required", description: "Insufficient soap stock.", variant: "destructive" });
        return;
+    }
+
+    if (washBankBalance < washRate) {
+      toast({ title: "Insufficient Funds", description: "Subscriber needs to top up their laundry bank.", variant: "destructive" });
+      return;
     }
 
     setIsProcessing(true);
@@ -385,8 +357,7 @@ export default function LaundryPage() {
       items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
     };
 
-    // Wash deducts from the "Current Bank Balance"
-    updateDoc(studentRef, { balance: increment(-washRate) }).catch(async (err) => {
+    updateDoc(studentRef, { totalSpent: increment(washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
     updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
@@ -438,12 +409,8 @@ export default function LaundryPage() {
       items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
     };
 
-    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
-    });
-    addDoc(transRef, transData).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
-    });
+    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) });
+    addDoc(transRef, transData);
 
     toast({ title: "Service Complete" });
     setPayableName('');
@@ -476,7 +443,6 @@ export default function LaundryPage() {
       items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
     };
 
-    // Top up increases the "Current Bank Balance"
     updateDoc(studentRef, { balance: increment(amount) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
@@ -484,7 +450,7 @@ export default function LaundryPage() {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
     });
 
-    toast({ title: "Balance Updated" });
+    toast({ title: "Deposit Successful" });
     setIsTopUpOpen(false);
     setTopUpAmount('');
     setTopUpMatrix('');
@@ -495,17 +461,11 @@ export default function LaundryPage() {
   const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
   const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
   
-  const studentUsageRevenue = laundryTransactions.filter(t => !t.items[0].name.includes('Payable') && !t.items[0].name.includes('Deposit')).reduce((acc, t) => acc + t.totalAmount, 0);
-  const payableUsageRevenue = laundryTransactions.filter(t => t.items[0].name.includes('Payable')).reduce((acc, t) => acc + t.totalAmount, 0);
-
   const todayWashes = laundryTransactions.filter(t => {
     const d = new Date(t.timestamp);
     const now = new Date();
     return d.toDateString() === now.toDateString() && !t.items[0].name.includes('Deposit');
   });
-
-  const refillPreviewMl = Number(refillBottles) * Number(refillVolPerBottle) * 1000;
-  const refillPreviewCost = Number(refillBottles) * Number(refillCostPerBottle);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -526,7 +486,7 @@ export default function LaundryPage() {
               <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
                    <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">Student Settlement</p>
-                   <DialogTitle className="text-4xl font-black tracking-tighter">Top-Up Registry</DialogTitle>
+                   <DialogTitle className="text-4xl font-black tracking-tighter">Deposit Registry</DialogTitle>
                 </div>
                 <div className="p-10 space-y-8">
                   <div className="space-y-2">
@@ -547,10 +507,8 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Bank Balance</p>
-                          <p className={cn("text-3xl font-black", (foundTopUpStudent.balance ?? 0) <= 0 ? "text-destructive" : "text-foreground")}>
-                            ${(foundTopUpStudent.balance ?? 0).toFixed(2)}
-                          </p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Original Amount</p>
+                          <p className="text-3xl font-black">${(foundTopUpStudent.balance ?? 0).toFixed(2)}</p>
                         </div>
                       </div>
                       <div className="space-y-4">
@@ -568,14 +526,8 @@ export default function LaundryPage() {
                         <PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" />
                         <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
                       </RadioGroup>
-                      {topUpPaymentMethod === 'cash' && (
-                        <div className="p-6 bg-secondary/10 rounded-3xl space-y-4">
-                           <Input type="number" placeholder="Amount Received" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)} className="h-12 rounded-xl font-bold" />
-                           <div className="flex justify-between font-black text-sm uppercase px-2"><span>Change:</span> <span>${topUpChange.toFixed(2)}</span></div>
-                        </div>
-                      )}
                       <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handleConfirmTopUp} disabled={isProcessing || !topUpAmount}>
-                        Confirm Deposit
+                        Confirm & Record Deposit
                       </Button>
                     </div>
                   )}
@@ -597,7 +549,7 @@ export default function LaundryPage() {
         )}
 
         <Tabs defaultValue="pos" className="space-y-6">
-          <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm overflow-x-auto max-w-full">
+          <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm">
             <TabsTrigger value="pos" className="rounded-lg gap-2">POS Terminal</TabsTrigger>
             <TabsTrigger value="payable" className="rounded-lg gap-2">Payable Laundry</TabsTrigger>
             <TabsTrigger value="students" className="rounded-lg gap-2">Subscribers</TabsTrigger>
@@ -605,7 +557,7 @@ export default function LaundryPage() {
             <TabsTrigger value="config" className="rounded-lg gap-2">Pricing Config</TabsTrigger>
             <TabsTrigger value="consumables" className="rounded-lg gap-2">Inventory</TabsTrigger>
             <TabsTrigger value="profits" className="rounded-lg gap-2">Analytics</TabsTrigger>
-            <TabsTrigger value="billing" className="rounded-lg gap-2">Digital Gateway</TabsTrigger>
+            <TabsTrigger value="billing" className="rounded-lg gap-2">Gateway</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pos" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -615,12 +567,9 @@ export default function LaundryPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <CardTitle className="text-xl font-black">Washing Terminal</CardTitle>
-                      <CardDescription className="font-bold">Authorized student usage verification</CardDescription>
+                      <CardDescription className="font-bold">Subscriber usage verification</CardDescription>
                     </div>
-                    <div className="text-right">
-                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Live Date</p>
-                       <p className="font-black text-primary">{todayDate ? new Date(todayDate).toLocaleDateString([], { dateStyle: 'long' }) : "---"}</p>
-                    </div>
+                    <p className="font-black text-primary">{todayDate ? new Date(todayDate).toLocaleDateString([], { dateStyle: 'long' }) : "---"}</p>
                   </div>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
@@ -651,17 +600,14 @@ export default function LaundryPage() {
                   {selectedStudent ? (
                     <div className="p-10 bg-primary/5 rounded-[32px] border-4 border-primary/10 space-y-8 animate-in zoom-in-95 duration-300">
                       <div className="flex justify-between items-start">
-                        <div className="space-y-4">
-                          <div>
-                            <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Subscriber Identity</p>
-                            <h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Badge variant="outline" className="font-bold">Level {selectedStudent.level}</Badge>
-                              <Badge variant="outline" className="font-bold">{selectedStudent.class}</Badge>
-                            </div>
+                        <div>
+                          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Subscriber Identity</p>
+                          <h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="outline" className="font-bold">Level {selectedStudent.level}</Badge>
+                            <Badge variant="outline" className="font-bold">{selectedStudent.class}</Badge>
                           </div>
-                          
-                          <div className="pt-2">
+                          <div className="mt-4">
                             {isLevelAllowedToday(selectedStudent.level) ? (
                               <Badge className="bg-green-600 h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
                                 <CheckCircle2 className="w-4 h-4" /> Turn Authorized
@@ -674,21 +620,19 @@ export default function LaundryPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Bank Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Wash Bank Balance</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            (selectedStudent.balance ?? 0) <= 0 ? "text-destructive" : "text-primary"
-                          )}>${(selectedStudent.balance ?? 0).toFixed(2)}</p>
-                          <div className="mt-2">
-                             <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
-                          </div>
+                            ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) <= 0 ? "text-destructive" : "text-primary"
+                          )}>${((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)).toFixed(2)}</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase mt-2">Rate: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</p>
                         </div>
                       </div>
                       
                       <Button 
                         className="w-full h-16 rounded-2xl text-xl font-black shadow-xl group" 
                         onClick={handleChargeLaundry} 
-                        disabled={isProcessing || !isBudgetActive || !isLevelAllowedToday(selectedStudent.level)}
+                        disabled={isProcessing || !isBudgetActive || !isLevelAllowedToday(selectedStudent.level) || ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) < getWashRateForLevel(selectedStudent.level)}
                       >
                         {isProcessing ? "Authorizing..." : (
                           <span className="flex items-center gap-3">
@@ -706,7 +650,7 @@ export default function LaundryPage() {
                 </CardContent>
               </Card>
             </div>
-            <div className="lg:col-span-1 space-y-6">
+            <div className="lg:col-span-1">
               <Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] p-8 overflow-hidden relative">
                 <div className="absolute top-0 right-0 p-8 opacity-10"><Clock className="w-32 h-32" /></div>
                 <CardTitle className="flex items-center gap-3 text-xl font-black mb-6 relative z-10">
@@ -790,9 +734,7 @@ export default function LaundryPage() {
 
           <TabsContent value="students" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
              <div className="lg:col-span-1">
-                <Card className={cn(
-                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
-                )}>
+                <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
                    <h3 className="text-xl font-black mb-6">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3>
                    <form onSubmit={handleRegisterStudent} className="space-y-5">
                       <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
@@ -814,7 +756,7 @@ export default function LaundryPage() {
                          </div>
                       </div>
                       <div className="space-y-1.5">
-                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription Amount ($)</Label>
+                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription / Debt ($)</Label>
                          <Input 
                           type="number" 
                           value={editingStudent ? (editingStudent.initialAmount ?? 0) : enrollmentDebt} 
@@ -841,9 +783,9 @@ export default function LaundryPage() {
                       <thead className="bg-secondary/20">
                          <tr>
                            <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Level</th>
                            <th className="p-6 font-black uppercase text-[10px]">Initial Subscription</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Current Bank Balance</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Laundry Bank Original Amount</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Wash Bank Balance</th>
                            <th className="p-6 font-black uppercase text-[10px]">Balance Need to Pay</th>
                            <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                          </tr>
@@ -851,23 +793,26 @@ export default function LaundryPage() {
                       <tbody className="divide-y">
                          {students?.map(s => {
                            const initialAmt = s.initialAmount ?? 0;
-                           const bankBalance = s.balance ?? 0; 
-                           const needToPay = initialAmt - bankBalance;
+                           const deposits = s.balance ?? 0;
+                           const spent = s.totalSpent ?? 0;
+                           const washBalance = deposits - spent;
+                           const needToPay = initialAmt - deposits;
                            return (
                              <tr key={s.id} className="hover:bg-secondary/5 group">
                                 <td className="p-6">
                                    <p className="font-black text-lg">{s.name}</p>
                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
                                 </td>
-                                <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
                                 <td className="p-6 font-bold text-muted-foreground">${initialAmt.toFixed(2)}</td>
+                                <td className="p-6 font-black text-foreground text-lg">${deposits.toFixed(2)}</td>
                                 <td className="p-6">
-                                   <p className={cn("font-black text-lg", bankBalance <= 0 ? "text-destructive" : "text-green-600")}>
-                                      ${bankBalance.toFixed(2)}
+                                   <p className={cn("font-black text-lg", washBalance <= 0 ? "text-destructive" : "text-primary")}>
+                                      ${washBalance.toFixed(2)}
                                    </p>
+                                   <p className="text-[9px] font-bold text-muted-foreground uppercase">Used: ${spent.toFixed(2)}</p>
                                 </td>
                                 <td className="p-6">
-                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-primary")}>
+                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-green-600")}>
                                       ${needToPay.toFixed(2)}
                                    </p>
                                 </td>
@@ -897,9 +842,7 @@ export default function LaundryPage() {
           <TabsContent value="consumables">
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
-                   <Card className={cn(
-                     "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
-                   )}>
+                   <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
                       <div className="flex items-center gap-2 mb-6">
                         <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                           <RefreshCw className="w-5 h-5" />
@@ -928,27 +871,6 @@ export default function LaundryPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Price/Bottle ($)</Label>
                             <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
-
-                         {Number(refillBottles) > 0 && (
-                           <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 space-y-2 animate-in fade-in zoom-in-95">
-                              <div className="flex items-center gap-2 text-[9px] font-black text-primary uppercase tracking-widest mb-1">
-                                 <Info className="w-3 h-3" /> Batch Calculation
-                              </div>
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                                 <span className="text-muted-foreground">Total Vol.</span>
-                                 <span className="text-foreground">{refillPreviewMl.toLocaleString()} ml</span>
-                              </div>
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                                 <span className="text-muted-foreground">Cost/ML</span>
-                                 <span className="text-primary">${(Number(refillCostPerBottle) / (Number(refillVolPerBottle) * 1000 || 1)).toFixed(4)}</span>
-                              </div>
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase border-t pt-2 mt-2">
-                                 <span className="text-muted-foreground">Aggregate Cost</span>
-                                 <span className="text-primary font-black">${refillPreviewCost.toFixed(2)}</span>
-                              </div>
-                           </div>
-                         )}
-
                          <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
                             {isProcessing ? "Processing..." : "Confirm Stock Refill"}
                          </Button>
@@ -964,11 +886,9 @@ export default function LaundryPage() {
 
           <TabsContent value="profits">
              <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                   <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={ShoppingBag} />
                    <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
-                   <ReportStat label="Student Usage Rev." value={`$${studentUsageRevenue.toFixed(2)}`} icon={User} />
-                   <ReportStat label="Payable Laundry Rev." value={`$${payableUsageRevenue.toFixed(2)}`} icon={ShoppingBag} />
                 </div>
                 <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
                    <h3 className="text-xl font-black mb-6">Today's Service Feed</h3>
@@ -1046,11 +966,9 @@ export default function LaundryPage() {
 function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number> }) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [isUpdating, setIsUpdating] = useState(false);
 
   const saveConfig = (level: number, rate: number) => {
     if (!firestore || !companyId) return;
-    setIsUpdating(true);
     const id = `LV${level}_CONFIG`;
     const docRef = doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id);
     const quota = levelQuotas[level] || 0;
@@ -1059,8 +977,7 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
       .then(() => toast({ title: `Level ${level} Policy Updated` }))
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: data }));
-      })
-      .finally(() => setIsUpdating(false));
+      });
   };
 
   return (
@@ -1238,14 +1155,6 @@ function LaundryScheduler({ companyId, schedules, levelConfigs, levelQuotas }: {
                         </td>
                      </tr>
                    ))}
-                   {(!schedules || schedules.length === 0) && (
-                     <tr>
-                        <td colSpan={3} className="py-24 text-center opacity-30">
-                           <CalendarDays className="w-16 h-16 mx-auto mb-4" />
-                           <p className="font-black uppercase tracking-widest">No Turn records found</p>
-                        </td>
-                     </tr>
-                   )}
                 </tbody>
              </table>
           </div>
