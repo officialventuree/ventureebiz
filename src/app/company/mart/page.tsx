@@ -135,6 +135,7 @@ export default function MartPage() {
   // Settlement amount is what's left after voucher application
   const settlementDue = Math.max(0, subtotal - voucherDiscount);
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
+  const totalCost = cart.reduce((acc, item) => acc + (item.product.costPrice * item.quantity), 0);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - settlementDue) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < settlementDue;
@@ -150,9 +151,9 @@ export default function MartPage() {
       id: transactionId,
       companyId: user.companyId,
       module: 'mart',
-      // Realize full revenue at POS even if paid via coupon (liability transfer to equity)
       totalAmount: subtotal, 
       profit: totalProfit, 
+      totalCost: totalCost, // Recorded for capital claim loop
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || undefined,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
@@ -692,7 +693,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     }));
   }, [coupons]);
 
-  // Real-time calculation of Coupon Bank statistics including liability breakdown
   const bankStats = useMemo(() => {
     if (!coupons) return { totalLiability: 0, totalIssued: 0, cash: 0, card: 0, duitnow: 0 };
     return coupons.reduce((acc, c) => {
@@ -700,7 +700,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
       acc.totalLiability += bal;
       acc.totalIssued += (c.initialValue || 0);
       
-      // Breakdown based on original funding source
       if (c.paymentMethod === 'cash') acc.cash += bal;
       else if (c.paymentMethod === 'card') acc.card += bal;
       else if (c.paymentMethod === 'duitnow') acc.duitnow += bal;
@@ -739,10 +738,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     setIsProcessing(true);
 
     try {
-      // Treating coupon generation as a liability deposit.
-      // NO transaction record is created in 'transactions' to avoid inflating Revenue/Profit until spent.
-      // The funds are tracked via the 'coupons' collection (The Coupon Bank).
-
       for (const item of batch) {
         for (let i = 0; i < item.qty; i++) {
           const id = crypto.randomUUID();
@@ -758,7 +753,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
             customerName,
             customerCompany: customerCompany || undefined,
             createdAt: new Date().toISOString(),
-            paymentMethod: purchaseMethod // Record funding source for liability breakdown
+            paymentMethod: purchaseMethod 
           };
           await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
         }
@@ -775,7 +770,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
   return (
     <div className="space-y-8">
-      {/* Coupon Bank Section: Real-time Liability & Volume Tracking */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
@@ -887,7 +881,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                  }} className="grid grid-cols-3 gap-2">
                     <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
                     <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
-                    <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
+                    <PaymentOption value="duitnow" label="QR" icon={QrCode} id="duitnow_final" />
                  </RadioGroup>
               </div>
 
@@ -1088,7 +1082,7 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div>
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-24">
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-24 text-center">
         <Icon className="mb-1 h-6 w-6 text-primary" />
         <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>

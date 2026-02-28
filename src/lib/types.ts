@@ -29,6 +29,7 @@ export interface Company {
   capitalStartDate?: string;
   capitalEndDate?: string;
   duitNowQr?: string;
+  nextCapitalAmount?: number; // Accumulated pool from claimed capital
 }
 
 export interface SaleItem {
@@ -49,8 +50,10 @@ export interface SaleTransaction {
   companyId: string;
   module: ModuleType;
   serviceTypeId?: string;
-  totalAmount: number;
+  totalAmount: number; // Revenue
   profit: number;
+  totalCost?: number; // Actual expenditure for capital recovery
+  isCapitalClaimed?: boolean; // Tracking if capital portion has been recovered
   timestamp: string;
   items: SaleItem[];
   status?: TransactionStatus;

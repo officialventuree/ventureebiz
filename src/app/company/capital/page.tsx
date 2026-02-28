@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key, Plus } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, increment } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { CapitalPurchase, Company, CapitalPeriod } from '@/lib/types';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
 export default function CapitalControlPage() {
@@ -27,7 +27,12 @@ export default function CapitalControlPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isInjectDialogOpen, setIsInjectDialogOpen] = useState(false);
   const [resetKey, setResetKey] = useState('');
+  
+  // Injection State
+  const [injectAmount, setInjectAmount] = useState<number | string>('');
+  const [isInjecting, setIsInjecting] = useState(false);
 
   // Form states for live calculation
   const [formLimit, setFormLimit] = useState<number>(0);
@@ -47,7 +52,6 @@ export default function CapitalControlPage() {
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
 
-  // Sync internal form states with DB when it loads
   useEffect(() => {
     if (companyDoc) {
       if (companyDoc.capitalLimit) setFormLimit(companyDoc.capitalLimit);
@@ -56,7 +60,6 @@ export default function CapitalControlPage() {
     }
   }, [companyDoc]);
 
-  // Live Capital Calculation within active period
   const activePurchases = useMemo(() => {
     if (!purchases) return [];
     if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
@@ -76,7 +79,6 @@ export default function CapitalControlPage() {
   const remaining = Math.max(0, limit - totalSpent);
   const utilization = limit > 0 ? (totalSpent / limit) * 100 : 0;
 
-  // Real-time End Date Detection logic
   const calculatedEndDate = useMemo(() => {
     if (!formStartDate) return "";
     const date = new Date(formStartDate);
@@ -89,12 +91,10 @@ export default function CapitalControlPage() {
     return date.toISOString().split('T')[0];
   }, [formStartDate, formPeriod]);
 
-  // Lock-in feature logic: Lock if end date is in the future
   const isLocked = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
     const now = new Date();
     const end = new Date(companyDoc.capitalEndDate);
-    // Add 23:59:59 to end date to ensure it lasts the full day
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
@@ -126,6 +126,47 @@ export default function CapitalControlPage() {
       })
       .finally(() => {
         setIsUpdating(false);
+      });
+  };
+
+  const handleInjectFunds = async () => {
+    if (!firestore || !user?.companyId || !companyDoc) return;
+    setIsInjecting(true);
+
+    const amount = Number(injectAmount) || 0;
+    const claimedPool = companyDoc.nextCapitalAmount || 0;
+    const totalToInject = amount + claimedPool;
+
+    if (totalToInject <= 0) {
+      toast({ title: "No funds to inject", variant: "destructive" });
+      setIsInjecting(false);
+      return;
+    }
+
+    const docRef = doc(firestore, 'companies', user.companyId);
+    const updateData = {
+      capitalLimit: increment(totalToInject),
+      nextCapitalAmount: 0 // Clear the recovered pool after injection
+    };
+
+    updateDoc(docRef, updateData)
+      .then(() => {
+        toast({ 
+          title: "Capital Injected", 
+          description: `Strategic limit expanded by $${totalToInject.toFixed(2)}.` 
+        });
+        setIsInjectDialogOpen(false);
+        setInjectAmount('');
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: updateData
+        }));
+      })
+      .finally(() => {
+        setIsInjecting(false);
       });
   };
 
@@ -174,47 +215,96 @@ export default function CapitalControlPage() {
               <h1 className="text-3xl font-black font-headline tracking-tight">Capital Control</h1>
               <p className="text-muted-foreground font-medium">Strategic Spending Limits & Procurement Guardrails</p>
             </div>
-            {isLocked ? (
-              <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm transition-all">
-                    <RefreshCw className="w-4 h-4" /> Reset Configuration
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
-                  <div className="bg-destructive p-10 text-destructive-foreground">
-                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                      <Lock className="w-6 h-6" />
-                    </div>
-                    <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Emergency Unlock</DialogTitle>
-                    <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
-                      An 8-character Reset Key (provided by your Admin) is required to override this locked budget cycle.
-                    </DialogDescription>
-                  </div>
-                  <div className="p-8 space-y-6">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorization Reset Key</Label>
-                      <div className="relative">
-                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input 
-                          placeholder="ENTER 8-CHAR KEY" 
-                          value={resetKey}
-                          onChange={(e) => setResetKey(e.target.value.toUpperCase())}
-                          className="h-14 rounded-2xl bg-secondary/10 border-none pl-12 font-mono font-bold tracking-widest text-lg" 
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      onClick={handleResetCycle} 
-                      disabled={isResetting || resetKey.length < 8}
-                      className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
-                    >
-                      {isResetting ? "Authorizing..." : "Confirm & Unlock Configuration"}
+            <div className="flex gap-4">
+              {isLocked && (
+                <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="rounded-2xl h-12 px-6 font-black gap-2 shadow-xl bg-primary">
+                      <Plus className="w-4 h-4" /> Inject Funds
                     </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            ) : null}
+                  </DialogTrigger>
+                  <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
+                    <div className="bg-primary p-10 text-primary-foreground">
+                       <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                          <Zap className="w-6 h-6" />
+                       </div>
+                       <DialogTitle className="text-2xl font-black">Capital Injection</DialogTitle>
+                       <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
+                          Expand your active spending limit without resetting the current cycle period.
+                       </DialogDescription>
+                    </div>
+                    <div className="p-8 space-y-6">
+                       <div className="p-6 bg-secondary/10 rounded-2xl space-y-2 border-2 border-dashed border-primary/20">
+                          <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none">Available Recovered Capital</p>
+                          <p className="text-3xl font-black text-primary">${(companyDoc?.nextCapitalAmount || 0).toFixed(2)}</p>
+                          <p className="text-[9px] font-bold text-muted-foreground opacity-60">Automatically added upon injection</p>
+                       </div>
+
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Additional Manual Funding ($)</Label>
+                          <Input 
+                            type="number" 
+                            placeholder="0.00" 
+                            className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
+                            value={injectAmount}
+                            onChange={(e) => setInjectAmount(e.target.value)}
+                          />
+                       </div>
+
+                       <Button 
+                        onClick={handleInjectFunds} 
+                        disabled={isInjecting}
+                        className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
+                       >
+                          {isInjecting ? "Processing..." : `Confirm & Inject $${(Number(injectAmount || 0) + (companyDoc?.nextCapitalAmount || 0)).toFixed(2)}`}
+                       </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {isLocked ? (
+                <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm transition-all">
+                      <RefreshCw className="w-4 h-4" /> Reset Configuration
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
+                    <div className="bg-destructive p-10 text-destructive-foreground">
+                      <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                        <Lock className="w-6 h-6" />
+                      </div>
+                      <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Emergency Unlock</DialogTitle>
+                      <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
+                        An 8-character Reset Key (provided by your Admin) is required to override this locked budget cycle.
+                      </DialogDescription>
+                    </div>
+                    <div className="p-8 space-y-6">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorization Reset Key</Label>
+                        <div className="relative">
+                          <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input 
+                            placeholder="ENTER 8-CHAR KEY" 
+                            value={resetKey}
+                            onChange={(e) => setResetKey(e.target.value.toUpperCase())}
+                            className="h-14 rounded-2xl bg-secondary/10 border-none pl-12 font-mono font-bold tracking-widest text-lg" 
+                          />
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={handleResetCycle} 
+                        disabled={isResetting || resetKey.length < 8}
+                        className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
+                      >
+                        {isResetting ? "Authorizing..." : "Confirm & Unlock Configuration"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              ) : null}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

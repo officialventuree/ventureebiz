@@ -5,16 +5,21 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, updateDoc, increment } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { TrendingUp, DollarSign, ShoppingBag, Wallet, Waves, AlertTriangle, Package, ShieldCheck } from 'lucide-react';
+import { TrendingUp, DollarSign, ShoppingBag, Wallet, Waves, AlertTriangle, Package, ShieldCheck, ArrowRightLeft, Landmark, Zap, CheckCircle2 } from 'lucide-react';
 import { SaleTransaction, CapitalPurchase, Product, Company } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 export default function CompanyDashboard() {
   const { user } = useAuth();
   const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isClaiming, setIsClaiming] = useState(false);
 
   const companyRef = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -44,7 +49,6 @@ export default function CompanyDashboard() {
   const totalRevenue = transactions?.reduce((acc, s) => acc + s.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, s) => acc + s.profit, 0) || 0;
   
-  // Calculate capital used within the current active budget period
   const totalCapitalUsed = useMemo(() => {
     if (!purchases) return 0;
     if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases.reduce((acc, p) => acc + p.amount, 0);
@@ -62,11 +66,74 @@ export default function CompanyDashboard() {
   }, [purchases, companyDoc]);
 
   const inventoryValue = products?.reduce((acc, p) => acc + (p.stock * p.costPrice), 0) || 0;
-  
   const capitalLimit = companyDoc?.capitalLimit || 10000;
   const remainingCapital = Math.max(0, capitalLimit - totalCapitalUsed);
 
-  // Profit per module for the chart
+  // Module Stats
+  const modules = ['mart', 'laundry', 'rent', 'services'];
+  const paymentMethods = ['cash', 'card', 'duitnow'];
+
+  const flowStats = useMemo(() => {
+    if (!transactions) return [];
+    
+    return modules.map(mod => {
+      const modTrans = transactions.filter(t => t.module === mod);
+      const unclaimed = modTrans.filter(t => !t.isCapitalClaimed);
+      
+      const breakdown = paymentMethods.map(pm => ({
+        method: pm,
+        profit: modTrans.filter(t => (t.paymentMethod || 'cash') === pm).reduce((acc, t) => acc + t.profit, 0)
+      }));
+
+      const totalCapitalToClaim = unclaimed.reduce((acc, t) => acc + (t.totalCost || 0), 0);
+
+      return {
+        name: mod.charAt(0).toUpperCase() + mod.slice(1),
+        breakdown,
+        totalProfit: modTrans.reduce((acc, t) => acc + t.profit, 0),
+        capitalToClaim: totalCapitalToClaim,
+        unclaimedCount: unclaimed.length
+      };
+    });
+  }, [transactions]);
+
+  const aggregateCapitalToClaim = flowStats.reduce((acc, s) => acc + s.capitalToClaim, 0);
+
+  const handleClaimAllCapital = async () => {
+    if (!firestore || !user?.companyId || !transactions) return;
+    setIsClaiming(true);
+
+    try {
+      const unclaimed = transactions.filter(t => !t.isCapitalClaimed);
+      if (unclaimed.length === 0) {
+        toast({ title: "No unclaimed capital", description: "All operational costs are already recovered." });
+        setIsClaiming(false);
+        return;
+      }
+
+      // 1. Move claimed portion to nextCapitalAmount pool in Company doc
+      const companyRef = doc(firestore, 'companies', user.companyId);
+      await updateDoc(companyRef, {
+        nextCapitalAmount: increment(aggregateCapitalToClaim)
+      });
+
+      // 2. Mark transactions as claimed (Non-blocking updates)
+      for (const t of unclaimed) {
+        const tRef = doc(firestore, 'companies', user.companyId, 'transactions', t.id);
+        updateDoc(tRef, { isCapitalClaimed: true });
+      }
+
+      toast({ 
+        title: "Capital Claimed Successfully", 
+        description: `$${aggregateCapitalToClaim.toFixed(2)} has been moved to your injection pool.` 
+      });
+    } catch (e: any) {
+      toast({ title: "Claim failed", description: e.message, variant: "destructive" });
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
   const moduleData = [
     { name: 'Mart', total: transactions?.filter(t => t.module === 'mart').reduce((acc, t) => acc + t.totalAmount, 0) || 0 },
     { name: 'Laundry', total: transactions?.filter(t => t.module === 'laundry').reduce((acc, t) => acc + t.totalAmount, 0) || 0 },
@@ -90,11 +157,60 @@ export default function CompanyDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             <StatsCard icon={DollarSign} label="Gross Revenue" value={`$${totalRevenue.toFixed(2)}`} trend="Total" />
             <StatsCard icon={TrendingUp} label="Net Profit" value={`$${totalProfit.toFixed(2)}`} trend="Calculated" color="text-primary" />
             <StatsCard icon={Package} label="Inventory Value" value={`$${inventoryValue.toFixed(2)}`} trend="On Hand" color="text-foreground" />
             <StatsCard icon={Wallet} label="Capital Balance" value={`$${remainingCapital.toFixed(2)}`} trend={`Limit: $${capitalLimit/1000}k`} color="text-foreground" />
+          </div>
+
+          {/* Cash Flow & Capital Claim Section */}
+          <div className="mb-12">
+             <div className="flex justify-between items-center mb-6 px-2">
+                <h2 className="text-xl font-black flex items-center gap-2 uppercase tracking-tighter">
+                   <Landmark className="w-6 h-6 text-primary" /> Strategic Cash Flow & Capital Claim
+                </h2>
+                <Button 
+                  onClick={handleClaimAllCapital} 
+                  disabled={isClaiming || aggregateCapitalToClaim <= 0}
+                  className="rounded-xl font-black h-12 px-8 shadow-xl gap-2 transition-all hover:scale-105 active:scale-95"
+                >
+                   {isClaiming ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                   Claim All Capital (${aggregateCapitalToClaim.toFixed(2)})
+                </Button>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {flowStats.map(stat => (
+                  <Card key={stat.name} className="border-none shadow-sm rounded-3xl bg-white overflow-hidden group hover:shadow-md transition-all">
+                     <CardHeader className="bg-secondary/10 p-6">
+                        <CardTitle className="text-lg font-black">{stat.name}</CardTitle>
+                        <CardDescription className="font-bold text-[10px] uppercase">Financial Reconciliation</CardDescription>
+                     </CardHeader>
+                     <CardContent className="p-6 space-y-4">
+                        <div className="space-y-2">
+                           <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Profit Breakdown</p>
+                           {stat.breakdown.map(b => (
+                             <div key={b.method} className="flex justify-between items-center text-xs">
+                                <span className="font-bold text-muted-foreground capitalize">{b.method}</span>
+                                <span className="font-black text-foreground">${b.profit.toFixed(2)}</span>
+                             </div>
+                           ))}
+                        </div>
+                        <Separator />
+                        <div className="pt-2">
+                           <div className="flex justify-between items-end">
+                              <div>
+                                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Cap. to Claim</p>
+                                 <Badge variant="outline" className="text-[9px] font-black mt-1 h-5">{stat.unclaimedCount} Unclaimed</Badge>
+                              </div>
+                              <p className="text-2xl font-black text-primary tracking-tighter">${stat.capitalToClaim.toFixed(2)}</p>
+                           </div>
+                        </div>
+                     </CardContent>
+                  </Card>
+                ))}
+             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -138,8 +254,8 @@ export default function CompanyDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <AlertItem label="Low Stock Warning" value={`${products?.filter(p => p.stock < 10).length || 0} items below threshold`} />
-                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / capitalLimit) * 100).toFixed(1)}% utilized`} />
-                  <AlertItem label="Active Students" value={`${transactions?.filter(t => t.module === 'laundry').length || 0} laundry uses`} />
+                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / (capitalLimit || 1)) * 100).toFixed(1)}% utilized`} />
+                  <AlertItem label="Pending Recoveries" value={`$${aggregateCapitalToClaim.toFixed(2)} to claim`} />
                 </CardContent>
               </Card>
 
@@ -202,5 +318,27 @@ function AlertItem({ label, value }: { label: string, value: string }) {
       <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1 tracking-widest">{label}</p>
       <p className="font-black text-sm">{value}</p>
     </div>
+  );
+}
+
+function RefreshCw(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
   );
 }
