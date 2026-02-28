@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload, Info } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
@@ -661,6 +661,15 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
+  const uniqueVoucherTypes = useMemo(() => {
+    if (!coupons) return [];
+    const values = Array.from(new Set(coupons.map(c => c.initialValue))).sort((a, b) => a - b);
+    return values.map(val => ({
+      value: val,
+      id: `VAL${val}`
+    }));
+  }, [coupons]);
+
   const addToBatch = () => {
     if (!inputVal || Number(inputVal) <= 0 || !inputQty || Number(inputQty) <= 0) {
       toast({ title: "Invalid Input", description: "Value and quantity must be greater than zero.", variant: "destructive" });
@@ -740,122 +749,167 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-      <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
-        <h3 className="text-xl font-black mb-6">Batch Issue Stored Value</h3>
-        <div className="space-y-6">
-          <div className="space-y-4">
-             <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-                <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
-             </div>
-             <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
-                <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
-             </div>
-             <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
-                <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
-             </div>
-          </div>
-
-          <Separator />
-
-          <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
-             <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
-             <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                   <Label className="text-[9px] font-black uppercase">Value ($)</Label>
-                   <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
-                </div>
-                <div className="space-y-1.5">
-                   <Label className="text-[9px] font-black uppercase">Qty</Label>
-                   <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
-                </div>
-             </div>
-             <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
-                <Plus className="w-3.5 h-3.5" /> Add to Batch
-             </Button>
-          </div>
-
-          {batch.length > 0 && (
-            <div className="space-y-3 animate-in fade-in zoom-in-95">
-               <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
-               <div className="space-y-2 max-h-40 overflow-auto pr-1">
-                  {batch.map(item => (
-                    <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
-                       <div>
-                          <p className="font-black text-xs">${item.value.toFixed(2)}</p>
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
-                       </div>
-                       <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
-                          <Trash2 className="w-3.5 h-3.5" />
-                       </Button>
-                    </div>
-                  ))}
+      <div className="lg:col-span-1 space-y-6">
+        <Card className="border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
+          <h3 className="text-xl font-black mb-6">Batch Issue Stored Value</h3>
+          <div className="space-y-6">
+            <div className="space-y-4">
+               <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
+                  <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
                </div>
-               <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
-                  <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
+               <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
+                  <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
+               </div>
+               <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
+                  <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
                </div>
             </div>
-          )}
 
-          <Separator />
+            <Separator />
 
-          <div className="space-y-4">
-             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
-             <RadioGroup value={purchaseMethod} onValueChange={(v) => {
-               setPurchaseMethod(v as PaymentMethod);
-               setReferenceNumber('');
-               setCashReceived('');
-             }} className="grid grid-cols-3 gap-2">
-                <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
-                <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
-                <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
-             </RadioGroup>
-          </div>
-
-          {purchaseMethod === 'cash' && (
-            <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
-               <div className="space-y-1">
-                  <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
-                  <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
+            <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
+               <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
+               <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                     <Label className="text-[9px] font-black uppercase">Value ($)</Label>
+                     <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                     <Label className="text-[9px] font-black uppercase">Qty</Label>
+                     <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
+                  </div>
                </div>
-               <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                  <span>Balance to Return</span>
-                  <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
-               </div>
+               <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
+                  <Plus className="w-3.5 h-3.5" /> Add to Batch
+               </Button>
             </div>
-          )}
 
-          {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
-            <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
-               {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                 <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
-                    <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
-                    <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
+            {batch.length > 0 && (
+              <div className="space-y-3 animate-in fade-in zoom-in-95">
+                 <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
+                 <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                    {batch.map(item => (
+                      <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
+                         <div>
+                            <p className="font-black text-xs">${item.value.toFixed(2)}</p>
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
+                         </div>
+                         <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                            <Trash2 className="w-3.5 h-3.5" />
+                         </Button>
+                      </div>
+                    ))}
                  </div>
-               )}
-               <div className="space-y-1">
-                  <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
-                  <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
-               </div>
-            </div>
-          )}
+                 <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
+                    <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
+                    <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
+                 </div>
+              </div>
+            )}
 
-          <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
-             {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
-          </Button>
-        </div>
-      </Card>
-      <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden">
+            <Separator />
+
+            <div className="space-y-4">
+               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
+               <RadioGroup value={purchaseMethod} onValueChange={(v) => {
+                 setPurchaseMethod(v as PaymentMethod);
+                 setReferenceNumber('');
+                 setCashReceived('');
+               }} className="grid grid-cols-3 gap-2">
+                  <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
+                  <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
+                  <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
+               </RadioGroup>
+            </div>
+
+            {purchaseMethod === 'cash' && (
+              <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
+                 <div className="space-y-1">
+                    <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
+                    <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
+                 </div>
+                 <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                    <span>Balance to Return</span>
+                    <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
+                 </div>
+              </div>
+            )}
+
+            {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                 {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                   <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
+                      <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
+                      <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
+                   </div>
+                 )}
+                 <div className="space-y-1">
+                    <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
+                    <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
+                 </div>
+              </div>
+            )}
+
+            <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
+               {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="border-none shadow-sm rounded-3xl bg-primary text-primary-foreground p-6 overflow-hidden relative">
+           <div className="absolute top-0 right-0 p-4 opacity-10"><Barcode className="w-16 h-16" /></div>
+           <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-4">
+                 <Info className="w-4 h-4" />
+                 <h4 className="text-xs font-black uppercase tracking-widest">Barcode Reference Center</h4>
+              </div>
+              <p className="text-[10px] font-bold opacity-80 mb-4 leading-relaxed">Derive searchable system IDs for quick lookup in the POS terminal.</p>
+              <div className="space-y-2">
+                 {uniqueVoucherTypes.map(type => (
+                   <div key={type.id} className="flex justify-between items-center bg-white/10 p-2 rounded-xl border border-white/10">
+                      <span className="font-black text-xs">${type.value.toFixed(2)}</span>
+                      <Badge className="bg-white text-primary font-black text-[10px] border-none">{type.id}</Badge>
+                   </div>
+                 ))}
+                 {uniqueVoucherTypes.length === 0 && (
+                   <p className="text-[10px] font-bold opacity-40 italic text-center py-2">No active types identified</p>
+                 )}
+              </div>
+           </div>
+        </Card>
+      </div>
+
+      <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden flex flex-col h-fit">
+        <CardHeader className="bg-secondary/10 border-b p-6">
+           <CardTitle className="text-lg font-black flex items-center gap-2">
+              <Ticket className="w-5 h-5 text-primary" /> Issued Stored Balances
+           </CardTitle>
+           <CardDescription className="font-bold">Active customer accounts and card status</CardDescription>
+        </CardHeader>
         <table className="w-full text-sm text-left">
-          <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Customer / Card</th><th className="p-6 font-black uppercase text-[10px]">Initial</th><th className="p-6 font-black uppercase text-[10px]">Balance</th><th className="p-6 font-black uppercase text-[10px]">Status</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
+          <thead className="bg-secondary/5">
+            <tr>
+              <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
+              <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">System ID</th>
+              <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Initial</th>
+              <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Balance</th>
+              <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Status</th>
+              <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
+            </tr>
+          </thead>
           <tbody className="divide-y">{coupons?.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => (
             <tr key={c.id} className="hover:bg-secondary/5 transition-colors">
               <td className="p-6">
-                 <p className="font-black">{c.customerName}</p>
+                 <p className="font-black text-foreground">{c.customerName}</p>
                  <p className="text-[9px] font-bold text-muted-foreground uppercase">{c.code}</p>
+              </td>
+              <td className="p-6">
+                 <Badge variant="outline" className="font-black text-[10px] bg-secondary/10 text-primary border-primary/20">
+                    VAL{c.initialValue}
+                 </Badge>
               </td>
               <td className="p-6 font-bold text-muted-foreground">${c.initialValue.toFixed(2)}</td>
               <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
@@ -863,11 +917,17 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
               <td className="p-6 text-center">
                  <Button variant="ghost" size="icon" onClick={async () => {
                     if (confirm("Revoke this stored value card?")) await deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id));
-                 }} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                 }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
               </td>
             </tr>
           ))}</tbody>
         </table>
+        {(!coupons || coupons.length === 0) && (
+          <div className="py-24 text-center opacity-30">
+             <Ticket className="w-16 h-16 mx-auto mb-4" />
+             <p className="font-black uppercase tracking-widest">Voucher Registry Empty</p>
+          </div>
+        )}
       </div>
     </div>
   );
