@@ -132,11 +132,12 @@ export default function MartPage() {
   
   // Stored Value Logic
   const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
-  const totalAmount = Math.max(0, subtotal - voucherDiscount);
+  // Settlement amount is what's left after voucher application
+  const settlementDue = Math.max(0, subtotal - voucherDiscount);
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
 
-  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
-  const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < totalAmount;
+  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - settlementDue) : 0;
+  const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < settlementDue;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
 
   const handleFinalCheckout = async () => {
@@ -149,7 +150,8 @@ export default function MartPage() {
       id: transactionId,
       companyId: user.companyId,
       module: 'mart',
-      totalAmount, 
+      // Realize full revenue at POS even if paid via coupon (liability transfer to equity)
+      totalAmount: subtotal, 
       profit: totalProfit, 
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || undefined,
@@ -293,8 +295,8 @@ export default function MartPage() {
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
               <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
-                   <p className="text-xs font-black uppercase tracking-widest opacity-80">Settlement Due</p>
-                   <h2 className="text-6xl font-black tracking-tighter">${totalAmount.toFixed(2)}</h2>
+                   <p className="text-xs font-black uppercase tracking-widest opacity-80">Remaining Settlement</p>
+                   <h2 className="text-6xl font-black tracking-tighter">${settlementDue.toFixed(2)}</h2>
                    {voucherDiscount > 0 && (
                      <p className="text-sm font-bold opacity-70 mt-2">Voucher Coverage: -${voucherDiscount.toFixed(2)}</p>
                    )}
@@ -344,7 +346,7 @@ export default function MartPage() {
                     <div className="space-y-4">
                       <Label className="text-[10px] font-black uppercase tracking-widest">Cash Received ($)</Label>
                       <Input type="number" className="h-14 rounded-2xl font-black text-2xl" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
-                      {Number(cashReceived) >= totalAmount && (
+                      {Number(cashReceived) >= settlementDue && (
                         <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/10 flex justify-between items-center">
                            <p className="text-[10px] font-black uppercase text-primary">Change Due</p>
                            <p className="text-3xl font-black">${changeAmount.toFixed(2)}</p>
@@ -707,21 +709,9 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     setIsProcessing(true);
 
     try {
-      const transactionId = crypto.randomUUID();
-      await setDoc(doc(firestore, 'companies', companyId, 'transactions', transactionId), {
-        id: transactionId,
-        companyId,
-        module: 'mart',
-        totalAmount: subtotal, 
-        profit: 0, 
-        timestamp: new Date().toISOString(),
-        customerName,
-        customerCompany: customerCompany || undefined,
-        paymentMethod: purchaseMethod,
-        referenceNumber: referenceNumber || undefined,
-        status: 'completed',
-        items: batch.map(item => ({ name: `Stored Value Issue: $${item.value} x${item.qty}`, price: item.value, quantity: item.qty }))
-      });
+      // Treating coupon generation as a liability deposit.
+      // NO transaction record is created in 'transactions' to avoid inflating Revenue/Profit until spent.
+      // The funds are tracked via the 'coupons' collection (The Coupon Bank).
 
       for (const item of batch) {
         for (let i = 0; i < item.qty; i++) {
@@ -743,7 +733,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
         }
       }
 
-      toast({ title: "Batch Vouchers Issued", description: `Generated all cards for ${customerName}.` });
+      toast({ title: "Liability Deposit Logged", description: `Stored value balances issued for ${customerName}.` });
       setCustomerName(''); setCustomerCompany(''); setBatch([]); setCashReceived(''); setReferenceNumber('');
     } catch (err) {
       toast({ title: "Issue failed", variant: "destructive" });
