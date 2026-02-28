@@ -79,6 +79,8 @@ export interface SaleTransaction {
   paymentMethod?: PaymentMethod;
   referenceNumber?: string;
   serviceTypeId?: string;
+  discountApplied?: number;
+  couponCode?: string;
 }
 
 export interface Product {

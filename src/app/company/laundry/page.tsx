@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -35,7 +36,8 @@ import {
   RefreshCw,
   XCircle,
   ChevronRight,
-  DollarSign
+  DollarSign,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -479,11 +481,12 @@ export default function LaundryPage() {
         </div>
 
         <Tabs defaultValue="pos" className="space-y-6">
-          <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm">
+          <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm overflow-x-auto max-w-full">
             <TabsTrigger value="pos" className="rounded-lg gap-2">POS Terminal</TabsTrigger>
             <TabsTrigger value="payable" className="rounded-lg gap-2">Payable Laundry</TabsTrigger>
             <TabsTrigger value="students" className="rounded-lg gap-2">Subscribers</TabsTrigger>
             <TabsTrigger value="schedule" className="rounded-lg gap-2">Schedule</TabsTrigger>
+            <TabsTrigger value="config" className="rounded-lg gap-2">Pricing Config</TabsTrigger>
             <TabsTrigger value="consumables" className="rounded-lg gap-2">Inventory</TabsTrigger>
             <TabsTrigger value="profits" className="rounded-lg gap-2">Analytics</TabsTrigger>
             <TabsTrigger value="billing" className="rounded-lg gap-2">Digital Gateway</TabsTrigger>
@@ -684,7 +687,7 @@ export default function LaundryPage() {
                             </Select>
                          </div>
                       </div>
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Debt ($)</Label><Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" /></div>
+                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Prepaid Subscription ($)</Label><Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-primary" /></div>
                       <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Save Subscriber</Button>
                    </form>
                 </Card>
@@ -693,7 +696,13 @@ export default function LaundryPage() {
                 <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
                    <table className="w-full text-sm text-left">
                       <thead className="bg-secondary/20">
-                         <tr><th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th><th className="p-6 font-black uppercase text-[10px]">Level</th><th className="p-6 font-black uppercase text-[10px]">Balance</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr>
+                         <tr>
+                           <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Level</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Service Fee</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Balance</th>
+                           <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
+                         </tr>
                       </thead>
                       <tbody className="divide-y">
                          {students?.map(s => (
@@ -703,6 +712,7 @@ export default function LaundryPage() {
                                  <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
                               </td>
                               <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
+                              <td className="p-6 font-bold text-muted-foreground">${getWashRateForLevel(s.level).toFixed(2)}</td>
                               <td className="p-6 font-black text-lg" style={{ color: s.balance < 0 ? 'red' : 'green' }}>${s.balance.toFixed(2)}</td>
                               <td className="p-6 text-center">
                                  <Button variant="ghost" size="icon" onClick={async () => {
@@ -719,6 +729,10 @@ export default function LaundryPage() {
 
           <TabsContent value="schedule">
              <LaundryScheduler companyId={user?.companyId} schedules={schedules} />
+          </TabsContent>
+
+          <TabsContent value="config">
+             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} />
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -861,8 +875,77 @@ export default function LaundryPage() {
   );
 }
 
+function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const saveConfig = async (level: number, fee: number, quota: number) => {
+    if (!firestore || !companyId) return;
+    setIsUpdating(true);
+    const id = `LV${level}_CONFIG`;
+    try {
+      await setDoc(doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id), {
+        id, companyId, level, subscriptionFee: fee, totalWashesAllowed: quota
+      });
+      toast({ title: `Level ${level} Updated` });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return (
+    <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
+       <div className="mb-10 text-center">
+          <h3 className="text-2xl font-black">Quota & Pricing Policy</h3>
+          <p className="text-sm font-bold text-muted-foreground">Define departmental wash limits and subscription rates</p>
+       </div>
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {LEVELS.map(lv => {
+            const config = levelConfigs?.find(c => c.level === lv);
+            return (
+              <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
+                 <div className="flex justify-between items-center">
+                    <Badge className="h-8 px-4 font-black">Level {lv}</Badge>
+                    <p className="text-[10px] font-black uppercase text-muted-foreground">Strategic Tier</p>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <Label className="text-[10px] font-black uppercase px-1">Sub. Fee ($)</Label>
+                       <Input 
+                        type="number" 
+                        defaultValue={config?.subscriptionFee || 0} 
+                        onBlur={(e) => saveConfig(lv, Number(e.target.value), config?.totalWashesAllowed || 0)}
+                        className="h-11 rounded-xl font-bold bg-white border-none"
+                       />
+                    </div>
+                    <div className="space-y-1">
+                       <Label className="text-[10px] font-black uppercase px-1">Wash Quota</Label>
+                       <Input 
+                        type="number" 
+                        defaultValue={config?.totalWashesAllowed || 0} 
+                        onBlur={(e) => saveConfig(lv, config?.subscriptionFee || 0, Number(e.target.value))}
+                        className="h-11 rounded-xl font-bold bg-white border-none"
+                       />
+                    </div>
+                 </div>
+                 <div className="pt-2">
+                    <div className="flex justify-between items-center px-1">
+                       <span className="text-[9px] font-black text-muted-foreground uppercase">Internal Service Rate</span>
+                       <span className="text-sm font-black text-primary">${((config?.subscriptionFee || 0) / (config?.totalWashesAllowed || 1)).toFixed(2)}/wash</span>
+                    </div>
+                 </div>
+              </div>
+            );
+          })}
+       </div>
+    </Card>
+  );
+}
+
 function LaundryScheduler({ companyId, schedules }: { companyId?: string, schedules: LaundrySchedule[] | null }) {
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedLevels, setSelectedLevels] = useState<number[]>([]);
 
@@ -890,7 +973,10 @@ function LaundryScheduler({ companyId, schedules }: { companyId?: string, schedu
     <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-3xl mx-auto">
        <div className="flex justify-between items-center mb-10">
           <div><h3 className="text-2xl font-black">Turn Scheduler</h3><p className="text-sm font-bold text-muted-foreground">Manage authorized wash days</p></div>
-          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-48 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+          <div className="flex items-center gap-3">
+             <CalendarDays className="w-5 h-5 text-primary" />
+             <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-48 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+          </div>
        </div>
        <div className="grid grid-cols-5 gap-4">
           {LEVELS.map(lv => (
@@ -903,6 +989,12 @@ function LaundryScheduler({ companyId, schedules }: { companyId?: string, schedu
                {selectedLevels.includes(lv) && <CheckCircle2 className="w-5 h-5 mt-2" />}
             </button>
           ))}
+       </div>
+       <div className="mt-10 p-6 bg-primary/5 rounded-2xl border-2 border-dashed border-primary/20 flex items-center gap-4">
+          <Calculator className="w-8 h-8 text-primary" />
+          <p className="text-xs font-bold leading-relaxed text-muted-foreground italic">
+            "Assigning a level to a specific date ensures students only access the laundry on their designated turn day, maintaining operational discipline across high-occupancy tiers."
+          </p>
        </div>
     </Card>
   );
