@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -59,7 +58,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import Link from 'link';
+import Link from 'next/link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -1002,7 +1001,7 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="billing">
-             <div className="max-w-xl mx-auto py-12 text-center space-y-8">
+             <div className="max-w-xl auto py-12 text-center space-y-8">
                 <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8">
                    <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-10 h-10" /></div>
                    <h2 className="text-3xl font-black">Laundry Gateway</h2>
