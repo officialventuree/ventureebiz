@@ -151,7 +151,7 @@ export default function MartPage() {
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < settlementDue;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
 
-  const handleFinalCheckout = async () => {
+  const handleFinalCheckout = () => {
     if (!user?.companyId || !firestore) return;
     setIsProcessing(true);
     const transactionId = crypto.randomUUID();
@@ -405,7 +405,7 @@ export default function MartPage() {
                         <td className="p-6 font-bold">{t.customerName}</td>
                         <td className="p-6 font-black text-primary text-lg">${t.totalAmount.toFixed(2)}</td>
                         <td className="p-6 text-center">
-                          <Button variant="ghost" size="icon" onClick={async () => {
+                          <Button variant="ghost" size="icon" onClick={() => {
                             if (confirm("Reverse this transaction? Inventory will be restored.")) {
                               for (const item of t.items) {
                                 if (item.productId) {
@@ -469,7 +469,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     }
   };
 
-  const handleConfirmRefill = async (e: React.FormEvent) => {
+  const handleConfirmRefill = (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !companyId || !selectedProduct) return;
     setIsProcessing(true);
@@ -486,24 +486,35 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     const productRef = doc(firestore, 'companies', companyId, 'products', selectedProduct.id);
     const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
 
-    updateDoc(productRef, {
+    const updateData = {
       stock: increment(totalStockAdded),
       costPrice: normalizedCost,
       sellingPrice: newRetail,
       itemsPerUnit: ipu
-    }).catch(async (err) => {
+    };
+
+    updateDoc(productRef, updateData).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: productRef.path,
-        operation: 'update'
+        operation: 'update',
+        requestResourceData: updateData
       }));
     });
 
-    addDoc(purchaseRef, {
+    const purchaseData = {
       id: crypto.randomUUID(),
       companyId,
       amount: totalCost,
       description: `Restock: ${units}x Unit(s) of ${selectedProduct.name} (${ipu} per unit)`,
       timestamp: new Date().toISOString()
+    };
+
+    addDoc(purchaseRef, purchaseData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: purchaseRef.path,
+        operation: 'create',
+        requestResourceData: purchaseData
+      }));
     });
 
     toast({ title: "Inventory Replenished", description: `Added ${totalStockAdded} items to ${selectedProduct.name}.` });
@@ -512,7 +523,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     setIsProcessing(false);
   };
 
-  const handleAddNew = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddNew = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !companyId) return;
     setIsProcessing(true);
@@ -535,34 +546,53 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
       itemsPerUnit: Number(formData.get('ipu') || 1)
     };
 
-    try {
-      await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
-      
-      // Log as Capital Purchase for startup stock ONLY if new
-      if (!editingProduct && totalInitialCost > 0) {
-        await addDoc(collection(firestore, 'companies', companyId, 'purchases'), {
-          id: crypto.randomUUID(),
-          companyId,
-          amount: totalInitialCost,
-          description: `Initial Stock Registry: ${stock}x ${productData.name}`,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      toast({ title: editingProduct ? "Product Updated" : "Product Registered" });
-      setIsAddDialogOpen(false);
-      setEditingProduct(null);
-    } catch (err: any) {
-      toast({ title: "Operation failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    const docRef = doc(firestore, 'companies', companyId, 'products', id);
+    setDoc(docRef, productData)
+      .then(() => {
+        // Log as Capital Purchase for startup stock ONLY if new registration
+        if (!editingProduct && totalInitialCost > 0) {
+          const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
+          const purchaseData = {
+            id: crypto.randomUUID(),
+            companyId,
+            amount: totalInitialCost,
+            description: `Initial Stock Registry: ${stock}x ${productData.name}`,
+            timestamp: new Date().toISOString()
+          };
+          addDoc(purchaseRef, purchaseData).catch(async (err) => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+              path: purchaseRef.path,
+              operation: 'create',
+              requestResourceData: purchaseData
+            }));
+          });
+        }
+        toast({ title: editingProduct ? "Product Updated" : "Product Registered" });
+        setIsAddDialogOpen(false);
+        setEditingProduct(null);
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: editingProduct ? 'update' : 'create',
+          requestResourceData: productData
+        }));
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
   };
 
-  const handleDeleteProduct = async (id: string) => {
+  const handleDeleteProduct = (id: string) => {
     if (!firestore || !companyId) return;
     if (!confirm("Permanently remove this product registry?")) return;
-    await deleteDoc(doc(firestore, 'companies', companyId, 'products', id));
+    const docRef = doc(firestore, 'companies', companyId, 'products', id);
+    deleteDoc(docRef).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: docRef.path,
+        operation: 'delete'
+      }));
+    });
     toast({ title: "Product Removed" });
   };
 
@@ -652,7 +682,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if(!open) setEditingProduct(null); }}>
             <DialogTrigger asChild>
-              <Button className="rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>
+              <Button className="rounded-xl font-black shadow-lg" disabled={!isBudgetActive} onClick={() => setEditingProduct(null)}>
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>

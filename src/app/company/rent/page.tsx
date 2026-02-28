@@ -163,19 +163,19 @@ export default function RentPage() {
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < calculatedAgreement.totalAmount;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
 
-  const handleLaunchAgreement = async () => {
+  const handleLaunchAgreement = () => {
     if (!selectedAssetForAgreement || !firestore || !user?.companyId) return;
     setIsProcessing(true);
 
     const transactionId = crypto.randomUUID();
-    const costPortion = calculatedAgreement.totalAmount * 0.05; // 5% maintenance reserve capital
+    const costPortion = calculatedAgreement.totalAmount * 0.05; 
     const transactionData: SaleTransaction = {
       id: transactionId,
       companyId: user.companyId,
       module: 'rent',
       totalAmount: calculatedAgreement.totalAmount,
       profit: calculatedAgreement.totalAmount - costPortion, 
-      totalCost: costPortion, // Capital to recover
+      totalCost: costPortion, 
       timestamp: new Date().toISOString(),
       customerName: customerName || null,
       customerCompany: customerCompany || null,
@@ -194,64 +194,43 @@ export default function RentPage() {
     };
 
     const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
-    setDoc(transactionRef, transactionData).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: transactionRef.path,
-        operation: 'create',
-        requestResourceData: transactionData
-      }));
-    });
-
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', selectedAssetForAgreement.id);
+
+    setDoc(transactionRef, transactionData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transactionRef.path, operation: 'create', requestResourceData: transactionData }));
+    });
     updateDoc(itemRef, { status: 'rented' }).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: itemRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'rented' }
-      }));
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { status: 'rented' } }));
     });
 
-    toast({ title: "Agreement Launched", description: `Active lease for ${customerName} recorded.` });
+    toast({ title: "Agreement Launched" });
     setSelectedAssetForAgreement(null);
     setCustomerName('');
-    setCustomerCompany('');
-    setReferenceNumber('');
-    setPaymentMethod('cash');
-    setCashReceived('');
-    setDuration(1);
     setShowCheckoutDialog(false);
     setIsProcessing(false);
   };
 
-  const handleCheckIn = async (transactionId: string) => {
+  const handleCheckIn = (transactionId: string) => {
     if (!firestore || !user?.companyId) return;
     const transaction = transactions?.find(t => t.id === transactionId);
     if (!transaction) return;
 
     const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
     updateDoc(transactionRef, { status: 'completed' }).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: transactionRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'completed' }
-      }));
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transactionRef.path, operation: 'update', requestResourceData: { status: 'completed' } }));
     });
 
     const itemToUpdate = rentalItems?.find(i => i.name === transaction.items[0].name);
     if (itemToUpdate) {
       const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemToUpdate.id);
       updateDoc(itemRef, { status: 'available' }).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: itemRef.path,
-          operation: 'update',
-          requestResourceData: { status: 'available' }
-        }));
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { status: 'available' } }));
       });
     }
-    toast({ title: "Asset Returned", description: "Agreement fulfilled." });
+    toast({ title: "Asset Returned" });
   };
 
-  const handleSaveAsset = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveAsset = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
@@ -272,11 +251,7 @@ export default function RentPage() {
 
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemId);
     setDoc(itemRef, newItem).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: itemRef.path,
-        operation: editingAsset ? 'update' : 'create',
-        requestResourceData: newItem
-      }));
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: editingAsset ? 'update' : 'create', requestResourceData: newItem }));
     });
 
     toast({ title: editingAsset ? "Asset Updated" : "Asset Registered" });
@@ -284,31 +259,24 @@ export default function RentPage() {
     setEditingAsset(null);
   };
 
-  const handleDeleteItem = async (itemId: string) => {
+  const handleDeleteItem = (itemId: string) => {
     if (!firestore || !user?.companyId) return;
     if (!confirm("Are you sure?")) return;
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemId);
     deleteDoc(itemRef).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: itemRef.path,
-        operation: 'delete'
-      }));
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
     });
     toast({ title: "Asset Removed" });
   };
 
-  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !firestore || !user?.companyId) return;
     const reader = new FileReader();
-    reader.onloadend = async () => {
+    reader.onloadend = () => {
       const docRef = doc(firestore, 'companies', user.companyId!);
       updateDoc(docRef, { duitNowQr: reader.result as string }).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: docRef.path,
-          operation: 'update',
-          requestResourceData: { duitNowQr: '[IMAGE_DATA]' }
-        }));
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'update' }));
       });
       toast({ title: "QR Code Updated" });
     };

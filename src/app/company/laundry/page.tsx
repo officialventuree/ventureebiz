@@ -190,7 +190,7 @@ export default function LaundryPage() {
   const topUpChange = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
   const payableChange = payablePaymentMethod === 'cash' ? Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)) : 0;
 
-  const handleRegisterStudent = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleRegisterStudent = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     setIsProcessing(true);
@@ -215,21 +215,27 @@ export default function LaundryPage() {
       class: selectedClass,
     };
 
-    try {
-      await setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student);
-      toast({ title: editingStudent ? "Profile Updated" : "Student Enrolled" });
-      setIsEnrollDialogOpen(false);
-      setEditingStudent(null);
-      setSelectedLevel('');
-      setSelectedClass('');
-    } catch (e: any) {
-      toast({ title: "Operation failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId);
+    setDoc(studentRef, student)
+      .then(() => {
+        toast({ title: editingStudent ? "Profile Updated" : "Student Enrolled" });
+        setEditingStudent(null);
+        setSelectedLevel('');
+        setSelectedClass('');
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: studentRef.path,
+          operation: editingStudent ? 'update' : 'create',
+          requestResourceData: student
+        }));
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
   };
 
-  const handleRefillInventory = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleRefillInventory = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     setIsProcessing(true);
@@ -243,55 +249,70 @@ export default function LaundryPage() {
     const newBatchCostPerLitre = newTotalCost / (bottles * volPerBottle);
     
     const docId = `${refillCategory}_soap`;
+    const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', docId);
+    const existing = inventoryItems?.find(i => i.id === docId);
 
-    try {
-      const existing = inventoryItems?.find(i => i.id === docId);
-      
-      if (!existing) {
-        await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
-          id: docId,
-          companyId: user.companyId,
-          soapStockMl: newAmountMl,
-          soapCostPerLitre: newBatchCostPerLitre,
-          capacityMl: 50000,
-          category: refillCategory,
-          lastBottleCost: costPerBottle,
-          lastBottleVolume: volPerBottle
-        });
-      } else {
-        const currentStockMl = existing.soapStockMl;
-        const currentCostPerLitre = existing.soapCostPerLitre;
-        
-        // Weighted Average Cost Calculation
-        const totalMl = currentStockMl + newAmountMl;
-        const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
-
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
-          soapStockMl: increment(newAmountMl),
-          soapCostPerLitre: weightedCostPerLitre,
-          lastBottleCost: costPerBottle,
-          lastBottleVolume: volPerBottle
-        });
-      }
-
-      await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), {
-        id: crypto.randomUUID(),
+    if (!existing) {
+      const data = {
+        id: docId,
         companyId: user.companyId,
-        amount: newTotalCost,
-        description: `${refillCategory.toUpperCase()} Soap Refill (${bottles}x ${volPerBottle}L)`,
-        timestamp: new Date().toISOString()
+        soapStockMl: newAmountMl,
+        soapCostPerLitre: newBatchCostPerLitre,
+        capacityMl: 50000,
+        category: refillCategory,
+        lastBottleCost: costPerBottle,
+        lastBottleVolume: volPerBottle
+      };
+      setDoc(invRef, data).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: invRef.path,
+          operation: 'create',
+          requestResourceData: data
+        }));
       });
+    } else {
+      const currentStockMl = existing.soapStockMl;
+      const currentCostPerLitre = existing.soapCostPerLitre;
+      const totalMl = currentStockMl + newAmountMl;
+      const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
 
-      toast({ title: "Inventory Replenished", description: `Added ${(newAmountMl/1000).toFixed(1)}L to the ${refillCategory} pool.` });
-      setRefillBottles('');
-    } catch (err) {
-      toast({ title: "Refill failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
+      const updateData = {
+        soapStockMl: increment(newAmountMl),
+        soapCostPerLitre: weightedCostPerLitre,
+        lastBottleCost: costPerBottle,
+        lastBottleVolume: volPerBottle
+      };
+      updateDoc(invRef, updateData).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: invRef.path,
+          operation: 'update',
+          requestResourceData: updateData
+        }));
+      });
     }
+
+    const purchaseRef = collection(firestore, 'companies', user.companyId, 'purchases');
+    const purchaseData = {
+      id: crypto.randomUUID(),
+      companyId: user.companyId,
+      amount: newTotalCost,
+      description: `${refillCategory.toUpperCase()} Soap Refill (${bottles}x ${volPerBottle}L)`,
+      timestamp: new Date().toISOString()
+    };
+    addDoc(purchaseRef, purchaseData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: purchaseRef.path,
+        operation: 'create',
+        requestResourceData: purchaseData
+      }));
+    });
+
+    toast({ title: "Inventory Replenished" });
+    setRefillBottles('');
+    setIsProcessing(false);
   };
 
-  const handleChargeLaundry = async () => {
+  const handleChargeLaundry = () => {
     if (!selectedStudent || !firestore || !user?.companyId || !studentSoap) return;
     
     const washRate = getWashRateForLevel(selectedStudent.level);
@@ -308,37 +329,43 @@ export default function LaundryPage() {
 
     setIsProcessing(true);
 
-    try {
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', selectedStudent.id), { balance: increment(-washRate) });
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', 'student_soap'), { soapStockMl: increment(-mlPerWash) });
+    const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', selectedStudent.id);
+    const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'student_soap');
+    const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-      const soapCost = (mlPerWash / 1000) * studentSoap.soapCostPerLitre;
-      const profit = washRate - soapCost;
+    const soapCost = (mlPerWash / 1000) * studentSoap.soapCostPerLitre;
+    const profit = washRate - soapCost;
 
-      await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
-        id: crypto.randomUUID(),
-        companyId: user.companyId,
-        module: 'laundry',
-        totalAmount: washRate, 
-        profit: profit, 
-        totalCost: soapCost, 
-        timestamp: new Date().toISOString(),
-        customerName: selectedStudent.name,
-        status: 'completed',
-        items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
-      });
+    const transData: SaleTransaction = {
+      id: crypto.randomUUID(),
+      companyId: user.companyId,
+      module: 'laundry',
+      totalAmount: washRate, 
+      profit: profit, 
+      totalCost: soapCost, 
+      timestamp: new Date().toISOString(),
+      customerName: selectedStudent.name,
+      status: 'completed',
+      items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
+    };
 
-      toast({ title: "Wash Fulfilled" });
-      setSelectedStudent(null);
-      setMatrixSearch('');
-    } catch (e: any) {
-      toast({ title: "Processing Error", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    updateDoc(studentRef, { balance: increment(-washRate) }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
+    });
+    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
+    });
+    addDoc(transRef, transData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
+    });
+
+    toast({ title: "Wash Fulfilled" });
+    setSelectedStudent(null);
+    setMatrixSearch('');
+    setIsProcessing(false);
   };
 
-  const handlePayableWash = async () => {
+  const handlePayableWash = () => {
     if (!firestore || !user?.companyId || !payableName || !payableAmount) return;
     
     if (!payableSoap || payableSoap.soapStockMl < mlPerWash) {
@@ -353,71 +380,77 @@ export default function LaundryPage() {
     }
 
     setIsProcessing(true);
-    try {
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap'), { soapStockMl: increment(-mlPerWash) });
-      
-      const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
-      const profit = amount - soapCost;
+    const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap');
+    const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-      await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
-        id: crypto.randomUUID(),
-        companyId: user.companyId,
-        module: 'laundry',
-        totalAmount: amount, 
-        profit: profit, 
-        totalCost: soapCost, 
-        timestamp: new Date().toISOString(),
-        customerName: payableName,
-        paymentMethod: payablePaymentMethod,
-        referenceNumber: payableRef || null,
-        status: 'completed',
-        items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
-      });
+    const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
+    const profit = amount - soapCost;
 
-      toast({ title: "Service Complete" });
-      setPayableName('');
-      setPayableAmount('');
-      setPayableCashReceived('');
-      setPayableRef('');
-    } catch (e) {
-      toast({ title: "Operation failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    const transData: SaleTransaction = {
+      id: crypto.randomUUID(),
+      companyId: user.companyId,
+      module: 'laundry',
+      totalAmount: amount, 
+      profit: profit, 
+      totalCost: soapCost, 
+      timestamp: new Date().toISOString(),
+      customerName: payableName,
+      paymentMethod: payablePaymentMethod,
+      referenceNumber: payableRef || null,
+      status: 'completed',
+      items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
+    };
+
+    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
+    });
+    addDoc(transRef, transData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
+    });
+
+    toast({ title: "Service Complete" });
+    setPayableName('');
+    setPayableAmount('');
+    setPayableCashReceived('');
+    setPayableRef('');
+    setIsProcessing(false);
   };
 
-  const handleConfirmTopUp = async () => {
+  const handleConfirmTopUp = () => {
     if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
     setIsProcessing(true);
 
-    try {
-      const amount = Number(topUpAmount);
-      await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', foundTopUpStudent.id), { balance: increment(amount) });
+    const amount = Number(topUpAmount);
+    const studentRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', foundTopUpStudent.id);
+    const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-      await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
-        id: crypto.randomUUID(),
-        companyId: user.companyId,
-        module: 'laundry',
-        totalAmount: amount, 
-        profit: 0, 
-        totalCost: 0, 
-        timestamp: new Date().toISOString(),
-        customerName: foundTopUpStudent.name,
-        paymentMethod: topUpPaymentMethod,
-        referenceNumber: transactionNo || null,
-        status: 'completed',
-        items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
-      });
+    const transData: SaleTransaction = {
+      id: crypto.randomUUID(),
+      companyId: user.companyId,
+      module: 'laundry',
+      totalAmount: amount, 
+      profit: 0, 
+      totalCost: 0, 
+      timestamp: new Date().toISOString(),
+      customerName: foundTopUpStudent.name,
+      paymentMethod: topUpPaymentMethod,
+      referenceNumber: transactionNo || null,
+      status: 'completed',
+      items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
+    };
 
-      toast({ title: "Balance Updated" });
-      setIsTopUpOpen(false);
-      setTopUpAmount('');
-      setTopUpMatrix('');
-    } catch (e: any) {
-      toast({ title: "Payment failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    updateDoc(studentRef, { balance: increment(amount) }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
+    });
+    addDoc(transRef, transData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
+    });
+
+    toast({ title: "Balance Updated" });
+    setIsTopUpOpen(false);
+    setTopUpAmount('');
+    setTopUpMatrix('');
+    setIsProcessing(false);
   };
 
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
@@ -792,8 +825,8 @@ export default function LaundryPage() {
                               <td className="p-6 text-center">
                                  <div className="flex items-center justify-center gap-2">
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={async () => {
-                                       if(confirm("Expel this subscriber?")) await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
+                                    <Button variant="ghost" size="icon" onClick={() => {
+                                       if(confirm("Expel this subscriber?")) deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
                                     }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
                                  </div>
                               </td>
@@ -967,18 +1000,18 @@ function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, 
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const saveConfig = async (level: number, fee: number, quota: number) => {
+  const saveConfig = (level: number, fee: number, quota: number) => {
     if (!firestore || !companyId) return;
     setIsUpdating(true);
     const id = `LV${level}_CONFIG`;
-    try {
-      await setDoc(doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id), {
-        id, companyId, level, subscriptionFee: fee, totalWashesAllowed: quota
-      });
-      toast({ title: `Level ${level} Updated` });
-    } finally {
-      setIsUpdating(false);
-    }
+    const docRef = doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id);
+    const data = { id, companyId, level, subscriptionFee: fee, totalWashesAllowed: quota };
+    setDoc(docRef, data)
+      .then(() => toast({ title: `Level ${level} Updated` }))
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: data }));
+      })
+      .finally(() => setIsUpdating(false));
   };
 
   return (
@@ -1043,28 +1076,34 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
     }
   }, [schedules, selectedDate]);
 
-  const toggleLevel = async (lv: number) => {
+  const toggleLevel = (lv: number) => {
     if (!firestore || !companyId) return;
     const existing = schedules?.find(s => s.date === selectedDate && s.level === lv);
     if (existing) {
-      await deleteDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', existing.id));
+      const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', existing.id);
+      deleteDoc(docRef).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'delete' }));
+      });
     } else {
       const id = `${selectedDate}_LV${lv}`;
-      await setDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', id), {
-        id, companyId, date: selectedDate, level: lv
+      const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', id);
+      const data = { id, companyId, date: selectedDate, level: lv };
+      setDoc(docRef, data).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: data }));
       });
     }
   };
 
-  const handleRemoveSchedule = async (id: string) => {
+  const handleRemoveSchedule = (id: string) => {
     if (!firestore || !companyId) return;
-    await deleteDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', id));
-    toast({ title: "Turn Removed" });
+    const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', id);
+    deleteDoc(docRef).then(() => toast({ title: "Turn Removed" })).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'delete' }));
+    });
   };
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
-       {/* Strategic Quota Section */}
        <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
           <CardHeader className="bg-primary/10 p-8 border-b">
              <div className="flex items-center gap-3">
@@ -1113,7 +1152,6 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
           </div>
        </Card>
 
-       {/* Scheduled Registry Table */}
        <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
           <CardHeader className="bg-secondary/10 p-8">
              <div className="flex items-center justify-between">

@@ -157,7 +157,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     setIsStartWorkOpen(true);
   };
 
-  const handleConfirmStartWork = async () => {
+  const handleConfirmStartWork = () => {
     if (!firestore || !user?.companyId || !activeOrder) return;
 
     const totalMartSellingPrice = selectedMartItems.reduce((acc, item) => acc + (item.product.sellingPrice * item.qty), 0);
@@ -181,21 +181,19 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       ]
     };
 
-    try {
-      await updateDoc(orderRef, updateData);
+    updateDoc(orderRef, updateData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: orderRef.path, operation: 'update', requestResourceData: updateData }));
+    });
 
-      for (const mat of selectedMaterials) {
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'products', mat.product.id), { stock: increment(-mat.qty) });
-      }
-      for (const martItem of selectedMartItems) {
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'products', martItem.product.id), { stock: increment(-martItem.qty) });
-      }
-
-      toast({ title: "Work Commenced", description: "Materials committed and work logged." });
-      setIsStartWorkOpen(false);
-    } catch (err: any) {
-      toast({ title: "Operation failed", variant: "destructive" });
+    for (const mat of selectedMaterials) {
+      updateDoc(doc(firestore, 'companies', user.companyId, 'products', mat.product.id), { stock: increment(-mat.qty) });
     }
+    for (const martItem of selectedMartItems) {
+      updateDoc(doc(firestore, 'companies', user.companyId, 'products', martItem.product.id), { stock: increment(-martItem.qty) });
+    }
+
+    toast({ title: "Work Commenced" });
+    setIsStartWorkOpen(false);
   };
 
   const handleUpdateStatus = (id: string, newStatus: string) => {
@@ -212,11 +210,12 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     toast({ title: "Order Cancelled" });
   };
 
-  const handleCreateBundle = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateBundle = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
     const bundleId = editingBundle?.id || crypto.randomUUID();
+    const bundleRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', bundleId);
     const newBundle = { 
       id: bundleId, 
       serviceTypeId: serviceId, 
@@ -225,17 +224,22 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       price: Number(formData.get('price')), 
       estimatedProfit: Number(formData.get('profit')) 
     };
-    await setDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', bundleId), newBundle);
-    toast({ title: editingBundle ? "Package Updated" : "Package Added" });
-    setEditingBundle(null);
-    (e.target as HTMLFormElement).reset();
+    setDoc(bundleRef, newBundle)
+      .then(() => {
+        toast({ title: editingBundle ? "Package Updated" : "Package Added" });
+        setEditingBundle(null);
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: bundleRef.path, operation: editingBundle ? 'update' : 'create', requestResourceData: newBundle }));
+      });
   };
 
-  const handleAddMaterial = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddMaterial = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
     const id = editingMaterial?.id || crypto.randomUUID();
+    const materialRef = doc(firestore, 'companies', user.companyId, 'products', id);
     
     let material: Product;
     
@@ -265,21 +269,25 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
         unit: matUnit 
       };
 
-      await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), { 
+      const purchaseRef = collection(firestore, 'companies', user.companyId, 'purchases');
+      const purchaseData = { 
         id: crypto.randomUUID(), 
         companyId: user.companyId, 
         amount: totalExpenditure, 
         description: `Replenishment: ${material.name}`, 
         timestamp: new Date().toISOString() 
-      });
+      };
+      addDoc(purchaseRef, purchaseData);
     }
 
-    await setDoc(doc(firestore, 'companies', user.companyId, 'products', id), material);
-    toast({ title: editingMaterial ? "Material Updated" : "Inventory Updated" });
-    setEditingMaterial(null);
-    (e.target as HTMLFormElement).reset();
-    setMatMeasure('');
-    setMatCostPerItem('');
+    setDoc(materialRef, material)
+      .then(() => {
+        toast({ title: editingMaterial ? "Material Updated" : "Inventory Updated" });
+        setEditingMaterial(null);
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: materialRef.path, operation: editingMaterial ? 'update' : 'create', requestResourceData: material }));
+      });
   };
 
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
