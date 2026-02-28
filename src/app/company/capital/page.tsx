@@ -114,16 +114,7 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || isLocked) return;
 
     if (formLimit <= 0) {
-      toast({ title: "Invalid Limit", variant: "destructive" });
-      return;
-    }
-
-    if (formLimit > currentPool) {
-      toast({ 
-        title: "Insufficient Pool Funds", 
-        description: `Your initial limit exceeds the verified pool balance (${currencySymbol}${currentPool.toFixed(2)}).`,
-        variant: "destructive" 
-      });
+      toast({ title: "Invalid Limit", description: "Base budget limit must be greater than 0.", variant: "destructive" });
       return;
     }
 
@@ -134,11 +125,10 @@ export default function CapitalControlPage() {
       capitalPeriod: formPeriod,
       capitalStartDate: formStartDate,
       capitalEndDate: calculatedEndDate,
-      nextCapitalAmount: increment(-formLimit)
     };
 
     updateDoc(doc(firestore, 'companies', user.companyId), updateData)
-      .then(() => toast({ title: "Budget Locked" }))
+      .then(() => toast({ title: "Budget Locked", description: "Monthly procurement limit activated." }))
       .finally(() => setIsUpdating(false));
   };
 
@@ -156,9 +146,20 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || !companyDoc) return;
     setIsInjecting(true);
     const amount = Number(injectAmount) || 0;
-    if (amount <= 0 || amount > currentPool) { setIsInjecting(false); return; }
-    updateDoc(doc(firestore, 'companies', user.companyId), { injectedCapital: increment(amount), nextCapitalAmount: increment(-amount) })
-      .then(() => { toast({ title: "Capital Injected" }); setIsInjectDialogOpen(false); setInjectAmount(''); })
+    if (amount <= 0 || amount > currentPool) { 
+      toast({ title: "Insufficient Pool", variant: "destructive" });
+      setIsInjecting(false); 
+      return; 
+    }
+    updateDoc(doc(firestore, 'companies', user.companyId), { 
+      injectedCapital: increment(amount), 
+      nextCapitalAmount: increment(-amount) 
+    })
+      .then(() => { 
+        toast({ title: "Capital Injected", description: `Cycle budget increased by ${currencySymbol}${amount}` }); 
+        setIsInjectDialogOpen(false); 
+        setInjectAmount(''); 
+      })
       .finally(() => setIsInjecting(false));
   };
 
@@ -199,9 +200,9 @@ export default function CapitalControlPage() {
         </div>
       </main>
 
-      <Dialog open={isTopUpPoolOpen} onOpenChange={setIsTopUpPoolOpen}><DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white"><div className="bg-primary p-10 text-primary-foreground"><DialogTitle className="text-2xl font-black">External Pool Inflow</DialogTitle></div><div className="p-8 space-y-6"><Label className="text-[10px] font-black uppercase">Amount ({currencySymbol})</Label><Input type="number" className="h-14 rounded-2xl font-black text-xl" value={poolTopUpAmount} onChange={(e) => setPoolTopUpAmount(e.target.value)}/><Button onClick={handleTopUpPool} disabled={isToppingUpPool} className="w-full h-16 rounded-[24px] font-black text-lg">Deposit to Pool</Button></div></DialogContent></Dialog>
-      <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}><DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white"><div className="bg-primary p-10 text-primary-foreground"><DialogTitle className="text-2xl font-black">Strategic Injection</DialogTitle></div><div className="p-8 space-y-6"><div className="p-6 bg-secondary/10 rounded-2xl"><p className="text-[10px] font-black uppercase">Pool Balance</p><p className="text-3xl font-black text-primary">{currencySymbol}{currentPool.toFixed(2)}</p></div><Label className="text-[10px] font-black uppercase">Injection Amount ({currencySymbol})</Label><Input type="number" className="h-14 rounded-2xl font-black text-xl" value={injectAmount} onChange={(e) => setInjectAmount(e.target.value)}/><Button onClick={handleInjectFunds} disabled={isInjecting} className="w-full h-16 rounded-[24px] font-black text-lg">Confirm Injection</Button></div></DialogContent></Dialog>
-      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}><DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white"><div className="bg-destructive p-10 text-destructive-foreground"><DialogTitle className="text-2xl font-black">Emergency Unlock</DialogTitle></div><div className="p-8 space-y-6"><Label className="text-[10px] font-black uppercase">Reset Key</Label><Input value={resetKey} onChange={(e) => setResetKey(e.target.value.toUpperCase())} className="h-14 rounded-2xl font-black text-lg" /><Button onClick={handleResetCycle} disabled={isResetting || resetKey.length < 8} className="w-full h-14 rounded-2xl font-black text-lg bg-destructive">Unlock</Button></div></DialogContent></Dialog>
+      <Dialog open={isTopUpPoolOpen} onOpenChange={setIsTopUpPoolOpen}><DialogContent className="rounded-[32px] max-md p-0 overflow-hidden bg-white"><div className="bg-primary p-10 text-primary-foreground"><DialogTitle className="text-2xl font-black">External Pool Inflow</DialogTitle></div><div className="p-8 space-y-6"><Label className="text-[10px] font-black uppercase">Amount ({currencySymbol})</Label><Input type="number" className="h-14 rounded-2xl font-black text-xl" value={poolTopUpAmount} onChange={(e) => setPoolTopUpAmount(e.target.value)}/><Button onClick={handleTopUpPool} disabled={isToppingUpPool} className="w-full h-16 rounded-[24px] font-black text-lg">Deposit to Pool</Button></div></DialogContent></Dialog>
+      <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}><DialogContent className="rounded-[32px] max-md p-0 overflow-hidden bg-white"><div className="bg-primary p-10 text-primary-foreground"><DialogTitle className="text-2xl font-black">Strategic Injection</DialogTitle></div><div className="p-8 space-y-6"><div className="p-6 bg-secondary/10 rounded-2xl"><p className="text-[10px] font-black uppercase">Pool Balance</p><p className="text-3xl font-black text-primary">{currencySymbol}{currentPool.toFixed(2)}</p></div><Label className="text-[10px] font-black uppercase">Injection Amount ({currencySymbol})</Label><Input type="number" className="h-14 rounded-2xl font-black text-xl" value={injectAmount} onChange={(e) => setInjectAmount(e.target.value)}/><Button onClick={handleInjectFunds} disabled={isInjecting} className="w-full h-16 rounded-[24px] font-black text-lg">Confirm Injection</Button></div></DialogContent></Dialog>
+      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}><DialogContent className="rounded-[32px] max-md p-0 overflow-hidden bg-white"><div className="bg-destructive p-10 text-destructive-foreground"><DialogTitle className="text-2xl font-black">Emergency Unlock</DialogTitle></div><div className="p-8 space-y-6"><Label className="text-[10px] font-black uppercase">Reset Key</Label><Input value={resetKey} onChange={(e) => setResetKey(e.target.value.toUpperCase())} className="h-14 rounded-2xl font-black text-lg" /><Button onClick={handleResetCycle} disabled={isResetting || resetKey.length < 8} className="w-full h-14 rounded-2xl font-black text-lg bg-destructive">Unlock</Button></div></DialogContent></Dialog>
     </div>
   );
 }

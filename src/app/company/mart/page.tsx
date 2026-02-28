@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -219,6 +220,7 @@ export default function MartPage() {
       totalAmount: subtotal, 
       profit: totalProfit, 
       totalCost: totalCost, 
+      isCapitalClaimed: false, // MODAL RECOVERY FLAG
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || null,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',

@@ -36,7 +36,7 @@ export interface Company {
   capitalStartDate?: string;
   capitalEndDate?: string;
   duitNowQr?: string;
-  nextCapitalAmount?: number;
+  nextCapitalAmount?: number; // THIS IS THE RECOVERY POOL (MODAL)
   enabledModules?: ModuleType[];
   currencyCode?: string;
   currencySymbol?: string;
@@ -72,8 +72,8 @@ export interface SaleTransaction {
   module: ModuleType;
   totalAmount: number;
   profit: number;
-  totalCost?: number;
-  isCapitalClaimed?: boolean;
+  totalCost?: number; // THE MODAL/COST OF ASSET
+  isCapitalClaimed?: boolean; // FLAG FOR RECOVERY TO POOL
   timestamp: string;
   items: any[];
   status?: TransactionStatus;
