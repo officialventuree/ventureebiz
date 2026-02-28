@@ -123,6 +123,34 @@ export default function RentPage() {
   const rentTransactions = transactions?.filter(t => t.module === 'rent') || [];
   const activeRentals = rentTransactions.filter(t => t.status === 'in-progress');
 
+  // AUTO-RETURN LOGIC
+  useEffect(() => {
+    if (!firestore || !user?.companyId || !activeRentals || !rentalItems) return;
+
+    const now = new Date();
+    activeRentals.forEach(rental => {
+      if (rental.items && rental.items[0] && rental.items[0].endDate) {
+        const leaseEndDate = new Date(rental.items[0].endDate);
+        if (now > leaseEndDate) {
+          // Automated return execution
+          const transactionRef = doc(firestore, 'companies', user.companyId!, 'transactions', rental.id);
+          updateDoc(transactionRef, { status: 'completed' });
+
+          const itemToUpdate = rentalItems.find(i => i.name === rental.items[0].name);
+          if (itemToUpdate) {
+            const itemRef = doc(firestore, 'companies', user.companyId!, 'rentalItems', itemToUpdate.id);
+            updateDoc(itemRef, { status: 'available' });
+          }
+          
+          toast({ 
+            title: "Auto-Return Executed", 
+            description: `Lease for ${rental.items[0].name} (${rental.customerName}) has expired and returned to inventory.`,
+          });
+        }
+      }
+    });
+  }, [activeRentals, rentalItems, firestore, user?.companyId, toast]);
+
   useEffect(() => {
     if (selectedAssetForAgreement) {
       if (selectedAssetForAgreement.dailyRate) setSelectedBillingPeriod('day');
