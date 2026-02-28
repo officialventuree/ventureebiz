@@ -1,22 +1,20 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Plus, Building2, Mail, Key, Search, Trash2, 
-  ShieldAlert, RefreshCw, Layers, LayoutDashboard, 
-  CreditCard, Banknote, QrCode, TrendingUp, Wallet, 
-  Calendar, CheckCircle2, AlertCircle, ShoppingBag, 
-  ArrowRight, Landmark, Settings2, BarChart3, Upload,
-  Briefcase
+  ShieldAlert, Layers, TrendingUp, 
+  CreditCard, Banknote, QrCode, 
+  Calendar, CheckCircle2, 
+  ArrowRight, Landmark, Settings2, Briefcase, ExternalLink
 } from 'lucide-react';
 import { createCompanyAction, renewCompanyAction } from '@/app/actions';
-import { useState, useMemo, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Company, User, ModuleType, 
   PlatformProfitEntry, 
@@ -24,7 +22,7 @@ import {
 } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc, getDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -32,6 +30,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/auth-context';
 
 const DEFAULT_MODULES: { id: ModuleType; label: string }[] = [
   { id: 'mart', label: 'Mart' },
@@ -50,6 +49,7 @@ const DEFAULT_CYCLES: PricingCycle[] = [
 export default function AdminDashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { impersonateCompany } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   
@@ -67,7 +67,7 @@ export default function AdminDashboard() {
   const pricingQuery = useMemoFirebase(() => (!firestore ? null : collection(firestore, 'module_pricings')), [firestore]);
   const profitsQuery = useMemoFirebase(() => (!firestore ? null : collection(firestore, 'platform_profit_entries')), [firestore]);
   
-  const { data: companies, isLoading: loadingCompanies } = useCollection<Company>(companiesQuery);
+  const { data: companies } = useCollection<Company>(companiesQuery);
   const { data: pricings } = useCollection<ModulePricing>(pricingQuery);
   const { data: platformProfits } = useCollection<PlatformProfitEntry>(profitsQuery);
 
@@ -77,7 +77,7 @@ export default function AdminDashboard() {
   );
 
   const calculateTotal = (modules: ModuleType[], cycleId: string) => {
-    if (!pricings) return modules.length * 50; // Fallback
+    if (!pricings) return modules.length * 50;
     return modules.reduce((acc, modId) => {
       const p = pricings.find(p => p.moduleId === modId && p.pricingCycleId === cycleId);
       return acc + (p?.price || 50);
@@ -134,6 +134,16 @@ export default function AdminDashboard() {
       }
     }
     setIsCreating(false);
+  };
+
+  const handleEnterDashboard = async (companyId: string) => {
+    if (!firestore) return;
+    const userDoc = await getDoc(doc(firestore, 'company_users', companyId));
+    if (userDoc.exists()) {
+      impersonateCompany(userDoc.data() as User);
+    } else {
+      toast({ title: "User Record Missing", variant: "destructive" });
+    }
   };
 
   const handleRenew = async (company: Company) => {
@@ -264,7 +274,17 @@ export default function AdminDashboard() {
                       <CardContent className="p-8">
                         <div className="flex justify-between items-start mb-6">
                           <div>
-                            <h4 className="text-2xl font-black tracking-tight">{company.name}</h4>
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-2xl font-black tracking-tight">{company.name}</h4>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="rounded-lg font-black text-[9px] uppercase h-7 px-3 gap-1.5"
+                                onClick={() => handleEnterDashboard(company.id)}
+                              >
+                                <ExternalLink className="w-3 h-3" /> Enter Command Center
+                              </Button>
+                            </div>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">ID: {company.id}</p>
                             <div className="flex gap-1 mt-3">
                               {company.enabledModules?.map(m => (

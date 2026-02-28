@@ -1,17 +1,16 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, limit, setDoc, doc, getDoc } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  impersonateCompany: (companyUser: User) => void;
   isLoading: boolean;
 }
 
@@ -40,69 +39,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!email || !password) return { success: false, error: 'Missing credentials' };
 
     try {
-      const auth = getAuth();
-      
-      // Perform manual credentials check first
-      let userData: User | null = null;
-
-      // Platform Admin Check
+      // Platform Admin Check (Manual Credentials)
       if (email === 'officialadmin@ventureebiz.com' && password === 'officialadmin.venturee.300609') {
-        const authResult = await signInAnonymously(auth);
-        const uid = authResult.user.uid;
-
-        userData = {
-          id: uid,
+        const userData: User = {
+          id: 'platform-owner-id',
           name: 'Platform Owner',
           email: 'officialadmin@ventureebiz.com',
           role: 'PlatformAdmin'
         };
-
-        // Sync to Firestore Platform Admins if needed
-        const adminRef = doc(firestore, 'platform_admins', uid);
-        const adminDoc = await getDoc(adminRef);
-        if (!adminDoc.exists()) {
-          await setDoc(adminRef, userData);
-        }
         
-        // Sync to global users collection
-        await setDoc(doc(firestore, 'users', uid), userData);
-      } else {
-        // Query manual lookup table
-        const usersRef = collection(firestore, 'company_users');
-        const q = query(usersRef, where('email', '==', email.toLowerCase()), limit(1));
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-          return { success: false, error: 'Account not found' };
-        }
-
-        const foundUser = querySnapshot.docs[0].data() as User;
-        if (foundUser.password !== password) {
-          return { success: false, error: 'Invalid password' };
-        }
-
-        // Authenticate session in Firebase Auth
-        const authResult = await signInAnonymously(auth);
-        const uid = authResult.user.uid;
-
-        userData = { ...foundUser, id: uid };
-        
-        // Sync the temporary Auth session to the users collection for rules mapping
-        await setDoc(doc(firestore, 'users', uid), userData);
+        setUser(userData);
+        localStorage.setItem('venturee_user', JSON.stringify(userData));
+        router.push('/admin');
+        return { success: true };
       }
 
-      setUser(userData);
-      localStorage.setItem('venturee_user', JSON.stringify(userData));
+      // Company User / Viewer Check
+      const usersRef = collection(firestore, 'company_users');
+      const q = query(usersRef, where('email', '==', email.toLowerCase()), limit(1));
+      const querySnapshot = await getDocs(q);
 
-      if (userData.role === 'PlatformAdmin') router.push('/admin');
-      else if (userData.role === 'CompanyOwner') router.push('/company');
-      else if (userData.role === 'CompanyViewer') router.push('/viewer');
+      if (querySnapshot.empty) {
+        return { success: false, error: 'Account not found' };
+      }
+
+      const foundUser = querySnapshot.docs[0].data() as User;
+      if (foundUser.password !== password) {
+        return { success: false, error: 'Invalid password' };
+      }
+
+      setUser(foundUser);
+      localStorage.setItem('venturee_user', JSON.stringify(foundUser));
+
+      if (foundUser.role === 'CompanyOwner') router.push('/company');
+      else if (foundUser.role === 'CompanyViewer') router.push('/viewer');
 
       return { success: true };
     } catch (e: any) {
-      console.error("Login error:", e);
       return { success: false, error: e.message || 'Authentication failed' };
     }
+  };
+
+  const impersonateCompany = (companyUser: User) => {
+    // Allows admin to jump into a company dashboard
+    const impersonatedUser = { ...companyUser, role: 'CompanyOwner' as const };
+    setUser(impersonatedUser);
+    localStorage.setItem('venturee_user', JSON.stringify(impersonatedUser));
+    router.push('/company');
   };
 
   const logout = () => {
@@ -112,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, impersonateCompany, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
