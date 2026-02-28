@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -241,11 +240,11 @@ export default function RentPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       unit: editingAsset?.unit || 'day',
-      hourlyRate: formData.get('hourlyEnabled') === 'on' ? Number(formData.get('hourlyRate')) : undefined,
-      dailyRate: formData.get('dailyEnabled') === 'on' ? Number(formData.get('dailyRate')) : undefined,
-      weeklyRate: formData.get('weeklyEnabled') === 'on' ? Number(formData.get('weeklyRate')) : undefined,
-      monthlyRate: formData.get('monthlyEnabled') === 'on' ? Number(formData.get('monthlyRate')) : undefined,
-      yearlyRate: formData.get('yearlyEnabled') === 'on' ? Number(formData.get('yearlyRate')) : undefined,
+      hourlyRate: formData.get('hourlyEnabled') === 'on' ? Number(formData.get('hourlyRate')) : null,
+      dailyRate: formData.get('dailyEnabled') === 'on' ? Number(formData.get('dailyRate')) : null,
+      weeklyRate: formData.get('weeklyEnabled') === 'on' ? Number(formData.get('weeklyRate')) : null,
+      monthlyRate: formData.get('monthlyEnabled') === 'on' ? Number(formData.get('monthlyRate')) : null,
+      yearlyRate: formData.get('yearlyEnabled') === 'on' ? Number(formData.get('yearlyRate')) : null,
       status: editingAsset?.status || 'available'
     };
 

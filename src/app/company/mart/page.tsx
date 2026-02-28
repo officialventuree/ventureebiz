@@ -47,10 +47,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, increment, query, where, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction, Coupon, LuckyDrawEvent, Company, PaymentMethod } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, Company, PaymentMethod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
@@ -1092,7 +1092,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           expiryDate: expiry, 
           status: 'active',
           customerName,
-          customerCompany: customerCompany || undefined,
+          customerCompany: customerCompany || null,
           createdAt: new Date().toISOString(),
           paymentMethod: purchaseMethod 
         };
