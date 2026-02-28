@@ -34,7 +34,9 @@ import {
   Settings2,
   FlaskConical,
   Scale,
-  HandCoins
+  HandCoins,
+  BarChart3,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -56,6 +58,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const CLASSES = ['Biruni', 'Dinawari', 'Farabi', 'Ghazali', 'Khawarizmi', 'Razi'];
 const LEVELS = [1, 2, 3, 4, 5];
@@ -294,10 +297,6 @@ export default function LaundryPage() {
         const currentCostPerLitre = existing.soapCostPerLitre || 0;
         const totalMl = currentStockMl + newAmountMl;
         
-        // Cost Price per Litre for the new batch
-        const newBatchCostPerLitre = (newTotalCost / (newAmountMl / 1000)) || 0;
-        
-        // Weighted Average Cost Price per Litre
         const currentTotalValue = (currentStockMl / 1000) * currentCostPerLitre;
         const totalValue = currentTotalValue + newTotalCost;
         const weightedCostPerLitre = totalValue / (totalMl / 1000);
@@ -972,40 +971,7 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="profits">
-             <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={HandCoins} />
-                   <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
-                </div>
-                <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
-                   <h3 className="text-xl font-black mb-6">Today's Service Feed</h3>
-                   <div className="divide-y">
-                      {todayWashes.slice().reverse().map(t => (
-                        <div key={t.id} className="py-4 flex justify-between items-center">
-                           <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                                 <RefreshCw className="w-5 h-5" />
-                              </div>
-                              <div>
-                                 <p className="font-black">{t.customerName}</p>
-                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.items[0].name} • {new Date(t.timestamp).toLocaleTimeString()}</p>
-                              </div>
-                           </div>
-                           <div className="text-right">
-                              <p className="font-black text-primary">${t.totalAmount.toFixed(2)}</p>
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase">Cost: ${t.totalCost?.toFixed(2)}</p>
-                           </div>
-                        </div>
-                      ))}
-                      {todayWashes.length === 0 && (
-                        <div className="py-20 text-center opacity-30">
-                           <History className="w-16 h-16 mx-auto mb-4" />
-                           <p className="font-black uppercase tracking-widest">No washes processed today</p>
-                        </div>
-                      )}
-                   </div>
-                </div>
-             </div>
+             <LaundryAnalytics transactions={laundryTransactions} />
           </TabsContent>
 
           <TabsContent value="billing">
@@ -1077,7 +1043,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
       payableSoapMlPerWash: Number(payableSoapVal) || 50
     };
     setDoc(docRef, updateData, { merge: true })
-      .then(() => toast({ title: "Global Policies Updated", description: `Financial and consumption benchmarks applied.` }))
+      .then(() => toast({ title: "Global Policies Updated", description: `Financial and resource benchmarks applied.` }))
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: updateData }));
       })
@@ -1124,7 +1090,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
@@ -1433,6 +1399,148 @@ function InventoryGauge({ label, item }: { label: string, item?: LaundryInventor
   );
 }
 
+function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] }) {
+  const subscriberWashes = transactions.filter(t => t.items[0].name.includes('Service Wash (Lv'));
+  const payableWashes = transactions.filter(t => t.items[0].name === 'Payable Service Wash');
+
+  const subRevenue = subscriberWashes.reduce((acc, t) => acc + t.totalAmount, 0);
+  const subProfit = subscriberWashes.reduce((acc, t) => acc + t.profit, 0);
+  const payRevenue = payableWashes.reduce((acc, t) => acc + t.totalAmount, 0);
+  const payProfit = payableWashes.reduce((acc, t) => acc + t.profit, 0);
+
+  const getChartData = (data: SaleTransaction[]) => {
+    const daily: Record<string, { date: string, revenue: number, profit: number }> = {};
+    data.forEach(t => {
+      const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' });
+      if (!daily[day]) daily[day] = { date: day, revenue: 0, profit: 0 };
+      daily[day].revenue += t.totalAmount;
+      daily[day].profit += t.profit;
+    });
+    return Object.values(daily).slice(-7);
+  };
+
+  const subChartData = getChartData(subscriberWashes);
+  const payChartData = getChartData(payableWashes);
+
+  return (
+    <div className="space-y-12 pb-24">
+       {/* High Level Metrics */}
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-6">
+             <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary"><User className="w-4 h-4" /></div>
+                <h3 className="text-xl font-black tracking-tight">Subscriber Yield</h3>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <ReportStat label="Segment Revenue" value={`$${subRevenue.toFixed(2)}`} />
+                <ReportStat label="Net Profit" value={`$${subProfit.toFixed(2)}`} color="text-primary" />
+             </div>
+             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
+                <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">7-Day Trajectory (Subscribers)</p>
+                <div className="h-[200px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={subChartData}>
+                         <defs>
+                            <linearGradient id="colorSub" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
+                         </defs>
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                         <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorSub)" strokeWidth={3} name="Revenue" />
+                         <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={2} strokeDasharray="5 5" name="Profit" />
+                      </AreaChart>
+                   </ResponsiveContainer>
+                </div>
+             </Card>
+          </div>
+
+          <div className="space-y-6">
+             <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center text-accent-foreground"><HandCoins className="w-4 h-4" /></div>
+                <h3 className="text-xl font-black tracking-tight">Payable Revenue</h3>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <ReportStat label="Segment Revenue" value={`$${payRevenue.toFixed(2)}`} />
+                <ReportStat label="Net Profit" value={`$${payProfit.toFixed(2)}`} color="text-primary" />
+             </div>
+             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
+                <p className="text-[10px] font-black uppercase text-muted-foreground mb-4">7-Day Trajectory (Payable)</p>
+                <div className="h-[200px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={payChartData}>
+                         <defs>
+                            <linearGradient id="colorPay" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0}/></linearGradient>
+                         </defs>
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
+                         <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorPay)" strokeWidth={3} name="Revenue" />
+                         <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={2} strokeDasharray="5 5" name="Profit" />
+                      </AreaChart>
+                   </ResponsiveContainer>
+                </div>
+             </Card>
+          </div>
+       </div>
+
+       {/* Detailed Ledger Integration */}
+       <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
+          <div className="flex justify-between items-center mb-10">
+             <div>
+                <h3 className="text-2xl font-black tracking-tight">Real-time Service Feed</h3>
+                <p className="text-sm font-bold text-muted-foreground">Historical ledger of all washes and deposits</p>
+             </div>
+             <div className="flex gap-4">
+                <div className="px-4 py-2 bg-secondary/20 rounded-xl text-center">
+                   <p className="text-[8px] font-black uppercase text-muted-foreground">Aggregate Yield</p>
+                   <p className="text-lg font-black text-primary">
+                      {(( (subProfit + payProfit) / ((subRevenue + payRevenue) || 1)) * 100).toFixed(1)}%
+                   </p>
+                </div>
+             </div>
+          </div>
+          <div className="divide-y">
+             {transactions.slice().reverse().slice(0, 50).map(t => (
+               <div key={t.id} className="py-6 flex justify-between items-center group hover:bg-secondary/5 transition-colors px-4 rounded-2xl">
+                  <div className="flex items-center gap-6">
+                     <div className={cn(
+                       "w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110",
+                       t.items[0].name.includes('Deposit') ? "bg-green-100 text-green-600" : 
+                       t.items[0].name.includes('Payable') ? "bg-accent/20 text-accent-foreground" : "bg-primary/10 text-primary"
+                     )}>
+                        {t.items[0].name.includes('Deposit') ? <Wallet className="w-6 h-6" /> : <RefreshCw className="w-6 h-6" />}
+                     </div>
+                     <div>
+                        <p className="font-black text-lg">{t.customerName}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                           <Badge variant="outline" className="text-[9px] font-black uppercase px-2">{t.items[0].name}</Badge>
+                           <p className="text-[10px] font-bold text-muted-foreground uppercase">{new Date(t.timestamp).toLocaleDateString()} at {new Date(t.timestamp).toLocaleTimeString()}</p>
+                        </div>
+                     </div>
+                  </div>
+                  <div className="text-right">
+                     <p className={cn(
+                       "text-2xl font-black tracking-tighter",
+                       t.items[0].name.includes('Deposit') ? "text-green-600" : "text-foreground"
+                     )}>${t.totalAmount.toFixed(2)}</p>
+                     {t.profit > 0 && <p className="text-[10px] font-black text-primary uppercase">Profit: ${t.profit.toFixed(2)}</p>}
+                  </div>
+               </div>
+             ))}
+             {transactions.length === 0 && (
+               <div className="py-32 text-center opacity-20">
+                  <History className="w-20 h-20 mx-auto mb-4" />
+                  <p className="font-black text-xl uppercase tracking-widest">No activity recorded</p>
+               </div>
+             )}
+          </div>
+       </div>
+    </div>
+  );
+}
+
 function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div className="flex-1">
@@ -1452,7 +1560,7 @@ function ReportStat({ label, value, icon: Icon, color = "text-foreground" }: any
           <p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">{label}</p>
           <h4 className={cn("text-4xl font-black tracking-tighter", color)}>{value}</h4>
        </div>
-       <div className="w-12 h-12 bg-secondary/50 rounded-2xl flex items-center justify-center text-primary"><Icon className="w-6 h-6" /></div>
+       {Icon && <div className="w-12 h-12 bg-secondary/50 rounded-2xl flex items-center justify-center text-primary"><Icon className="w-6 h-6" /></div>}
     </Card>
   );
 }
