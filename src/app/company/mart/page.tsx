@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -1037,28 +1036,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                 </Button>
               </div>
             </ScrollArea>
-          </Card>
-
-          <Card className="border-none shadow-sm rounded-3xl bg-primary text-primary-foreground p-6 overflow-hidden relative mt-6">
-             <div className="absolute top-0 right-0 p-4 opacity-10"><Barcode className="w-16 h-16" /></div>
-             <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-4">
-                   <Info className="w-4 h-4" />
-                   <h4 className="text-xs font-black uppercase tracking-widest">Barcode Reference Center</h4>
-                </div>
-                <p className="text-[10px] font-bold opacity-80 mb-4 leading-relaxed">Derive searchable system IDs for quick lookup in the POS terminal.</p>
-                <div className="space-y-2">
-                   {uniqueVoucherTypes.map(type => (
-                     <div key={type.id} className="flex justify-between items-center bg-white/10 p-2 rounded-xl border border-white/10">
-                        <span className="font-black text-xs">${type.value.toFixed(2)}</span>
-                        <Badge className="bg-white text-primary font-black text-[10px] border-none">{type.id}</Badge>
-                     </div>
-                   ))}
-                   {uniqueVoucherTypes.length === 0 && (
-                     <p className="text-[10px] font-bold opacity-40 italic text-center py-2">No active types identified</p>
-                   )}
-                </div>
-             </div>
           </Card>
         </div>
 
