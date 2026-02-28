@@ -893,4 +893,5 @@ function ReportStat({ label, value, color = "text-foreground" }: any) {
        <p className="text-[9px] font-black uppercase text-muted-foreground mb-1 tracking-widest leading-none">{label}</p>
        <h4 className={cn("text-xl font-black tracking-tighter", color)}>{value}</h4>
     </Card>
+  );
 }
