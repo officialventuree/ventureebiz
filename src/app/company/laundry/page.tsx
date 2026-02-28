@@ -252,7 +252,9 @@ export default function LaundryPage() {
 
   const handleDeleteStudent = (studentId: string) => {
     if (!firestore || !user?.companyId) return;
-    if (!confirm("Expel this subscriber? This will permanently remove their laundry account.")) return;
+    if (!confirm("Are you sure you want to delete this subscriber information? This action is permanent and will remove all associated bank records.")) {
+      return;
+    }
     const docRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId);
     deleteDocumentNonBlocking(docRef);
     toast({ title: "Subscriber Expelled" });
@@ -1441,7 +1443,7 @@ function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] })
                    <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={subChartData}>
                          <defs>
-                            <linearGradient id="colorSub" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
+                            <linearGradient id="colorSub" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
                          </defs>
                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                          <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700 }} />
