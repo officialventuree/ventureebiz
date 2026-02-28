@@ -467,6 +467,7 @@ export default function MartPage() {
                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Settlement</th>
                          <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Amount</th>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Yield / Profit</th>
                          <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
                        </tr>
                      </thead>
@@ -486,7 +487,10 @@ export default function MartPage() {
                               {t.referenceNumber && <p className="text-[10px] font-mono text-muted-foreground mt-1">Ref: {t.referenceNumber}</p>}
                            </td>
                            <td className="p-6">
-                              <p className="font-black text-primary text-xl tracking-tighter">${t.totalAmount.toFixed(2)}</p>
+                              <p className="font-black text-foreground text-xl tracking-tighter">${t.totalAmount.toFixed(2)}</p>
+                           </td>
+                           <td className="p-6">
+                              <p className="font-black text-primary text-xl tracking-tighter">${t.profit.toFixed(2)}</p>
                            </td>
                            <td className="p-6 text-center">
                              <Button 
@@ -503,7 +507,7 @@ export default function MartPage() {
                        ))}
                        {martTransactions.length === 0 && (
                          <tr>
-                            <td colSpan={5} className="py-24 text-center opacity-30">
+                            <td colSpan={6} className="py-24 text-center opacity-30">
                                <Receipt className="w-16 h-16 mx-auto mb-4" />
                                <p className="font-black uppercase tracking-widest">No Sales Found</p>
                             </td>
