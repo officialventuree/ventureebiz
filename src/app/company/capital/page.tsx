@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key, Plus, Sparkles } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key, Plus, Sparkles, Landmark, ArrowDownLeft } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, updateDoc, increment } from 'firebase/firestore';
@@ -28,11 +28,16 @@ export default function CapitalControlPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isInjectDialogOpen, setIsInjectDialogOpen] = useState(false);
+  const [isTopUpPoolOpen, setIsTopUpPoolOpen] = useState(false);
   const [resetKey, setResetKey] = useState('');
   
-  // Injection State
+  // Injection State (From Pool to Limit)
   const [injectAmount, setInjectAmount] = useState<number | string>('');
   const [isInjecting, setIsInjecting] = useState(false);
+
+  // Pool Top-Up State (External to Pool)
+  const [poolTopUpAmount, setPoolTopUpAmount] = useState<number | string>('');
+  const [isToppingUpPool, setIsToppingUpPool] = useState(false);
 
   // Form states for live calculation
   const [formLimit, setFormLimit] = useState<number>(0);
@@ -78,6 +83,7 @@ export default function CapitalControlPage() {
   const limit = companyDoc?.capitalLimit || 0;
   const remaining = Math.max(0, limit - totalSpent);
   const utilization = limit > 0 ? (totalSpent / limit) * 100 : 0;
+  const currentPool = companyDoc?.nextCapitalAmount || 0;
 
   const calculatedEndDate = useMemo(() => {
     if (!formStartDate) return "";
@@ -104,10 +110,12 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || isLocked) return;
     setIsUpdating(true);
     
-    // Determine if we need to subtract from nextCapitalAmount if they used prepopulate
-    const claimedPool = companyDoc?.nextCapitalAmount || 0;
-    // We don't automatically subtract, the logic is that formLimit is the total.
-    // If we want to truly "consume" the pool upon locking, we should clear it.
+    // Check if they are trying to use more than the pool
+    if (formLimit > currentPool) {
+       // Logic allows manual input during setup, but warns if pool is exceeded
+       // Actually, for consistency, we subtract from pool ONLY what is "used"
+    }
+
     const updateData: any = {
       capitalLimit: formLimit,
       capitalPeriod: formPeriod,
@@ -115,9 +123,10 @@ export default function CapitalControlPage() {
       capitalEndDate: calculatedEndDate,
     };
 
-    // If the user prepopulated or used recovered funds, we clear the pool to avoid double-dipping
-    if (formLimit >= claimedPool && claimedPool > 0) {
-      updateData.nextCapitalAmount = 0;
+    // If the user setup a limit using the pool, we deduct the used amount from nextCapitalAmount
+    const usedFromPool = Math.min(formLimit, currentPool);
+    if (usedFromPool > 0) {
+      updateData.nextCapitalAmount = increment(-usedFromPool);
     }
 
     const docRef = doc(firestore, 'companies', user.companyId);
@@ -138,31 +147,76 @@ export default function CapitalControlPage() {
       });
   };
 
+  const handleTopUpPool = async () => {
+    if (!firestore || !user?.companyId) return;
+    setIsToppingUpPool(true);
+
+    const amount = Number(poolTopUpAmount) || 0;
+    if (amount <= 0) {
+      toast({ title: "Invalid Amount", variant: "destructive" });
+      setIsToppingUpPool(false);
+      return;
+    }
+
+    const docRef = doc(firestore, 'companies', user.companyId);
+    const updateData = {
+      nextCapitalAmount: increment(amount)
+    };
+
+    updateDoc(docRef, updateData)
+      .then(() => {
+        toast({ 
+          title: "Reinvestment Pool Expanded", 
+          description: `$${amount.toFixed(2)} added to your available capital.` 
+        });
+        setIsTopUpPoolOpen(false);
+        setPoolTopUpAmount('');
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: updateData
+        }));
+      })
+      .finally(() => {
+        setIsToppingUpPool(false);
+      });
+  };
+
   const handleInjectFunds = async () => {
     if (!firestore || !user?.companyId || !companyDoc) return;
     setIsInjecting(true);
 
     const amount = Number(injectAmount) || 0;
-    const claimedPool = companyDoc.nextCapitalAmount || 0;
-    const totalToInject = amount + claimedPool;
 
-    if (totalToInject <= 0) {
-      toast({ title: "No funds to inject", variant: "destructive" });
+    if (amount <= 0) {
+      toast({ title: "Enter a valid amount", variant: "destructive" });
+      setIsInjecting(false);
+      return;
+    }
+
+    if (amount > currentPool) {
+      toast({ 
+        title: "Insufficient Pool Balance", 
+        description: `You only have $${currentPool.toFixed(2)} available in your reinvestment pool.`,
+        variant: "destructive" 
+      });
       setIsInjecting(false);
       return;
     }
 
     const docRef = doc(firestore, 'companies', user.companyId);
     const updateData = {
-      capitalLimit: increment(totalToInject),
-      nextCapitalAmount: 0 // Clear the recovered pool after injection
+      capitalLimit: increment(amount),
+      nextCapitalAmount: increment(-amount) // Subtract from pool
     };
 
     updateDoc(docRef, updateData)
       .then(() => {
         toast({ 
           title: "Capital Injected", 
-          description: `Strategic limit expanded by $${totalToInject.toFixed(2)}.` 
+          description: `Active limit expanded by $${amount.toFixed(2)} using reinvestment pool.` 
         });
         setIsInjectDialogOpen(false);
         setInjectAmount('');
@@ -225,47 +279,92 @@ export default function CapitalControlPage() {
               <p className="text-muted-foreground font-medium">Strategic Spending Limits & Procurement Guardrails</p>
             </div>
             <div className="flex gap-4">
+              <Dialog open={isTopUpPoolOpen} onOpenChange={setIsTopUpPoolOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm">
+                    <Plus className="w-4 h-4" /> Top-up Pool
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
+                  <div className="bg-primary p-10 text-primary-foreground">
+                     <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                        <Landmark className="w-6 h-6" />
+                     </div>
+                     <DialogTitle className="text-2xl font-black">Pool Inflow</DialogTitle>
+                     <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
+                        Add external cash or business injections into your Reinvestment Pool.
+                     </DialogDescription>
+                  </div>
+                  <div className="p-8 space-y-6">
+                     <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Top-up Amount ($)</Label>
+                        <Input 
+                          type="number" 
+                          placeholder="0.00" 
+                          className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
+                          value={poolTopUpAmount}
+                          onChange={(e) => setPoolTopUpAmount(e.target.value)}
+                        />
+                     </div>
+                     <Button 
+                      onClick={handleTopUpPool} 
+                      disabled={isToppingUpPool || !poolTopUpAmount}
+                      className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
+                     >
+                        {isToppingUpPool ? "Processing..." : `Deposit $${Number(poolTopUpAmount || 0).toFixed(2)} to Pool`}
+                     </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {isLocked && (
                 <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="rounded-2xl h-12 px-6 font-black gap-2 shadow-xl bg-primary">
-                      <Plus className="w-4 h-4" /> Inject Funds
+                    <Button className="rounded-2xl h-12 px-6 font-black gap-2 shadow-xl bg-primary" disabled={currentPool <= 0}>
+                      <Zap className="w-4 h-4" /> Inject from Pool
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
                     <div className="bg-primary p-10 text-primary-foreground">
                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                          <Zap className="w-6 h-6" />
+                          <ArrowDownLeft className="w-6 h-6" />
                        </div>
                        <DialogTitle className="text-2xl font-black">Capital Injection</DialogTitle>
                        <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
-                          Expand your active spending limit using recovered operational funds or manual cash.
+                          Withdraw funds from your verified Reinvestment Pool into the active spending limit.
                        </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6">
                        <div className="p-6 bg-secondary/10 rounded-2xl space-y-2 border-2 border-dashed border-primary/20">
-                          <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none">Available Recovered Capital</p>
-                          <p className="text-3xl font-black text-primary">${(companyDoc?.nextCapitalAmount || 0).toFixed(2)}</p>
-                          <p className="text-[9px] font-bold text-muted-foreground opacity-60">Automatically added upon injection</p>
+                          <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none">Available Pool Balance</p>
+                          <p className="text-3xl font-black text-primary">${currentPool.toFixed(2)}</p>
+                          <p className="text-[9px] font-bold text-muted-foreground opacity-60">Verified capital ready for allocation</p>
                        </div>
 
                        <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Additional Manual Funding ($)</Label>
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Withdraw & Inject Amount ($)</Label>
                           <Input 
                             type="number" 
                             placeholder="0.00" 
-                            className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
+                            max={currentPool}
+                            className={cn(
+                              "h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl",
+                              Number(injectAmount) > currentPool && "text-destructive"
+                            )}
                             value={injectAmount}
                             onChange={(e) => setInjectAmount(e.target.value)}
                           />
+                          {Number(injectAmount) > currentPool && (
+                            <p className="text-[10px] font-black text-destructive uppercase px-1">Exceeds available pool balance</p>
+                          )}
                        </div>
 
                        <Button 
                         onClick={handleInjectFunds} 
-                        disabled={isInjecting}
+                        disabled={isInjecting || Number(injectAmount) > currentPool || !injectAmount}
                         className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
                        >
-                          {isInjecting ? "Processing..." : `Confirm & Inject $${(Number(injectAmount || 0) + (companyDoc?.nextCapitalAmount || 0)).toFixed(2)}`}
+                          {isInjecting ? "Processing..." : `Confirm Injection`}
                        </Button>
                     </div>
                   </DialogContent>
@@ -351,13 +450,13 @@ export default function CapitalControlPage() {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mt-12">
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
                         <ArrowUpRight className="w-8 h-8 text-primary mb-4 group-hover:scale-125 transition-transform" />
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Remaining</p>
+                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Remaining Limit</p>
                         <p className="text-3xl font-black text-foreground tracking-tighter">${remaining.toFixed(2)}</p>
                      </div>
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
-                        <Zap className="w-8 h-8 text-accent mb-4 group-hover:scale-125 transition-transform" />
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Burn Rate</p>
-                        <p className="text-3xl font-black text-foreground tracking-tighter">${(totalSpent / Math.max(activePurchases.length, 1)).toFixed(2)}/tx</p>
+                        <Landmark className="w-8 h-8 text-accent mb-4 group-hover:scale-125 transition-transform" />
+                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Verified Pool</p>
+                        <p className="text-3xl font-black text-foreground tracking-tighter">${currentPool.toFixed(2)}</p>
                      </div>
                      <div className={cn(
                        "p-8 rounded-[32px] border-2 md:col-span-1 col-span-2 flex items-center gap-6",
@@ -414,20 +513,20 @@ export default function CapitalControlPage() {
                     <Settings className="w-6 h-6 text-primary" />
                     Setup Limit
                   </CardTitle>
-                  <CardDescription className="font-bold text-muted-foreground">Define your period and prepopulate from recovered funds.</CardDescription>
+                  <CardDescription className="font-bold text-muted-foreground">Define your period and prepopulate from your reinvestment pool.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     <div className="space-y-2">
                       <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Maximum Budget Limit ($)</label>
-                        {!isLocked && (companyDoc?.nextCapitalAmount || 0) > 0 && (
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Initial Budget Limit ($)</label>
+                        {!isLocked && currentPool > 0 && (
                           <button 
                             type="button"
-                            onClick={() => setFormLimit(companyDoc?.nextCapitalAmount || 0)}
+                            onClick={() => setFormLimit(currentPool)}
                             className="flex items-center gap-1 text-[9px] font-black text-primary uppercase hover:bg-primary/10 px-2 py-1 rounded-md transition-colors animate-pulse"
                           >
-                            <Sparkles className="w-2.5 h-2.5" /> Use Recovered: ${(companyDoc?.nextCapitalAmount || 0).toFixed(2)}
+                            <Sparkles className="w-2.5 h-2.5" /> Use Pool: ${currentPool.toFixed(2)}
                           </button>
                         )}
                       </div>
@@ -521,11 +620,11 @@ export default function CapitalControlPage() {
 
               <Card className="border-none shadow-sm bg-secondary/10 rounded-[32px] p-8">
                  <CardHeader className="p-0 mb-4">
-                    <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Strategic Discipline</CardTitle>
+                    <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Reinvestment Discipline</CardTitle>
                  </CardHeader>
                  <CardContent className="p-0">
                     <p className="text-xs font-bold leading-relaxed text-muted-foreground italic">
-                      "Financial integrity requires consistent periods. Lock-in prevents emotional budget adjustments, enforcing strategic procurement discipline across all operational modules."
+                      "Financial integrity requires verified pools. By isolating recovered funds before injection, we enforce strategic procurement discipline across all operational modules."
                     </p>
                  </CardContent>
               </Card>
