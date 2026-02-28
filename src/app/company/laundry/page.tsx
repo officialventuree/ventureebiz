@@ -32,6 +32,8 @@ import {
   Info,
   AlertTriangle,
   Settings2,
+  FlaskConical,
+  Scale
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -39,7 +41,7 @@ import { collection, doc, setDoc, addDoc, updateDoc, increment } from 'firebase/
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod, LaundryLevelConfig, LaundrySchedule } from '@/lib/types';
+import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod, LaundrySchedule } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -145,6 +147,7 @@ export default function LaundryPage() {
   }, [companyDoc]);
 
   const benchmarkSubscription = globalConfig?.fixedSubscription || 0;
+  const soapMlPerWash = globalConfig?.soapMlPerWash || 50;
 
   // Automated Quota Logic
   const levelQuotas = useMemo(() => {
@@ -167,8 +170,6 @@ export default function LaundryPage() {
       setRefillCostPerBottle(item.lastBottleCost?.toString() || '');
     }
   }, [refillCategory, studentSoap, payableSoap]);
-
-  const mlPerWash = 50;
 
   const getWashRateForLevel = (level: number) => {
     const quota = levelQuotas[level] || 0;
@@ -310,7 +311,7 @@ export default function LaundryPage() {
       return;
     }
 
-    if (studentSoap.soapStockMl < mlPerWash) {
+    if (studentSoap.soapStockMl < soapMlPerWash) {
        toast({ title: "Refill Required", description: "Insufficient soap stock.", variant: "destructive" });
        return;
     }
@@ -326,7 +327,7 @@ export default function LaundryPage() {
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'student_soap');
     const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-    const soapCost = (mlPerWash / 1000) * studentSoap.soapCostPerLitre;
+    const soapCost = (soapMlPerWash / 1000) * studentSoap.soapCostPerLitre;
     const profit = washRate - soapCost;
 
     const transData: SaleTransaction = {
@@ -345,7 +346,7 @@ export default function LaundryPage() {
     updateDoc(studentRef, { totalSpent: increment(washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
-    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
+    updateDoc(invRef, { soapStockMl: increment(-soapMlPerWash) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
     });
     addDoc(transRef, transData).catch(async (err) => {
@@ -361,7 +362,7 @@ export default function LaundryPage() {
   const handlePayableWash = () => {
     if (!firestore || !user?.companyId || !payableName || !payableAmount) return;
     
-    if (!payableSoap || payableSoap.soapStockMl < mlPerWash) {
+    if (!payableSoap || payableSoap.soapStockMl < soapMlPerWash) {
       toast({ title: "Soap Stock Error", variant: "destructive" });
       return;
     }
@@ -376,7 +377,7 @@ export default function LaundryPage() {
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap');
     const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-    const soapCost = (mlPerWash / 1000) * (payableSoap.soapCostPerLitre || 0);
+    const soapCost = (soapMlPerWash / 1000) * (payableSoap.soapCostPerLitre || 0);
     const profit = amount - soapCost;
 
     const transData: SaleTransaction = {
@@ -394,7 +395,7 @@ export default function LaundryPage() {
       items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
     };
 
-    updateDoc(invRef, { soapStockMl: increment(-mlPerWash) });
+    updateDoc(invRef, { soapStockMl: increment(-soapMlPerWash) });
     addDoc(transRef, transData);
 
     toast({ title: "Service Complete" });
@@ -780,7 +781,7 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="students" className="space-y-8">
-             <GlobalSubscriptionConfig companyId={user?.companyId} initialConfig={globalConfig} />
+             <GlobalPolicyConfig companyId={user?.companyId} initialConfig={globalConfig} />
 
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
@@ -883,7 +884,12 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="config">
-             <LaundryConfigurator levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} />
+             <LaundryConfigurator 
+              levelQuotas={levelQuotas} 
+              benchmarkSubscription={benchmarkSubscription} 
+              studentSoap={studentSoap} 
+              soapMlPerWash={soapMlPerWash} 
+             />
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -1010,24 +1016,30 @@ export default function LaundryPage() {
   );
 }
 
-function GlobalSubscriptionConfig({ companyId, initialConfig }: { companyId?: string, initialConfig: any }) {
+function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, initialConfig: any }) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [val, setVal] = useState('');
+  const [subVal, setSubVal] = useState('');
+  const [soapVal, setSoapVal] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (initialConfig?.fixedSubscription) setVal(initialConfig.fixedSubscription.toString());
+    if (initialConfig?.fixedSubscription) setSubVal(initialConfig.fixedSubscription.toString());
+    if (initialConfig?.soapMlPerWash) setSoapVal(initialConfig.soapMlPerWash.toString());
   }, [initialConfig]);
 
   const handleSave = () => {
     if (!firestore || !companyId) return;
     setIsSaving(true);
     const docRef = doc(firestore, 'companies', companyId, 'laundryConfig', 'global');
-    setDoc(docRef, { fixedSubscription: Number(val) }, { merge: true })
-      .then(() => toast({ title: "Benchmark Policy Updated", description: `Initial subscription set to $${val} for all subscribers.` }))
+    const updateData = { 
+      fixedSubscription: Number(subVal),
+      soapMlPerWash: Number(soapVal) || 50
+    };
+    setDoc(docRef, updateData, { merge: true })
+      .then(() => toast({ title: "Global Policies Updated", description: `Financial and consumption benchmarks applied.` }))
       .catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: { fixedSubscription: Number(val) } }));
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: updateData }));
       })
       .finally(() => setIsSaving(false));
   };
@@ -1040,19 +1052,29 @@ function GlobalSubscriptionConfig({ companyId, initialConfig }: { companyId?: st
                 <Settings2 className="w-5 h-5" />
              </div>
              <div>
-                <CardTitle className="text-lg font-black">Benchmark Policy</CardTitle>
-                <CardDescription className="font-bold">Set the fixed initial subscription amount for all students.</CardDescription>
+                <CardTitle className="text-lg font-black">Strategic Benchmarks</CardTitle>
+                <CardDescription className="font-bold">Define financial and resource consumption thresholds.</CardDescription>
              </div>
           </div>
        </CardHeader>
        <CardContent className="p-8">
-          <div className="flex items-end gap-4">
-             <div className="flex-1 space-y-1.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+             <div className="space-y-1.5">
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Initial Subscription ($)</Label>
-                <Input type="number" step="0.01" value={val} onChange={(e) => setVal(e.target.value)} placeholder="0.00" className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                <div className="relative">
+                   <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><Banknote className="w-full h-full" /></div>
+                   <Input type="number" step="0.01" value={subVal} onChange={(e) => setSubVal(e.target.value)} placeholder="0.00" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                </div>
              </div>
-             <Button onClick={handleSave} disabled={isSaving || !val} className="h-12 rounded-xl px-8 font-black shadow-lg">
-                {isSaving ? "Applying..." : "Set Policy"}
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Soap per Wash (ml)</Label>
+                <div className="relative">
+                   <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
+                   <Input type="number" value={soapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                </div>
+             </div>
+             <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-2">
+                {isSaving ? "Applying Benchmarks..." : "Set Strategic Policy"}
              </Button>
           </div>
        </CardContent>
@@ -1060,52 +1082,78 @@ function GlobalSubscriptionConfig({ companyId, initialConfig }: { companyId?: st
   );
 }
 
-function LaundryConfigurator({ levelQuotas, benchmarkSubscription }: { levelQuotas: Record<number, number>, benchmarkSubscription: number }) {
+function LaundryConfigurator({ levelQuotas, benchmarkSubscription, studentSoap, soapMlPerWash }: { levelQuotas: Record<number, number>, benchmarkSubscription: number, studentSoap?: LaundryInventory, soapMlPerWash: number }) {
+  const soapCostPerMl = (studentSoap?.soapCostPerLitre || 0) / 1000;
+  const subscriberCostPrice = soapCostPerMl * soapMlPerWash;
+
   return (
     <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
        <div className="mb-10 text-center">
-          <h3 className="text-2xl font-black">Service Rate & Strategic Policy</h3>
-          <p className="text-sm font-bold text-muted-foreground">Automatic per-wash rate derivation based on benchmark policy and turn quotas.</p>
+          <h3 className="text-2xl font-black">Strategic Yield Analysis</h3>
+          <p className="text-sm font-bold text-muted-foreground">Dynamic profitability derived from quota scheduling and consumable benchmarks.</p>
        </div>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {LEVELS.map(lv => {
             const quota = levelQuotas[lv] || 0;
-            const currentRate = quota > 0 ? (benchmarkSubscription / quota) : 0;
+            const serviceRate = quota > 0 ? (benchmarkSubscription / quota) : 0;
+            const profitEachWash = serviceRate - subscriberCostPrice;
+            
             return (
-              <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
+              <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-6 border-2 border-transparent hover:border-primary/20 transition-all">
                  <div className="flex justify-between items-center">
                     <Badge className="h-8 px-4 font-black">Level {lv}</Badge>
-                    <p className="text-[10px] font-black uppercase text-muted-foreground">Strategic Tier</p>
+                    <div className="text-right">
+                       <p className="text-[10px] font-black uppercase text-muted-foreground leading-none mb-1">Strategic Quota</p>
+                       <p className="font-black text-foreground">{quota} Turns</p>
+                    </div>
                  </div>
+
                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                       <Label className="text-[10px] font-black uppercase px-1 text-primary">Service Rate (Auto)</Label>
-                       <div className="h-11 rounded-xl font-black bg-white flex items-center px-4 text-sm text-primary">
-                          ${currentRate.toFixed(2)}
-                       </div>
+                    <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                       <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-1">Service Rate</p>
+                       <p className="text-xl font-black text-foreground">${serviceRate.toFixed(2)}</p>
+                       <p className="text-[8px] font-bold text-muted-foreground uppercase mt-1">Revenue / Wash</p>
                     </div>
-                    <div className="space-y-1">
-                       <Label className="text-[10px] font-black uppercase px-1">Wash Quota (Auto)</Label>
-                       <div className="h-11 rounded-xl font-bold bg-secondary/20 flex items-center px-4 text-sm">
-                          {quota} Turns
-                       </div>
+                    <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                       <p className="text-[9px] font-black uppercase text-destructive tracking-widest mb-1">Cost Price</p>
+                       <p className="text-xl font-black text-foreground">${subscriberCostPrice.toFixed(2)}</p>
+                       <p className="text-[8px] font-bold text-muted-foreground uppercase mt-1">Expense / Wash</p>
                     </div>
                  </div>
-                 <div className="pt-2 border-t border-white/50">
-                    <div className="flex justify-between items-center px-1">
-                       <span className="text-[9px] font-black text-muted-foreground uppercase">Fixed Policy Target</span>
-                       <span className="text-sm font-black text-foreground">${benchmarkSubscription.toFixed(2)}</span>
+
+                 <div className="bg-primary/5 p-4 rounded-2xl border-2 border-dashed border-primary/20 flex justify-between items-center">
+                    <div>
+                       <p className="text-[10px] font-black uppercase text-primary leading-none mb-1">Strategic Profit</p>
+                       <p className="text-xs font-bold text-muted-foreground uppercase">Realized Margin</p>
+                    </div>
+                    <div className="text-right">
+                       <p className={cn("text-2xl font-black tracking-tighter", profitEachWash > 0 ? "text-primary" : "text-destructive")}>
+                          ${profitEachWash.toFixed(2)}
+                       </p>
                     </div>
                  </div>
               </div>
             );
           })}
        </div>
-       <div className="mt-8 p-6 bg-primary/5 rounded-2xl flex items-start gap-3 border border-primary/10">
-          <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-          <p className="text-xs font-bold text-muted-foreground leading-relaxed">
-            Note: The <strong>Service Rate</strong> is an autocalculated value derived from the Benchmark Policy ($) divided by the total number of turns in the Schedule. To adjust these rates, modify the fixed subscription or change the number of scheduled wash days.
-          </p>
+       <div className="mt-8 p-6 bg-secondary/10 rounded-2xl space-y-4">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-muted-foreground">
+             <Scale className="w-4 h-4" /> Autocalculation Matrix
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-[10px] font-bold text-muted-foreground">
+             <div className="space-y-1">
+                <p className="uppercase font-black text-foreground">Service Rate formula</p>
+                <p>Initial Subscription ($) ÷ Total Level Quota (Turns)</p>
+             </div>
+             <div className="space-y-1">
+                <p className="uppercase font-black text-foreground">Cost Price formula</p>
+                <p>(Soap Cost / Litre ÷ 1000) × Consumed ml / Wash</p>
+             </div>
+             <div className="space-y-1">
+                <p className="uppercase font-black text-foreground">Profit formula</p>
+                <p>Service Rate ($) - Subscribers Cost Price ($)</p>
+             </div>
+          </div>
        </div>
     </Card>
   );
