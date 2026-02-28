@@ -40,7 +40,8 @@ import {
   AlertTriangle,
   Lock,
   Edit2,
-  Wallet
+  Wallet,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -278,7 +279,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     const totalExpenditure = qty * costPerItem;
 
     if (!editingMaterial && totalExpenditure > remainingBudget) {
-      toast({ title: "Insufficient Budget", description: "This replenishment exceeds remaining budget.", variant: "destructive" });
+      toast({ title: "Insufficient Budget", description: "This replenishment exceeds Total Capacity Balance.", variant: "destructive" });
       return;
     }
 
@@ -502,7 +503,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                         </div>
                         
                         {(Number(matQuantity) * Number(matCostPerItem) > remainingBudget) && !editingMaterial && (
-                          <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Budget Balance (${remainingBudget.toFixed(2)})</p>
+                          <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Capacity Balance (${remainingBudget.toFixed(2)})</p>
                         )}
 
                         <div className="flex gap-2">
@@ -517,7 +518,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                      {!canProcure && !editingMaterial && (
                         <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
                            <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
-                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until capacity is expanded.</p>
+                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until Total Capacity Balance is expanded.</p>
                         </div>
                       )}
                   </Card>

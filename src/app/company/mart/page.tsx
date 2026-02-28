@@ -669,7 +669,6 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
 
   const refillYield = (Number(unitsBought) * Number(itemsPerUnit));
   const totalRefillCost = (Number(unitsBought) * Number(costPerUnit));
-  const profitPerIndividualItem = Number(retailPrice) - (Number(costPerUnit) / (Number(itemsPerUnit) || 1));
 
   const handleConfirmRefill = (e: React.FormEvent) => {
     e.preventDefault();
@@ -874,14 +873,13 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                 <div className="p-4 bg-primary/5 rounded-2xl border-2 border-primary/10 relative">
                   <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Identified Asset</p>
                   <p className="text-lg font-black leading-tight pr-8">{selectedProduct.name}</p>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="absolute top-2 right-2 h-6 w-6 text-muted-foreground"
+                  <button 
+                    type="button"
+                    className="absolute top-2 right-2 text-muted-foreground hover:text-destructive"
                     onClick={() => setSelectedProduct(null)}
                   >
                     <XCircle className="w-4 h-4" />
-                  </Button>
+                  </button>
                 </div>
 
                 <div className="space-y-4">
@@ -945,7 +943,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden">
+            <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
                <div className="bg-primary p-8 text-primary-foreground">
                  <DialogTitle className="text-2xl font-black">{editingProduct ? 'Edit Product Metadata' : 'New Registration'}</DialogTitle>
                </div>
@@ -980,7 +978,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                      <Input name="stock" type="number" placeholder="0" required className="h-12 rounded-xl" />
                    </div>
                  )}
-                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={isProcessing}>
+                 <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-xl" disabled={isProcessing}>
                    {isProcessing ? "Saving..." : editingProduct ? "Update Metadata" : "Save Product"}
                  </Button>
                </form>

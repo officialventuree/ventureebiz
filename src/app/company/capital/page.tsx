@@ -304,7 +304,7 @@ export default function CapitalControlPage() {
                   <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">Live Capital Utilization</p>
                   <CardTitle className="text-6xl font-black tracking-tighter">${totalSpent.toFixed(2)}</CardTitle>
                   <CardDescription className="font-bold text-lg mt-2">
-                    Total Capacity: ${totalCapacity.toLocaleString()} (Base: ${baseLimit} + Injected: ${injectedFunds})
+                    Total Capacity Balance: ${totalCapacity.toLocaleString()} (Base: ${baseLimit} + Injected: ${injectedFunds})
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
@@ -329,7 +329,7 @@ export default function CapitalControlPage() {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mt-12">
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
                         <ArrowUpRight className="w-8 h-8 text-primary mb-4 group-hover:scale-125 transition-transform" />
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Remaining Limit</p>
+                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Remaining Budget</p>
                         <p className="text-3xl font-black text-foreground tracking-tighter">${remaining.toFixed(2)}</p>
                      </div>
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
@@ -491,7 +491,7 @@ export default function CapitalControlPage() {
                  </CardHeader>
                  <CardContent className="p-0">
                     <p className="text-xs font-bold leading-relaxed text-muted-foreground italic">
-                      "Injected funds allow mid-cycle scaling without disrupting original strategic dates. Total capacity is the sum of base and extra funding."
+                      "Injected funds increase your Total Capacity Balance for mid-cycle scaling without disrupting strategic dates."
                     </p>
                  </CardContent>
               </Card>
@@ -542,7 +542,7 @@ export default function CapitalControlPage() {
              </div>
              <DialogTitle className="text-2xl font-black">Strategic Injection</DialogTitle>
              <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
-                Withdraw funds from pool into active spending capacity.
+                Withdraw funds from pool into Total Capacity Balance.
              </DialogDescription>
           </div>
           <div className="p-8 space-y-6">

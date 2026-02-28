@@ -38,7 +38,8 @@ import {
   HandCoins,
   BarChart3,
   PieChart as PieChartIcon,
-  Lock
+  Lock,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -298,7 +299,7 @@ export default function LaundryPage() {
     const newTotalCost = units * pricePerUnit;
 
     if (units > 0 && newTotalCost > remainingBudget) {
-      toast({ title: "Insufficient Budget", description: "This refill exceeds your remaining cycle budget.", variant: "destructive" });
+      toast({ title: "Insufficient Budget", description: "This refill exceeds your Total Capacity Balance.", variant: "destructive" });
       return;
     }
 
@@ -517,15 +518,7 @@ export default function LaundryPage() {
   };
 
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
-  const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
-  const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
   
-  const todayWashes = laundryTransactions.filter(t => {
-    const d = new Date(t.timestamp);
-    const now = new Date();
-    return d.toDateString() === now.toDateString() && !t.items[0].name.includes('Deposit');
-  });
-
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -1006,7 +999,7 @@ export default function LaundryPage() {
                          </div>
                          
                          {(Number(refillBottles) > 0 && (Number(refillBottles) * Number(refillCostPerBottle) > remainingBudget)) && (
-                           <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Budget Balance (${remainingBudget.toFixed(2)})</p>
+                           <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Capacity Balance (${remainingBudget.toFixed(2)})</p>
                          )}
 
                          <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure || !refillVolPerBottle || !refillCostPerBottle || (Number(refillBottles) > 0 && (Number(refillBottles) * Number(refillCostPerBottle) > remainingBudget))}>
@@ -1016,7 +1009,7 @@ export default function LaundryPage() {
                       {!canProcure && (
                         <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
                            <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
-                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until capacity is expanded.</p>
+                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until Total Capacity Balance is expanded.</p>
                         </div>
                       )}
                    </Card>
@@ -1148,7 +1141,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
@@ -1482,8 +1475,7 @@ function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] })
 
   return (
     <div className="space-y-12 pb-24">
-       {/* High Level Metrics */}
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-6">
              <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center text-primary"><User className="w-4 h-4" /></div>
@@ -1543,7 +1535,6 @@ function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] })
           </div>
        </div>
 
-       {/* Detailed Ledger Integration */}
        <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
           <div className="flex justify-between items-center mb-10">
              <div>

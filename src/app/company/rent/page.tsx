@@ -35,7 +35,8 @@ import {
   Lock,
   BarChart3,
   PieChart as PieChartIcon,
-  DollarSign
+  DollarSign,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -312,7 +313,7 @@ export default function RentPage() {
     const costPrice = Number(formData.get('costPrice')) || 0;
 
     if (!editingAsset && costPrice > remainingBudget) {
-      toast({ title: "Insufficient Budget", description: "Asset acquisition cost exceeds remaining budget.", variant: "destructive" });
+      toast({ title: "Insufficient Budget", description: "Asset acquisition cost exceeds Total Capacity Balance.", variant: "destructive" });
       return;
     }
     
@@ -645,7 +646,7 @@ export default function RentPage() {
                        </div>
                     </div>
                   )}
-                  <Button onClick={handleLaunchAgreement} className="w-full h-20 rounded-[32px] font-black text-2xl shadow-2xl group" disabled={isProcessing || isInsufficientCash || isMissingReference}>
+                  <Button onClick={handleLaunchAgreement} className="w-full h-20 rounded-[32px] font-black text-2xl shadow-xl group" disabled={isProcessing || isInsufficientCash || isMissingReference}>
                     {isProcessing ? "Launching..." : "Confirm & Launch Agreement"}
                   </Button>
                 </div>
@@ -696,7 +697,7 @@ export default function RentPage() {
                    {!canProcure && !editingAsset && (
                      <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
                         <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
-                        <p className="text-[10px] font-bold text-muted-foreground mt-1">Acquisition disabled until capacity is expanded.</p>
+                        <p className="text-[10px] font-bold text-muted-foreground mt-1">Acquisition disabled until Total Capacity Balance is expanded.</p>
                      </div>
                    )}
                 </Card>
@@ -875,7 +876,7 @@ function RentAnalytics({ transactions, currencySymbol }: { transactions: SaleTra
        <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
           <CardHeader className="px-0 pt-0 mb-8">
              <CardTitle className="text-2xl font-black">7-Day Performance Trajectory</CardTitle>
-             <CardDescription className="font-bold">Comparative tracking of revenue vs localized profits</CardDescription>
+             <CardDescription className="font-bold">Comparative tracking of revenue vs realized profits</CardDescription>
           </CardHeader>
           <div className="h-[400px]">
              <ResponsiveContainer width="100%" height="100%">
