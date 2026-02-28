@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   Lock,
   BarChart3,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  DollarSign
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -615,7 +616,7 @@ export default function RentPage() {
                                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Inventory ID: {item.id.split('-')[0]}</p>
                               </td>
                               <td className="p-6">
-                                 <div className="flex flex-wrap gap-1">
+                                 <div className="flex wrap gap-1">
                                     {item.hourlyRate && <Badge variant="outline" className="text-[9px] font-bold">H: {currencySymbol}{item.hourlyRate}</Badge>}
                                     {item.dailyRate && <Badge variant="outline" className="text-[9px] font-bold">D: {currencySymbol}{item.dailyRate}</Badge>}
                                     {item.weeklyRate && <Badge variant="outline" className="text-[9px] font-bold">W: {currencySymbol}{item.weeklyRate}</Badge>}
@@ -759,7 +760,7 @@ function RentAnalytics({ transactions, currencySymbol }: { transactions: SaleTra
              <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                    <defs>
-                      <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="colorRev" x1="0" x2="0" y2="1">
                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                       </linearGradient>
