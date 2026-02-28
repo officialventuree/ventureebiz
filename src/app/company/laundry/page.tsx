@@ -203,27 +203,38 @@ export default function LaundryPage() {
     const bottles = Number(refillBottles);
     const volPerBottle = Number(refillVolPerBottle);
     const costPerBottle = Number(refillCostPerBottle);
-    const amountMl = bottles * volPerBottle * 1000;
-    const totalCost = bottles * costPerBottle;
+    
+    const newAmountMl = bottles * volPerBottle * 1000;
+    const newTotalCost = bottles * costPerBottle;
+    const newBatchCostPerLitre = newTotalCost / (bottles * volPerBottle);
+    
     const docId = `${refillCategory}_soap`;
 
     try {
       const existing = inventoryItems?.find(i => i.id === docId);
+      
       if (!existing) {
         await setDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
           id: docId,
           companyId: user.companyId,
-          soapStockMl: amountMl,
-          soapCostPerLitre: totalCost / (bottles * volPerBottle),
+          soapStockMl: newAmountMl,
+          soapCostPerLitre: newBatchCostPerLitre,
           capacityMl: 50000,
           category: refillCategory,
           lastBottleCost: costPerBottle,
           lastBottleVolume: volPerBottle
         });
       } else {
+        const currentStockMl = existing.soapStockMl;
+        const currentCostPerLitre = existing.soapCostPerLitre;
+        
+        // Weighted Average Cost Calculation
+        const totalMl = currentStockMl + newAmountMl;
+        const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
+
         await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryInventory', docId), {
-          soapStockMl: increment(amountMl),
-          soapCostPerLitre: totalCost / (bottles * volPerBottle),
+          soapStockMl: increment(newAmountMl),
+          soapCostPerLitre: weightedCostPerLitre,
           lastBottleCost: costPerBottle,
           lastBottleVolume: volPerBottle
         });
@@ -232,12 +243,12 @@ export default function LaundryPage() {
       await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), {
         id: crypto.randomUUID(),
         companyId: user.companyId,
-        amount: totalCost,
+        amount: newTotalCost,
         description: `${refillCategory.toUpperCase()} Soap Refill (${bottles}x ${volPerBottle}L)`,
         timestamp: new Date().toISOString()
       });
 
-      toast({ title: "Inventory Replenished" });
+      toast({ title: "Inventory Replenished", description: `Added ${(newAmountMl/1000).toFixed(1)}L to the ${refillCategory} pool.` });
       setRefillBottles('');
       setRefillVolPerBottle('');
       setRefillCostPerBottle('');
@@ -385,6 +396,9 @@ export default function LaundryPage() {
     const now = new Date();
     return d.toDateString() === now.toDateString() && !t.items[0].name.includes('Deposit');
   });
+
+  const refillPreviewMl = Number(refillBottles) * Number(refillVolPerBottle) * 1000;
+  const refillPreviewCost = Number(refillBottles) * Number(refillCostPerBottle);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -711,21 +725,52 @@ export default function LaundryPage() {
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
                    <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
-                      <h3 className="text-xl font-black mb-6">Inventory Refill</h3>
+                      <div className="flex items-center gap-2 mb-6">
+                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                          <RefreshCw className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-xl font-black">Stock Replenish</h3>
+                      </div>
                       <form onSubmit={handleRefillInventory} className="space-y-5">
                          <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase">Category</Label>
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Inventory Pool</Label>
                             <Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)}>
-                               <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                               <SelectContent className="rounded-xl"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent>
+                               <SelectTrigger className="rounded-xl h-11 font-bold bg-secondary/10 border-none"><SelectValue /></SelectTrigger>
+                               <SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent>
                             </Select>
                          </div>
                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Bottles</Label><Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl" /></div>
-                            <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">L / Bottle</Label><Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl" /></div>
+                            <div className="space-y-1.5">
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Bottles</Label>
+                               <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
+                            </div>
+                            <div className="space-y-1.5">
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Litres/Bottle</Label>
+                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.0" />
+                            </div>
                          </div>
-                         <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Cost / Bottle ($)</Label><Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl" /></div>
-                         <Button type="submit" className="w-full h-12 rounded-xl font-black" disabled={isProcessing}>Replenish Pool</Button>
+                         <div className="space-y-1.5">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Unit Price ($/Bottle)</Label>
+                            <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
+                         </div>
+
+                         {Number(refillBottles) > 0 && (
+                           <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 space-y-2 animate-in fade-in zoom-in-95">
+                              <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-1">Batch Summary</p>
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                                 <span className="text-muted-foreground">Total ML</span>
+                                 <span className="text-foreground">{refillPreviewMl.toLocaleString()} ml</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                                 <span className="text-muted-foreground">Total Cost</span>
+                                 <span className="text-primary">${refillPreviewCost.toFixed(2)}</span>
+                              </div>
+                           </div>
+                         )}
+
+                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
+                            {isProcessing ? "Processing..." : "Log Stock Registry"}
+                         </Button>
                       </form>
                    </Card>
                 </div>
@@ -875,7 +920,7 @@ function InventoryGauge({ label, item }: { label: string, item?: LaundryInventor
        <h4 className="text-4xl font-black tracking-tighter">{(stock / 1000).toFixed(1)}L</h4>
        <p className="text-xs font-bold opacity-60 mb-6">of {(capacity / 1000)}L Capacity</p>
        <Progress value={percentage} className="h-3 rounded-full" />
-       {item?.soapCostPerLitre && <p className="text-[10px] font-black text-primary uppercase mt-4">Current Valuation: ${item.soapCostPerLitre.toFixed(2)}/L</p>}
+       {item?.soapCostPerLitre && <p className="text-[10px] font-black text-primary uppercase mt-4">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>}
     </Card>
   );
 }
