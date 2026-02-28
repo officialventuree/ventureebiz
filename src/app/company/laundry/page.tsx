@@ -274,7 +274,7 @@ export default function LaundryPage() {
         companyId: user.companyId,
         soapStockMl: newAmountMl,
         soapCostPerLitre: units > 0 ? (newTotalCost / (newAmountMl / 1000)) : 0,
-        capacityMl: 50000,
+        capacityMl: 999999999, // Effectively unlimited
         category: refillCategory,
         lastBottleCost: pricePerUnit,
         lastBottleVolume: volPerUnitMl
@@ -343,7 +343,7 @@ export default function LaundryPage() {
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'student_soap');
     const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-    const soapCost = (soapMlPerWash / 1000) * studentSoap.soapCostPerLitre;
+    const soapCost = (soapMlPerWash / 1000) * (studentSoap.soapCostPerLitre || 0);
     const profit = washRate - soapCost;
 
     const transData: SaleTransaction = {
@@ -826,7 +826,7 @@ export default function LaundryPage() {
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Fixed Initial Subscription ($)</Label>
                             <div className="h-11 rounded-xl bg-secondary/10 border-none font-black flex items-center px-4 text-primary">
-                               ${benchmarkSubscription.toFixed(2)}
+                               ${(benchmarkSubscription || 0).toFixed(2)}
                             </div>
                             <p className="text-[9px] font-bold text-muted-foreground italic mt-1">Benchmark is fixed per policy settings.</p>
                          </div>
@@ -1390,30 +1390,27 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
 
 function InventoryGauge({ label, item }: { label: string, item?: LaundryInventory }) {
   const stock = item?.soapStockMl || 0;
-  const capacity = item?.capacityMl || 50000;
-  const percentage = (stock / capacity) * 100;
 
   return (
     <Card className="border-none shadow-sm bg-white rounded-3xl p-8 relative overflow-hidden">
        <div className="absolute top-0 right-0 p-6 opacity-5"><Droplet className="w-24 h-24" /></div>
        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">{label}</p>
        <h4 className="text-4xl font-black tracking-tighter">{stock.toLocaleString()} ml</h4>
-       <p className="text-xs font-bold opacity-60 mb-6">of {capacity.toLocaleString()} ml Capacity</p>
+       <p className="text-xs font-bold opacity-60 mb-6">Unlimited Capacity Registry</p>
        
        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="p-3 bg-secondary/10 rounded-xl">
              <p className="text-[8px] font-black uppercase text-muted-foreground">Price per Unit</p>
-             <p className="text-sm font-black text-foreground">${item?.lastBottleCost?.toFixed(2) || '0.00'}</p>
+             <p className="text-sm font-black text-foreground">${(item?.lastBottleCost || 0).toFixed(2)}</p>
           </div>
           <div className="p-3 bg-secondary/10 rounded-xl">
              <p className="text-[8px] font-black uppercase text-muted-foreground">Vol per Unit</p>
-             <p className="text-sm font-black text-foreground">{item?.lastBottleVolume?.toLocaleString() || '0'} ml</p>
+             <p className="text-sm font-black text-foreground">{(item?.lastBottleVolume || 0).toLocaleString()} ml</p>
           </div>
        </div>
 
-       <Progress value={percentage} className="h-3 rounded-full" />
        {item?.soapCostPerLitre && (
-         <div className="flex justify-between items-center mt-4">
+         <div className="flex justify-between items-center mt-4 border-t pt-4 border-secondary/20">
             <p className="text-[10px] font-black text-primary uppercase">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>
             <p className="text-[9px] font-bold text-muted-foreground uppercase">{(stock / 1000).toFixed(1)}L Total</p>
          </div>
