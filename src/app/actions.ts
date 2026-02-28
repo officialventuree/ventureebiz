@@ -3,7 +3,7 @@
 
 import { generateCompanyPasswordId } from '@/ai/flows/generate-company-password-id-flow';
 import { generateViewerPasswordId } from '@/ai/flows/generate-viewer-password-id';
-import { Company, User, ModuleType, CompanySubscription, PaymentTransaction } from '@/lib/types';
+import { Company, User, ModuleType } from '@/lib/types';
 
 export async function createCompanyAction(formData: FormData) {
   const name = formData.get('name') as string;
@@ -45,7 +45,7 @@ export async function createCompanyAction(formData: FormData) {
   const subscriptionId = crypto.randomUUID();
   const transactionId = crypto.randomUUID();
 
-  const subscription: CompanySubscription = {
+  const subscription = {
     id: subscriptionId,
     companyId,
     pricingCycleId: periodId,
@@ -59,10 +59,9 @@ export async function createCompanyAction(formData: FormData) {
     createdAt: now.toISOString()
   };
 
-  const transaction: PaymentTransaction = {
+  const transaction = {
     id: transactionId,
     companyId,
-    companySubscriptionId: subscriptionId,
     amount: totalAmount,
     currencyId: 'USD',
     paymentMethod: formData.get('paymentMethod') as any || 'cash',
@@ -91,7 +90,7 @@ export async function renewCompanyAction(formData: FormData, company: Company) {
   const subscriptionId = crypto.randomUUID();
   const transactionId = crypto.randomUUID();
 
-  const subscription: CompanySubscription = {
+  const subscription = {
     id: subscriptionId,
     companyId: company.id,
     pricingCycleId: periodId,
@@ -105,10 +104,9 @@ export async function renewCompanyAction(formData: FormData, company: Company) {
     createdAt: now.toISOString()
   };
 
-  const transaction: PaymentTransaction = {
+  const transaction = {
     id: transactionId,
     companyId: company.id,
-    companySubscriptionId: subscriptionId,
     amount: totalAmount,
     currencyId: 'USD',
     paymentMethod: formData.get('paymentMethod') as any || 'cash',

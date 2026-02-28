@@ -40,12 +40,6 @@ export interface Company {
   enabledModules?: ModuleType[];
 }
 
-export interface Module {
-  id: string;
-  name: string;
-  description: string;
-}
-
 export interface PricingCycle {
   id: string;
   name: string;
@@ -60,34 +54,6 @@ export interface ModulePricing {
   currencyId: string;
 }
 
-export interface CompanySubscription {
-  id: string;
-  companyId: string;
-  pricingCycleId: string;
-  startDate: string;
-  endDate: string;
-  totalAmount: number;
-  status: string;
-  selectedModuleIds: string[];
-  paymentTransactionId: string;
-  isRenewal: boolean;
-  createdAt: string;
-}
-
-export interface PaymentTransaction {
-  id: string;
-  companyId?: string;
-  companySubscriptionId?: string;
-  amount: number;
-  currencyId: string;
-  paymentMethod: PaymentMethod;
-  referenceCode?: string;
-  transactionDate: string;
-  status: string;
-  description: string;
-  createdAt: string;
-}
-
 export interface PlatformProfitEntry {
   id: string;
   paymentTransactionId: string;
@@ -96,25 +62,6 @@ export interface PlatformProfitEntry {
   currencyId: string;
   entryDate: string;
   type: 'InitialSubscription' | 'Renewal' | 'Refund';
-}
-
-export interface Currency {
-  id: string;
-  code: string;
-  symbol: string;
-  isPlatformOperatingCurrency: boolean;
-}
-
-export interface SaleItem {
-  productId?: string;
-  name: string;
-  price: number;
-  quantity: number;
-  cost?: number;
-  duration?: number;
-  startDate?: string;
-  endDate?: string;
-  unit?: string;
 }
 
 export interface SaleTransaction {
@@ -126,7 +73,7 @@ export interface SaleTransaction {
   totalCost?: number;
   isCapitalClaimed?: boolean;
   timestamp: string;
-  items: SaleItem[];
+  items: any[];
   status?: TransactionStatus;
   customerName?: string;
   paymentMethod?: PaymentMethod;
@@ -143,6 +90,7 @@ export interface Product {
   stock: number;
   barcode?: string;
   unit?: string;
+  itemsPerUnit?: number;
 }
 
 export interface RentalItem {
@@ -175,47 +123,6 @@ export interface ServicePriceBundle {
   estimatedProfit: number;
 }
 
-export interface LaundryStudent {
-  id: string;
-  companyId: string;
-  name: string;
-  matrixNumber: string;
-  balance: number;
-  level: number;
-  class: string;
-}
-
-export interface LaundryInventory {
-  id: string;
-  companyId: string;
-  soapStockMl: number;
-  soapCostPerLitre: number;
-  category: 'student' | 'payable';
-}
-
-export interface LaundryLevelConfig {
-  id: string;
-  companyId: string;
-  level: number;
-  subscriptionFee: number;
-  totalWashesAllowed: number;
-}
-
-export interface LaundrySchedule {
-  id: string;
-  companyId: string;
-  date: string;
-  level: number;
-}
-
-export interface CapitalPurchase {
-  id: string;
-  companyId: string;
-  amount: number;
-  description: string;
-  timestamp: string;
-}
-
 export interface Coupon {
   id: string;
   companyId: string;
@@ -227,4 +134,12 @@ export interface Coupon {
   customerName: string;
   createdAt: string;
   paymentMethod?: PaymentMethod;
+}
+
+export interface CapitalPurchase {
+  id: string;
+  companyId: string;
+  amount: number;
+  description: string;
+  timestamp: string;
 }

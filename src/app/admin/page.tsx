@@ -18,18 +18,17 @@ import {
 import { createCompanyAction, renewCompanyAction } from '@/app/actions';
 import { useState, useMemo, useEffect } from 'react';
 import { 
-  Company, User, ModuleType, CompanySubscription, 
-  PaymentTransaction, PlatformProfitEntry, 
-  Module, PricingCycle, ModulePricing, Currency, PaymentMethod 
+  Company, User, ModuleType, 
+  PlatformProfitEntry, 
+  PricingCycle, ModulePricing, PaymentMethod 
 } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -108,14 +107,17 @@ export default function AdminDashboard() {
       try {
         await setDoc(doc(firestore, 'companies', result.company.id), result.company);
         await setDoc(doc(firestore, 'company_users', result.company.id), {
-          ...result.company,
+          id: result.company.id,
+          name: result.company.name,
+          email: result.company.email,
+          password: result.company.password,
           role: 'CompanyOwner',
-          companyId: result.company.id
+          companyId: result.company.id,
+          enabledModules: selectedModules
         });
-        await setDoc(doc(firestore, 'companies', result.company.id, 'subscriptions', result.subscription.id), result.subscription);
-        await setDoc(doc(firestore, 'companies', result.company.id, 'payment_transactions', result.transaction.id), result.transaction);
         
         await addDoc(collection(firestore, 'platform_profit_entries'), {
+          id: crypto.randomUUID(),
           paymentTransactionId: result.transaction.id,
           companyId: result.company.id,
           amount: result.transaction.amount,
@@ -158,10 +160,9 @@ export default function AdminDashboard() {
         await updateDoc(doc(firestore, 'company_users', company.id), {
           enabledModules: selectedModules
         });
-        await setDoc(doc(firestore, 'companies', company.id, 'subscriptions', result.subscription.id), result.subscription);
-        await setDoc(doc(firestore, 'companies', company.id, 'payment_transactions', result.transaction.id), result.transaction);
         
         await addDoc(collection(firestore, 'platform_profit_entries'), {
+          id: crypto.randomUUID(),
           paymentTransactionId: result.transaction.id,
           companyId: company.id,
           amount: result.transaction.amount,
