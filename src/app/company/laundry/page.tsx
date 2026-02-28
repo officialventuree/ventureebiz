@@ -186,7 +186,6 @@ export default function LaundryPage() {
       const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
       if (config) {
         const quota = levelQuotas[Number(selectedLevel)] || 0;
-        // Logic: Debt = Rate * Quota
         setEnrollmentDebt(config.serviceRate ? config.serviceRate * quota : config.subscriptionFee);
       } else {
         setEnrollmentDebt(0);
@@ -550,8 +549,8 @@ export default function LaundryPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Wallet</p>
-                          <p className={cn("text-3xl font-black", foundTopUpStudent.balance <= 0 ? "text-destructive" : "text-foreground")}>
-                            ${foundTopUpStudent.balance.toFixed(2)}
+                          <p className={cn("text-3xl font-black", (foundTopUpStudent.balance || 0) <= 0 ? "text-destructive" : "text-foreground")}>
+                            ${(foundTopUpStudent.balance || 0).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -679,8 +678,8 @@ export default function LaundryPage() {
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Wallet</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            selectedStudent.balance <= 0 ? "text-destructive" : "text-primary"
-                          )}>${selectedStudent.balance.toFixed(2)}</p>
+                            (selectedStudent.balance || 0) <= 0 ? "text-destructive" : "text-primary"
+                          )}>${(selectedStudent.balance || 0).toFixed(2)}</p>
                           <div className="mt-2">
                              <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
                           </div>
@@ -746,7 +745,7 @@ export default function LaundryPage() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-                         <Input placeholder="Full Name" value={payableName} onChange={(e) => setPayableName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                         <Input placeholder="Full Name" value={payableName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
                       </div>
                       <div className="space-y-2">
                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Service Amount ($)</Label>
@@ -853,7 +852,9 @@ export default function LaundryPage() {
                       </thead>
                       <tbody className="divide-y">
                          {students?.map(s => {
-                           const needToPay = Math.max(0, s.initialAmount - s.balance);
+                           const initialAmt = s.initialAmount || 0;
+                           const balanceAmt = s.balance || 0;
+                           const needToPay = Math.max(0, initialAmt - balanceAmt);
                            return (
                              <tr key={s.id} className="hover:bg-secondary/5 group">
                                 <td className="p-6">
@@ -861,10 +862,10 @@ export default function LaundryPage() {
                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
                                 </td>
                                 <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
-                                <td className="p-6 font-bold text-muted-foreground">${s.initialAmount.toFixed(2)}</td>
+                                <td className="p-6 font-bold text-muted-foreground">${initialAmt.toFixed(2)}</td>
                                 <td className="p-6">
-                                   <p className={cn("font-black text-lg", s.balance <= 0 ? "text-destructive" : "text-green-600")}>
-                                      ${s.balance.toFixed(2)}
+                                   <p className={cn("font-black text-lg", balanceAmt <= 0 ? "text-destructive" : "text-green-600")}>
+                                      ${balanceAmt.toFixed(2)}
                                    </p>
                                 </td>
                                 <td className="p-6">
