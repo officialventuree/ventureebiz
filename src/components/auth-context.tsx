@@ -40,12 +40,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!email || !password) return { success: false, error: 'Missing credentials' };
 
     try {
-      // Hardcoded platform admin check (Seed database if missing for production)
-      if (email === 'admin@ventureebiz.com' && password === 'admin') {
+      // Official platform admin check
+      if (email === 'officialadmin@ventureebiz.com' && password === 'officialadmin.venturee.300609') {
         const adminUser: User = {
           id: 'platform-admin',
           name: 'Platform Owner',
-          email: 'admin@ventureebiz.com',
+          email: 'officialadmin@ventureebiz.com',
           role: 'admin'
         };
         setUser(adminUser);

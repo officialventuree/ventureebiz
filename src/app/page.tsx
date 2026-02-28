@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -80,8 +81,8 @@ export default function LoginPage() {
         </Card>
         
         <div className="mt-8 text-center text-sm text-muted-foreground bg-white/50 p-4 rounded-xl border border-dashed">
-          <p className="font-bold mb-1 text-primary">Prototype Access</p>
-          <p className="text-[10px]">Admin: admin@ventureebiz.com / admin</p>
+          <p className="font-bold mb-1 text-primary">Official Admin Access</p>
+          <p className="text-[10px] break-all">officialadmin@ventureebiz.com / officialadmin.venturee.300609</p>
         </div>
       </div>
     </div>

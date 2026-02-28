@@ -1,3 +1,4 @@
+
 import { Company, User, Sale } from './types';
 
 // In-memory store for simulation purposes
@@ -6,8 +7,8 @@ let users: User[] = [
   {
     id: 'admin-1',
     name: 'Platform Owner',
-    email: 'admin@ventureebiz.com',
-    password: 'admin',
+    email: 'officialadmin@ventureebiz.com',
+    password: 'officialadmin.venturee.300609',
     role: 'admin'
   }
 ];
