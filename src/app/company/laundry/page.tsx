@@ -239,6 +239,8 @@ export default function LaundryPage() {
 
       toast({ title: "Inventory Replenished" });
       setRefillBottles('');
+      setRefillVolPerBottle('');
+      setRefillCostPerBottle('');
     } catch (err) {
       toast({ title: "Refill failed", variant: "destructive" });
     } finally {
@@ -274,7 +276,7 @@ export default function LaundryPage() {
         id: crypto.randomUUID(),
         companyId: user.companyId,
         module: 'laundry',
-        totalAmount: 0, 
+        totalAmount: washRate, 
         profit: profit, 
         totalCost: soapCost, 
         timestamp: new Date().toISOString(),
@@ -378,6 +380,11 @@ export default function LaundryPage() {
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
   const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
   const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
+  const todayWashes = laundryTransactions.filter(t => {
+    const d = new Date(t.timestamp);
+    const now = new Date();
+    return d.toDateString() === now.toDateString() && !t.items[0].name.includes('Deposit');
+  });
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -520,7 +527,7 @@ export default function LaundryPage() {
                               </Badge>
                             ) : (
                               <Badge variant="destructive" className="h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
-                                <AlertCircle className="w-4 h-4" /> unauthorized Turn
+                                <AlertCircle className="w-4 h-4" /> Unauthorized Turn
                               </Badge>
                             )}
                           </div>
@@ -634,7 +641,7 @@ export default function LaundryPage() {
                    )}
 
                    <Button onClick={handlePayableWash} className="w-full h-16 rounded-[24px] font-black text-xl shadow-xl" disabled={isProcessing || !payableAmount || !payableName}>
-                      {isProcessing ? "Processing..." : "Complete & Confirm wash"}
+                      {isProcessing ? "Processing..." : "Complete & Confirm Wash"}
                    </Button>
                 </div>
              </Card>
@@ -737,17 +744,31 @@ export default function LaundryPage() {
                    <ReportStat label="Service Volume" value={laundryTransactions.length.toString()} icon={Waves} />
                 </div>
                 <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
-                   <h3 className="text-xl font-black mb-6">Service History</h3>
+                   <h3 className="text-xl font-black mb-6">Today's Service Feed</h3>
                    <div className="divide-y">
-                      {laundryTransactions.slice().reverse().slice(0, 10).map(t => (
+                      {todayWashes.slice().reverse().map(t => (
                         <div key={t.id} className="py-4 flex justify-between items-center">
-                           <div>
-                              <p className="font-black">{t.customerName}</p>
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.items[0].name} • {new Date(t.timestamp).toLocaleString()}</p>
+                           <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                                 <RefreshCw className="w-5 h-5" />
+                              </div>
+                              <div>
+                                 <p className="font-black">{t.customerName}</p>
+                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.items[0].name} • {new Date(t.timestamp).toLocaleTimeString()}</p>
+                              </div>
                            </div>
-                           <p className="font-black text-primary">${t.totalAmount.toFixed(2)}</p>
+                           <div className="text-right">
+                              <p className="font-black text-primary">${t.totalAmount.toFixed(2)}</p>
+                              <p className="text-[9px] font-bold text-muted-foreground uppercase">Cost: ${t.totalCost?.toFixed(2)}</p>
+                           </div>
                         </div>
                       ))}
+                      {todayWashes.length === 0 && (
+                        <div className="py-20 text-center opacity-30">
+                           <History className="w-16 h-16 mx-auto mb-4" />
+                           <p className="font-black uppercase tracking-widest">No washes processed today</p>
+                        </div>
+                      )}
                    </div>
                 </div>
              </div>
@@ -774,7 +795,17 @@ export default function LaundryPage() {
                         </label>
                      </div>
                    ) : (
-                     <div className="py-20 border-4 border-dashed rounded-[40px] opacity-30"><Plus className="w-12 h-12 mx-auto" /></div>
+                     <div className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer hover:bg-secondary/20 transition-all flex flex-col items-center justify-center gap-4">
+                        <Plus className="w-12 h-12" />
+                        <p className="text-xs font-black uppercase">Upload QR Code</p>
+                        <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+                           const file = e.target.files?.[0];
+                           if(!file || !firestore || !user?.companyId) return;
+                           const reader = new FileReader();
+                           reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string });
+                           reader.readAsDataURL(file);
+                        }} />
+                     </div>
                    )}
                 </Card>
              </div>
