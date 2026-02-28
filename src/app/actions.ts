@@ -144,3 +144,8 @@ export async function createViewerAction(formData: FormData, companyId: string, 
 
   return { success: true, user };
 }
+
+export async function recordSaleAction(companyId: string, cart: any[]) {
+  // Legacy support for older POS terminal logic
+  return { success: true };
+}

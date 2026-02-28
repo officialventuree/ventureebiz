@@ -16,6 +16,7 @@ import { CapitalPurchase, Company, CapitalPeriod } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 export default function CapitalControlPage() {
   const { user } = useAuth();
