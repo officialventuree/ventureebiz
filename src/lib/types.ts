@@ -38,6 +38,8 @@ export interface Company {
   duitNowQr?: string;
   nextCapitalAmount?: number;
   enabledModules?: ModuleType[];
+  currencyCode?: string;
+  currencySymbol?: string;
 }
 
 export interface PricingCycle {

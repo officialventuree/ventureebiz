@@ -47,6 +47,8 @@ export default function CompanyDashboard() {
   const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
   const { data: products } = useCollection<Product>(productsQuery);
 
+  const currencySymbol = companyDoc?.currencySymbol || '$';
+
   const totalRevenue = transactions?.reduce((acc, s) => acc + s.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, s) => acc + s.profit, 0) || 0;
   
@@ -128,7 +130,7 @@ export default function CompanyDashboard() {
 
       toast({ 
         title: "Capital Claimed Successfully", 
-        description: `$${aggregateCapitalToClaim.toFixed(2)} has been moved to your injection pool.` 
+        description: `${currencySymbol}${aggregateCapitalToClaim.toFixed(2)} has been moved to your injection pool.` 
       });
     } catch (e: any) {
       toast({ title: "Claim failed", description: e.message, variant: "destructive" });
@@ -161,14 +163,14 @@ export default function CompanyDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            <StatsCard icon={DollarSign} label="Gross Revenue" value={`$${totalRevenue.toFixed(2)}`} trend="Total" />
-            <StatsCard icon={TrendingUp} label="Net Profit" value={`$${totalProfit.toFixed(2)}`} trend="Calculated" color="text-primary" />
-            <StatsCard icon={Package} label="Inventory Value" value={`$${inventoryValue.toFixed(2)}`} trend="On Hand" color="text-foreground" />
+            <StatsCard icon={DollarSign} label="Gross Revenue" value={`${currencySymbol}${totalRevenue.toFixed(2)}`} trend="Total" />
+            <StatsCard icon={TrendingUp} label="Net Profit" value={`${currencySymbol}${totalProfit.toFixed(2)}`} trend="Calculated" color="text-primary" />
+            <StatsCard icon={Package} label="Inventory Value" value={`${currencySymbol}${inventoryValue.toFixed(2)}`} trend="On Hand" color="text-foreground" />
             <StatsCard 
               icon={Wallet} 
               label="Capital Balance" 
-              value={`$${remainingCapital.toFixed(2)}`} 
-              trend={`Cap: $${totalCapacity/1000}k`} 
+              value={`${currencySymbol}${remainingCapital.toFixed(2)}`} 
+              trend={`Cap: ${currencySymbol}${totalCapacity/1000}k`} 
               color="text-foreground" 
             />
           </div>
@@ -185,7 +187,7 @@ export default function CompanyDashboard() {
                   className="rounded-xl font-black h-12 px-8 shadow-xl gap-2 transition-all hover:scale-105 active:scale-95"
                 >
                    {isClaiming ? <Zap className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                   Claim All Capital (${aggregateCapitalToClaim.toFixed(2)})
+                   Claim All Capital ({currencySymbol}{aggregateCapitalToClaim.toFixed(2)})
                 </Button>
              </div>
 
@@ -202,7 +204,7 @@ export default function CompanyDashboard() {
                            {stat.breakdown.map(b => (
                              <div key={b.method} className="flex justify-between items-center text-xs">
                                 <span className="font-bold text-muted-foreground capitalize">{b.method}</span>
-                                <span className="font-black text-foreground">${b.profit.toFixed(2)}</span>
+                                <span className="font-black text-foreground">{currencySymbol}{b.profit.toFixed(2)}</span>
                              </div>
                            ))}
                         </div>
@@ -213,7 +215,7 @@ export default function CompanyDashboard() {
                                  <p className="text-[10px] font-black uppercase text-primary tracking-widest">Cap. to Claim</p>
                                  <Badge variant="outline" className="text-[9px] font-black mt-1 h-5">{stat.unclaimedCount} Unclaimed</Badge>
                               </div>
-                              <p className="text-2xl font-black text-primary tracking-tighter">${stat.capitalToClaim.toFixed(2)}</p>
+                              <p className="text-2xl font-black text-primary tracking-tighter">{currencySymbol}{stat.capitalToClaim.toFixed(2)}</p>
                            </div>
                         </div>
                      </CardContent>
@@ -238,7 +240,7 @@ export default function CompanyDashboard() {
                   <BarChart data={moduleData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                    <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
+                    <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val}`} />
                     <Tooltip 
                       cursor={{ fill: 'transparent' }}
                       contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}
@@ -264,7 +266,7 @@ export default function CompanyDashboard() {
                 <CardContent className="space-y-4">
                   <AlertItem label="Low Stock Warning" value={`${products?.filter(p => p.stock < 10).length || 0} items below threshold`} />
                   <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / (totalCapacity || 1)) * 100).toFixed(1)}% utilized`} />
-                  <AlertItem label="Pending Recoveries" value={`$${aggregateCapitalToClaim.toFixed(2)} to claim`} />
+                  <AlertItem label="Pending Recoveries" value={`${currencySymbol}${aggregateCapitalToClaim.toFixed(2)} to claim`} />
                 </CardContent>
               </Card>
 
@@ -285,7 +287,7 @@ export default function CompanyDashboard() {
                             <p className="text-[10px] text-muted-foreground font-bold">{new Date(t.timestamp).toLocaleTimeString()}</p>
                           </div>
                         </div>
-                        <p className="font-black text-sm text-primary">+${t.totalAmount.toFixed(2)}</p>
+                        <p className="font-black text-sm text-primary">+{currencySymbol}{t.totalAmount.toFixed(2)}</p>
                       </div>
                     ))}
                     {(!transactions || transactions.length === 0) && (

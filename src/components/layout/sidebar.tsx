@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/components/auth-context';
@@ -12,7 +13,8 @@ import {
   Waves, 
   CalendarDays, 
   Wrench, 
-  Wallet 
+  Wallet,
+  Settings2
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -35,6 +37,7 @@ export function Sidebar() {
     { href: '/company/capital', icon: Wallet, label: 'Capital Control' },
     { href: '/company/reports', icon: BarChart3, label: 'Reports' },
     { href: '/company/viewers', icon: Users, label: 'Viewers' },
+    { href: '/company/settings', icon: Settings2, label: 'Settings' },
   ];
 
   const viewerLinks = [
@@ -47,7 +50,7 @@ export function Sidebar() {
     if (user?.role !== 'CompanyOwner' || !user?.enabledModules) return true;
 
     // Infrastructure modules are always visible
-    const coreHrefs = ['/company', '/company/capital', '/company/reports', '/company/viewers'];
+    const coreHrefs = ['/company', '/company/capital', '/company/reports', '/company/viewers', '/company/settings'];
     if (coreHrefs.includes(link.href)) return true;
 
     // Business unit check

@@ -17,31 +17,19 @@ import {
   DollarSign, 
   Calendar, 
   Ticket, 
-  Trophy, 
-  Truck, 
   Trash2, 
-  CheckCircle2, 
   CreditCard, 
   QrCode, 
-  Image as ImageIcon, 
   Wallet, 
   Banknote, 
-  ArrowRight, 
-  UserPlus, 
-  Barcode, 
   Scan, 
   Settings2, 
-  Power, 
   History, 
   XCircle, 
-  MoreVertical, 
-  Star, 
   RefreshCw, 
   Edit2, 
   ShieldCheck, 
-  ChevronRight, 
   Upload, 
-  Info, 
   Landmark, 
   AlertTriangle, 
   Lock 
@@ -55,11 +43,9 @@ import { Product, SaleTransaction, Coupon, Company, PaymentMethod, CapitalPurcha
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, Label } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -124,6 +110,8 @@ export default function MartPage() {
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: vouchers } = useCollection<Coupon>(vouchersQuery);
   const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+
+  const currencySymbol = companyDoc?.currencySymbol || '$';
 
   const activePurchases = useMemo(() => {
     if (!purchases) return [];
@@ -341,7 +329,7 @@ export default function MartPage() {
             </div>
             <div>
                <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p>
-               <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>${remainingBudget.toFixed(2)}</p>
+               <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>{currencySymbol}{remainingBudget.toFixed(2)}</p>
             </div>
           </Card>
         </div>
@@ -387,7 +375,7 @@ export default function MartPage() {
                       <CardContent className="p-6 flex justify-between items-center">
                         <div className="space-y-1">
                           <h3 className="font-black text-xl">{p.name}</h3>
-                          <p className="text-2xl font-black text-primary">${p.sellingPrice.toFixed(2)}</p>
+                          <p className="text-2xl font-black text-primary">{currencySymbol}{p.sellingPrice.toFixed(2)}</p>
                           <p className="text-[10px] text-muted-foreground font-black uppercase">Stock: {p.stock} {p.unit}</p>
                         </div>
                       </CardContent>
@@ -403,7 +391,7 @@ export default function MartPage() {
                       <div key={item.product.id} className="flex items-center justify-between p-4 rounded-2xl bg-secondary/10">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-black truncate">{item.product.name}</p>
-                          <p className="text-sm text-primary font-black">${(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
+                          <p className="text-sm text-primary font-black">{currencySymbol}{(item.product.sellingPrice * item.quantity).toFixed(2)}</p>
                         </div>
                         <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm">
                           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => updateQuantity(item.product.id, -1)}><Minus className="w-4 h-4" /></Button>
@@ -416,7 +404,7 @@ export default function MartPage() {
                   <CardFooter className="flex-col gap-6 p-8 border-t bg-secondary/5">
                     <div className="w-full flex justify-between items-end pt-2">
                       <span className="text-xs font-black uppercase text-muted-foreground mb-1">Payable Total</span>
-                      <span className="text-5xl font-black text-foreground tracking-tighter">${subtotal.toFixed(2)}</span>
+                      <span className="text-5xl font-black text-foreground tracking-tighter">{currencySymbol}{subtotal.toFixed(2)}</span>
                     </div>
                     <Button className="w-full h-16 text-xl font-black rounded-2xl shadow-xl" disabled={cart.length === 0} onClick={() => setShowCheckoutDialog(true)}>Initiate Checkout</Button>
                   </CardFooter>
@@ -428,9 +416,9 @@ export default function MartPage() {
               <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
                    <DialogTitle className="text-xs font-black uppercase tracking-widest opacity-80">Remaining Settlement</DialogTitle>
-                   <h2 className="text-6xl font-black tracking-tighter">${settlementDue.toFixed(2)}</h2>
+                   <h2 className="text-6xl font-black tracking-tighter">{currencySymbol}{settlementDue.toFixed(2)}</h2>
                    {voucherDiscount > 0 && (
-                     <p className="text-sm font-bold opacity-70 mt-2">Voucher Coverage: -${voucherDiscount.toFixed(2)}</p>
+                     <p className="text-sm font-bold opacity-70 mt-2">Voucher Coverage: -{currencySymbol}{voucherDiscount.toFixed(2)}</p>
                    )}
                 </div>
                 <div className="p-12 space-y-8">
@@ -467,7 +455,7 @@ export default function MartPage() {
                                   <p className="font-black text-xs">{v.customerName}</p>
                                   <p className="text-[9px] font-bold text-muted-foreground uppercase">{v.code}</p>
                                </div>
-                               <p className="font-black text-primary">${v.balance.toFixed(2)}</p>
+                               <p className="font-black text-primary">{currencySymbol}{v.balance.toFixed(2)}</p>
                             </div>
                           ))}
                        </div>
@@ -476,12 +464,12 @@ export default function MartPage() {
 
                   {paymentMethod === 'cash' && (
                     <div className="space-y-4">
-                      <Label className="text-[10px] font-black uppercase tracking-widest">Cash Received ($)</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest">Cash Received ({currencySymbol})</Label>
                       <Input type="number" className="h-14 rounded-2xl font-black text-2xl" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
                       {Number(cashReceived) >= settlementDue && (
                         <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/10 flex justify-between items-center">
                            <p className="text-[10px] font-black uppercase text-primary">Change Due</p>
-                           <p className="text-3xl font-black">${changeAmount.toFixed(2)}</p>
+                           <p className="text-3xl font-black">{currencySymbol}{changeAmount.toFixed(2)}</p>
                         </div>
                       )}
                     </div>
@@ -543,10 +531,10 @@ export default function MartPage() {
                               {t.referenceNumber && <p className="text-[10px] font-mono text-muted-foreground mt-1">Ref: {t.referenceNumber}</p>}
                            </td>
                            <td className="p-6">
-                              <p className="font-black text-foreground text-xl tracking-tighter">${t.totalAmount.toFixed(2)}</p>
+                              <p className="font-black text-foreground text-xl tracking-tighter">{currencySymbol}{t.totalAmount.toFixed(2)}</p>
                            </td>
                            <td className="p-6">
-                              <p className="font-black text-primary text-xl tracking-tighter">${t.profit.toFixed(2)}</p>
+                              <p className="font-black text-primary text-xl tracking-tighter">{currencySymbol}{t.profit.toFixed(2)}</p>
                            </td>
                            <td className="p-6 text-center">
                              <Button 
@@ -576,13 +564,13 @@ export default function MartPage() {
           </TabsContent>
 
           <TabsContent value="inventory" className="flex-1 overflow-auto">
-            <InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} remainingBudget={remainingBudget} />
+            <InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} remainingBudget={remainingBudget} currencySymbol={currencySymbol} />
           </TabsContent>
           <TabsContent value="coupons" className="flex-1 overflow-auto">
-            <CouponManager companyId={user?.companyId} companyDoc={companyDoc} />
+            <CouponManager companyId={user?.companyId} companyDoc={companyDoc} currencySymbol={currencySymbol} />
           </TabsContent>
           <TabsContent value="profits" className="flex-1 overflow-auto">
-            <ProfitAnalytics transactions={martTransactions} />
+            <ProfitAnalytics transactions={martTransactions} currencySymbol={currencySymbol} />
           </TabsContent>
           <TabsContent value="billing" className="flex-1 overflow-auto">
             <BillingManager companyId={user?.companyId} companyDoc={companyDoc} />
@@ -590,7 +578,6 @@ export default function MartPage() {
         </Tabs>
       </main>
 
-      {/* Supervisor Reversal Authorization Dialog */}
       <Dialog open={isReverseDialogOpen} onOpenChange={setIsReverseDialogOpen}>
         <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
           <div className="bg-destructive p-10 text-destructive-foreground">
@@ -606,7 +593,7 @@ export default function MartPage() {
             <div className="p-4 bg-secondary/10 rounded-2xl space-y-1">
                <p className="text-[10px] font-black uppercase text-muted-foreground">Pending Reversal</p>
                <p className="font-bold text-sm">Ref: #{pendingReverseTrans?.id.split('-')[0].toUpperCase()}</p>
-               <p className="font-black text-destructive">${pendingReverseTrans?.totalAmount.toFixed(2)}</p>
+               <p className="font-black text-destructive">{currencySymbol}{pendingReverseTrans?.totalAmount.toFixed(2)}</p>
             </div>
             <div className="space-y-2">
               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Supervisor Authorization Key</Label>
@@ -631,7 +618,7 @@ export default function MartPage() {
   );
 }
 
-function InventoryManager({ companyId, products, isBudgetActive, remainingBudget }: { companyId?: string, products: Product[] | null, isBudgetActive: boolean, remainingBudget: number }) {
+function InventoryManager({ companyId, products, isBudgetActive, remainingBudget, currencySymbol }: { companyId?: string, products: Product[] | null, isBudgetActive: boolean, remainingBudget: number, currencySymbol: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -747,7 +734,6 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
     setIsProcessing(true);
     const id = editingProduct?.id || crypto.randomUUID();
     
-    // When editing, preserve locked fields
     const unit = editingProduct ? editingProduct.unit : formData.get('unit') as string;
     const price = editingProduct ? editingProduct.sellingPrice : Number(formData.get('price'));
     const ipu = editingProduct ? editingProduct.itemsPerUnit : Number(formData.get('ipu') || 1);
@@ -776,13 +762,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
             description: `Initial Stock Registry: ${stock}x ${productData.name}`,
             timestamp: new Date().toISOString()
           };
-          addDoc(purchaseRef, purchaseData).catch(async (err) => {
-            errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: purchaseRef.path,
-              operation: 'create',
-              requestResourceData: purchaseData
-            }));
-          });
+          addDoc(purchaseRef, purchaseData);
         }
         toast({ title: editingProduct ? "Product Updated" : "Product Registered" });
         setIsAddDialogOpen(false);
@@ -815,7 +795,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
       <div className="lg:col-span-1">
         <Card className={cn(
           "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0",
-          !canProcure && "grayscale opacity-80"
+          !canProcure && !editingProduct && "grayscale opacity-80"
         )}>
           <div className="flex items-center gap-2 mb-6">
             <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
@@ -845,7 +825,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                     disabled={!canProcure}
                     className="pl-10 h-10 rounded-xl bg-secondary/5 border-none text-xs font-bold"
                     value={refillSearch}
-                    onChange={(e) => setRefillSearch(e.target.value)}
+                    onChange={(e) => setRegistrySearch(e.target.value)}
                   />
                 </div>
                 <ScrollArea className="h-48 border rounded-xl p-2 bg-secondary/5">
@@ -895,12 +875,12 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase tracking-tighter">Buying Cost per Unit ($)</Label>
+                    <Label className="text-[10px] font-black uppercase tracking-tighter">Buying Cost per Unit ({currencySymbol})</Label>
                     <Input type="number" step="0.01" value={costPerUnit} onChange={(e) => setCostPerUnit(e.target.value)} className="h-10 rounded-lg font-bold" />
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase tracking-tighter text-primary">New Retail Price per Item ($)</Label>
+                    <Label className="text-[10px] font-black uppercase tracking-tighter text-primary">New Retail Price per Item ({currencySymbol})</Label>
                     <Input type="number" step="0.01" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} className="h-10 rounded-lg font-bold border-primary/20" />
                   </div>
                 </div>
@@ -909,7 +889,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                    <div className="flex justify-between items-center text-[10px] font-black uppercase border-t pt-2 mt-2">
                       <span className="text-muted-foreground">Aggregate Liability</span>
                       <span className={cn("font-black text-lg", totalRefillCost > remainingBudget ? "text-destructive" : "text-primary")}>
-                        ${totalRefillCost.toFixed(2)}
+                        {currencySymbol}{totalRefillCost.toFixed(2)}
                       </span>
                    </div>
                    {totalRefillCost > remainingBudget && (
@@ -964,11 +944,11 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
-                     <Label className="text-[10px] font-black uppercase">Unit Cost ($)</Label>
+                     <Label className="text-[10px] font-black uppercase">Unit Cost ({currencySymbol})</Label>
                      <Input name="cost" type="number" step="0.01" defaultValue={editingProduct?.costPrice} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                    <div className="space-y-1.5">
-                     <Label className="text-[10px] font-black uppercase">Selling Price ($)</Label>
+                     <Label className="text-[10px] font-black uppercase">Selling Price ({currencySymbol})</Label>
                      <Input name="price" type="number" step="0.01" defaultValue={editingProduct?.sellingPrice} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                  </div>
@@ -1005,10 +985,10 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                   <p className="text-[10px] font-bold text-muted-foreground uppercase">{p.barcode || 'NO BARCODE'}</p>
                 </td>
                 <td className="p-6"><Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-bold">{p.stock} {p.unit}</Badge></td>
-                <td className="p-6 font-bold text-muted-foreground">${p.costPrice.toFixed(2)}</td>
-                <td className="p-6 font-bold text-foreground">${p.sellingPrice.toFixed(2)}</td>
-                <td className="p-6 font-black text-primary">${(p.sellingPrice - p.costPrice).toFixed(2)}</td>
-                <td className="p-6 text-right font-black text-foreground text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
+                <td className="p-6 font-bold text-muted-foreground">{currencySymbol}{p.costPrice.toFixed(2)}</td>
+                <td className="p-6 font-bold text-foreground">{currencySymbol}{p.sellingPrice.toFixed(2)}</td>
+                <td className="p-6 font-black text-primary">{currencySymbol}{(p.sellingPrice - p.costPrice).toFixed(2)}</td>
+                <td className="p-6 text-right font-black text-foreground text-lg">{currencySymbol}{(p.stock * p.costPrice).toFixed(2)}</td>
                 <td className="p-6 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setIsAddDialogOpen(true); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
@@ -1024,7 +1004,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
   );
 }
 
-function CouponManager({ companyId, companyDoc }: { companyId?: string, companyDoc: Company | null }) {
+function CouponManager({ companyId, companyDoc, currencySymbol }: { companyId?: string, companyDoc: Company | null, currencySymbol: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -1068,7 +1048,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
   const addToBatch = () => {
     if (!inputVal || Number(inputVal) <= 0 || !inputQty || Number(inputQty) <= 0) {
-      toast({ title: "Invalid Input", description: "Value and quantity must be greater than zero.", variant: "destructive" });
+      toast({ title: "Invalid Input", variant: "destructive" });
       return;
     }
     setBatch([...batch, { id: crypto.randomUUID(), value: Number(inputVal), qty: Number(inputQty) }]);
@@ -1076,9 +1056,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     setInputQty('1');
   };
 
-  const removeFromBatch = (id: string) => {
-    setBatch(batch.filter(item => item.id !== id));
-  };
+  const removeFromBatch = (id: string) => setBatch(batch.filter(item => item.id !== id));
 
   const subtotal = batch.reduce((acc, item) => acc + (item.value * item.qty), 0);
   const cashChange = purchaseMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - subtotal) : 0;
@@ -1119,16 +1097,10 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
     creationBatch.forEach(({ id, data }) => {
       const docRef = doc(firestore, 'companies', companyId, 'coupons', id);
-      setDoc(docRef, data).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: docRef.path,
-          operation: 'create',
-          requestResourceData: data
-        }));
-      });
+      setDoc(docRef, data);
     });
 
-    toast({ title: "Liability Deposit Logged", description: `Stored value balances issued for ${customerName}.` });
+    toast({ title: "Liability Deposit Logged" });
     setCustomerName(''); 
     setCustomerCompany(''); 
     setBatch([]); 
@@ -1139,9 +1111,8 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
   const handleRevokeVoucher = (id: string) => {
     if (!firestore || !companyId) return;
-    if (!confirm("Revoke this stored value card? This action is permanent.")) return;
-    const docRef = doc(firestore, 'companies', companyId, 'coupons', id);
-    deleteDocumentNonBlocking(docRef);
+    if (!confirm("Revoke this voucher?")) return;
+    deleteDocumentNonBlocking(doc(firestore, 'companies', companyId, 'coupons', id));
     toast({ title: "Voucher Revoked" });
   };
 
@@ -1154,21 +1125,11 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           </div>
           <div className="space-y-1 relative z-10">
             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Coupon Bank: Stored-Value Liability</p>
-            <h4 className="text-4xl font-black tracking-tighter text-primary">${bankStats.totalLiability.toFixed(2)}</h4>
-            
+            <h4 className="text-4xl font-black tracking-tighter text-primary">{currencySymbol}{bankStats.totalLiability.toFixed(2)}</h4>
             <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-secondary/20">
-               <div>
-                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">Cash Vault</p>
-                  <p className="text-sm font-black text-foreground">${bankStats.cash.toFixed(2)}</p>
-               </div>
-               <div>
-                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">Bank (Card)</p>
-                  <p className="text-sm font-black text-foreground">${bankStats.card.toFixed(2)}</p>
-               </div>
-               <div>
-                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">DuitNow Digital</p>
-                  <p className="text-sm font-black text-foreground">${bankStats.duitnow.toFixed(2)}</p>
-               </div>
+               <div><p className="text-[8px] font-black uppercase text-muted-foreground mb-1">Cash Vault</p><p className="text-sm font-black">{currencySymbol}{bankStats.cash.toFixed(2)}</p></div>
+               <div><p className="text-[8px] font-black uppercase text-muted-foreground mb-1">Bank (Card)</p><p className="text-sm font-black">{currencySymbol}{bankStats.card.toFixed(2)}</p></div>
+               <div><p className="text-[8px] font-black uppercase text-muted-foreground mb-1">DuitNow Digital</p><p className="text-sm font-black">{currencySymbol}{bankStats.duitnow.toFixed(2)}</p></div>
             </div>
           </div>
         </Card>
@@ -1178,170 +1139,90 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           </div>
           <div className="space-y-1 relative z-10">
             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Coupon Bank: Lifetime Value Issued</p>
-            <h4 className="text-4xl font-black tracking-tighter text-foreground">${bankStats.totalIssued.toFixed(2)}</h4>
-            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Cumulative volume of initial credit ever generated by your business.</p>
+            <h4 className="text-4xl font-black tracking-tighter text-foreground">{currencySymbol}{bankStats.totalIssued.toFixed(2)}</h4>
+            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Cumulative volume of initial credit ever generated.</p>
           </div>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-1">
-          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col sticky top-0 max-height-[calc(100vh-100px)]">
-            <div className="p-8 pb-4">
-              <h3 className="text-xl font-black">Batch Issue Stored Value</h3>
-            </div>
-            <ScrollArea className="flex-1 px-8 pb-8">
-              <div className="space-y-6">
+          <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0">
+            <h3 className="text-xl font-black mb-6">Batch Issue Vouchers</h3>
+            <div className="space-y-6">
                 <div className="space-y-4">
-                   <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-                      <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
-                   </div>
-                   <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
-                      <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
-                   </div>
+                   <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Customer Name</Label><Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" /></div>
+                   <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Global Expiry</Label><Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" /></div>
                 </div>
-
                 <Separator />
-
                 <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
-                   <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                         <Label className="text-[9px] font-black uppercase">Value ($)</Label>
-                         <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label className="text-[9px] font-black uppercase">Qty</Label>
-                         <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
-                      </div>
+                      <div className="space-y-1.5"><Label className="text-[9px] font-black uppercase">Value ({currencySymbol})</Label><Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" /></div>
+                      <div className="space-y-1.5"><Label className="text-[9px] font-black uppercase">Qty</Label><Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" /></div>
                    </div>
-                   <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
-                      <Plus className="w-3.5 h-3.5" /> Add to Batch
-                   </Button>
+                   <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2"><Plus className="w-3.5 h-3.5" /> Add to Batch</Button>
                 </div>
-
                 {batch.length > 0 && (
-                  <div className="space-y-3 animate-in fade-in zoom-in-95">
-                     <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
-                     <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                  <div className="space-y-3">
+                     <div className="space-y-2 max-h-40 overflow-auto">
                         {batch.map(item => (
-                          <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
-                             <div>
-                                <p className="font-black text-xs">${item.value.toFixed(2)}</p>
-                                <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
-                             </div>
-                             <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
-                                <Trash2 className="w-3.5 h-3.5" />
-                             </Button>
+                          <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group">
+                             <div><p className="font-black text-xs">{currencySymbol}{item.value.toFixed(2)}</p><p className="text-[9px] font-bold text-muted-foreground">Quantity: {item.qty}</p></div>
+                             <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive"><Trash2 className="w-3.5 h-3.5" /></Button>
                           </div>
                         ))}
                      </div>
-                     <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
-                        <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
-                     </div>
+                     <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center"><span className="text-[10px] font-black text-primary">Batch Subtotal</span><span className="text-lg font-black">{currencySymbol}{subtotal.toFixed(2)}</span></div>
                   </div>
                 )}
-
                 <Separator />
-
                 <div className="space-y-4">
-                   <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
-                   <RadioGroup value={purchaseMethod} onValueChange={(v) => {
-                     setPurchaseMethod(v as PaymentMethod);
-                     setReferenceNumber('');
-                     setCashReceived('');
-                   }} className="grid grid-cols-3 gap-2">
+                   <Label className="text-[10px] font-black uppercase">Payment Method</Label>
+                   <RadioGroup value={purchaseMethod} onValueChange={(v) => { setPurchaseMethod(v as PaymentMethod); setReferenceNumber(''); setCashReceived(''); }} className="grid grid-cols-3 gap-2">
                       <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
                       <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
                       <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
                    </RadioGroup>
                 </div>
-
                 {purchaseMethod === 'cash' && (
-                  <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
-                     <div className="space-y-1">
-                        <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
-                        <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
-                     </div>
-                     <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                        <span>Balance to Return</span>
-                        <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
-                     </div>
+                  <div className="p-4 bg-secondary/10 rounded-2xl space-y-3">
+                     <div className="space-y-1"><Label className="text-[9px] font-black uppercase">Amount Received ({currencySymbol})</Label><Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" /></div>
+                     <div className="flex justify-between items-center text-[10px] font-black uppercase"><span>Balance to Return</span><span className="text-primary text-sm">{currencySymbol}{cashChange.toFixed(2)}</span></div>
                   </div>
                 )}
-
                 {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
-                  <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
-                     {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                       <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
-                          <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto mb-2 opacity-80" />
-                          <p className="text-[8px] font-black text-primary uppercase">Scan for Liability Deposit</p>
-                       </div>
-                     )}
-                     <div className="space-y-1">
-                        <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
-                        <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
-                     </div>
-                  </div>
+                  <div className="space-y-1"><Label className="text-[9px] font-black uppercase">Reference No.</Label><Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" /></div>
                 )}
-
-                <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
-                   {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
-                </Button>
-              </div>
-            </ScrollArea>
+                <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>Issue Batch Card(s)</Button>
+            </div>
           </Card>
         </div>
 
         <div className="lg:col-span-3 space-y-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary w-5 h-5" />
-            <Input 
-              placeholder="SEARCH VOUCHER REGISTRY (NAME OR CODE)..." 
-              className="pl-16 h-16 rounded-[24px] border-none bg-white shadow-lg text-lg font-black"
-              value={registrySearch}
-              onChange={(e) => setRegistrySearch(e.target.value)}
-            />
+            <Input placeholder="SEARCH VOUCHER REGISTRY..." className="pl-16 h-16 rounded-[24px] border-none bg-white shadow-lg text-lg font-black" value={registrySearch} onChange={(e) => setRegistrySearch(e.target.value)} />
           </div>
-
           <div className="bg-white rounded-[32px] border overflow-hidden flex flex-col h-fit">
-            <CardHeader className="bg-secondary/10 border-b p-6">
-               <CardTitle className="text-lg font-black flex items-center gap-2">
-                  <Ticket className="w-5 h-5 text-primary" /> Issued Stored Balances
-               </CardTitle>
-               <CardDescription className="font-bold">Active customer accounts and card status</CardDescription>
-            </CardHeader>
             <table className="w-full text-sm text-left">
-              <thead className="bg-secondary/5">
+              <thead className="bg-secondary/20">
                 <tr>
-                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
-                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">System ID</th>
-                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Initial</th>
-                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Balance</th>
-                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Status</th>
-                  <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
+                  <th className="p-6 font-black uppercase text-[10px]">Customer / Account</th>
+                  <th className="p-6 font-black uppercase text-[10px]">System ID</th>
+                  <th className="p-6 font-black uppercase text-[10px]">Initial</th>
+                  <th className="p-6 font-black uppercase text-[10px]">Net Balance</th>
+                  <th className="p-6 font-black uppercase text-[10px]">Status</th>
+                  <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y">{filteredCoupons.map(c => (
                 <tr key={c.id} className="hover:bg-secondary/5 transition-colors">
-                  <td className="p-6">
-                     <p className="font-black text-foreground">{c.customerName}</p>
-                     <p className="text-[9px] font-bold text-muted-foreground uppercase">{c.code}</p>
-                  </td>
-                  <td className="p-6">
-                     <Badge variant="outline" className="font-black text-[10px] bg-secondary/10 text-primary border-primary/20">
-                        VAL{c.initialValue}
-                     </Badge>
-                  </td>
-                  <td className="p-6 font-bold text-muted-foreground">${c.initialValue.toFixed(2)}</td>
-                  <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
+                  <td className="p-6"><p className="font-black">{c.customerName}</p><p className="text-[9px] font-bold text-muted-foreground">{c.code}</p></td>
+                  <td className="p-6"><Badge variant="outline" className="font-black text-[10px] bg-secondary/10">VAL{c.initialValue}</Badge></td>
+                  <td className="p-6 font-bold">{currencySymbol}{c.initialValue.toFixed(2)}</td>
+                  <td className="p-6 font-black text-primary text-lg">{currencySymbol}{c.balance.toFixed(2)}</td>
                   <td className="p-6"><Badge variant={c.status === 'exhausted' ? "outline" : "secondary"} className="uppercase font-black text-[9px]">{c.status}</Badge></td>
-                  <td className="p-6 text-center">
-                     <Button variant="ghost" size="icon" onClick={() => handleRevokeVoucher(c.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
-                  </td>
+                  <td className="p-6 text-center"><Button variant="ghost" size="icon" onClick={() => handleRevokeVoucher(c.id)} className="text-destructive"><Trash2 className="w-4 h-4" /></Button></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -1352,7 +1233,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   );
 }
 
-function ProfitAnalytics({ transactions }: { transactions: SaleTransaction[] }) {
+function ProfitAnalytics({ transactions, currencySymbol }: { transactions: SaleTransaction[], currencySymbol: string }) {
   const chartData = useMemo(() => {
     const daily: Record<string, { date: string, revenue: number, profit: number }> = {};
     transactions.forEach(t => {
@@ -1370,21 +1251,18 @@ function ProfitAnalytics({ transactions }: { transactions: SaleTransaction[] }) 
   return (
     <div className="space-y-8 overflow-auto pb-12">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} />
-         <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} color="text-primary" />
+         <ReportStat label="Aggregate Revenue" value={`${currencySymbol}${totalRevenue.toFixed(2)}`} />
+         <ReportStat label="Realized Profit" value={`${currencySymbol}${totalProfit.toFixed(2)}`} color="text-primary" />
          <ReportStat label="Net Yield" value={`${((totalProfit / (totalRevenue || 1)) * 100).toFixed(1)}%`} />
       </div>
       <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
-        <CardHeader className="px-0 pt-0 mb-8"><CardTitle className="text-2xl font-black">7-Day Trajectory</CardTitle></CardHeader>
         <div className="h-[350px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorRev" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
-              </defs>
+              <defs><linearGradient id="colorRev" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} tickFormatter={(v) => `${currencySymbol}${v}`} />
               <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
               <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRev)" strokeWidth={4} name="Revenue" />
               <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={4} strokeDasharray="5 5" name="Profit" />
@@ -1415,7 +1293,6 @@ function BillingManager({ companyId, companyDoc }: any) {
       <Card className="border-none shadow-sm rounded-[32px] bg-white p-10 text-center space-y-8">
         <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-8 h-8" /></div>
         <h2 className="text-2xl font-black">Digital Gateway</h2>
-        <p className="text-sm text-muted-foreground font-medium">Configure business-wide DuitNow QR for digital settlements.</p>
         {companyDoc?.duitNowQr ? (
           <div className="relative group mx-auto w-fit">
             <Image src={companyDoc.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
