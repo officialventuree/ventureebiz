@@ -11,7 +11,7 @@ import {
   ShieldAlert, Layers, TrendingUp, 
   CreditCard, Banknote, QrCode, 
   Calendar, CheckCircle2, 
-  ArrowRight, Landmark, Settings2, Briefcase
+  ArrowRight, Landmark, Settings2, Briefcase, Globe
 } from 'lucide-react';
 import { createCompanyAction, renewCompanyAction } from '@/app/actions';
 import { useState } from 'react';
@@ -21,7 +21,7 @@ import {
   PricingCycle, ModulePricing, PaymentMethod 
 } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,12 +47,41 @@ const DEFAULT_CYCLES: PricingCycle[] = [
   { id: 'yearly', name: 'Yearly', durationInDays: 365 },
 ];
 
+const WORLD_CURRENCIES = [
+  { code: 'USD', symbol: '$', name: 'USD - US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'EUR - Euro' },
+  { code: 'GBP', symbol: '£', name: 'GBP - British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'JPY - Japanese Yen' },
+  { code: 'MYR', symbol: 'RM', name: 'MYR - Malaysian Ringgit' },
+  { code: 'AUD', symbol: 'A$', name: 'AUD - Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'CAD - Canadian Dollar' },
+  { code: 'CHF', symbol: 'CHF', name: 'CHF - Swiss Franc' },
+  { code: 'CNY', symbol: '¥', name: 'CNY - Chinese Yuan' },
+  { code: 'INR', symbol: '₹', name: 'INR - Indian Rupee' },
+  { code: 'SGD', symbol: 'S$', name: 'SGD - Singapore Dollar' },
+  { code: 'NZD', symbol: 'NZ$', name: 'NZD - New Zealand Dollar' },
+  { code: 'BRL', symbol: 'R$', name: 'BRL - Brazilian Real' },
+  { code: 'ZAR', symbol: 'R', name: 'ZAR - South African Rand' },
+  { code: 'IDR', symbol: 'Rp', name: 'IDR - Indonesian Rupiah' },
+  { code: 'THB', symbol: '฿', name: 'THB - Thai Baht' },
+  { code: 'PHP', symbol: '₱', name: 'PHP - Philippine Peso' },
+  { code: 'VND', symbol: '₫', name: 'VND - Vietnamese Dong' },
+  { code: 'KRW', symbol: '₩', name: 'KRW - South Korean Won' },
+  { code: 'SAR', symbol: 'SR', name: 'SAR - Saudi Riyal' },
+  { code: 'AED', symbol: 'DH', name: 'AED - UAE Dirham' },
+];
+
 export default function AdminDashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   
+  // Platform Config
+  const configRef = useMemoFirebase(() => (!firestore ? null : doc(firestore, 'platform_config', 'localization')), [firestore]);
+  const { data: platformConfig } = useDoc<any>(configRef);
+  const currencySymbol = platformConfig?.currencySymbol || '$';
+
   // New Company / Renewal Form State
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>(['mart', 'laundry', 'rent', 'services']);
   const [selectedCycle, setSelectedCycle] = useState<string>('monthly');
@@ -121,7 +150,7 @@ export default function AdminDashboard() {
           paymentTransactionId: result.transaction.id,
           companyId: result.company.id,
           amount: result.transaction.amount,
-          currencyId: 'USD',
+          currencyId: platformConfig?.currencyCode || 'USD',
           entryDate: new Date().toISOString(),
           type: 'InitialSubscription'
         });
@@ -166,7 +195,7 @@ export default function AdminDashboard() {
           paymentTransactionId: result.transaction.id,
           companyId: company.id,
           amount: result.transaction.amount,
-          currencyId: 'USD',
+          currencyId: platformConfig?.currencyCode || 'USD',
           entryDate: new Date().toISOString(),
           type: 'Renewal'
         });
@@ -269,7 +298,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="bg-primary/5 p-6 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
                        <span className="text-[10px] font-black text-primary uppercase">Total Value</span>
-                       <span className="text-2xl font-black">${totalDue.toFixed(2)}</span>
+                       <span className="text-2xl font-black">{currencySymbol}{totalDue.toFixed(2)}</span>
                     </div>
                     <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-xl" disabled={selectedModules.length === 0}>
                       Proceed to Checkout
@@ -370,7 +399,7 @@ export default function AdminDashboard() {
                                     </div>
                                     <div className="bg-primary/5 p-6 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
                                        <span className="text-[10px] font-black text-primary uppercase">Total Renewal Fee</span>
-                                       <span className="text-2xl font-black">${totalDue.toFixed(2)}</span>
+                                       <span className="text-2xl font-black">{currencySymbol}{totalDue.toFixed(2)}</span>
                                     </div>
                                     <Button className="w-full h-14 rounded-2xl font-black shadow-xl" onClick={() => handleRenew(company)}>Apply Renewal</Button>
                                  </div>
@@ -385,15 +414,15 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="modules">
-               <ModulePricingConfig pricings={pricings} />
+               <ModulePricingConfig pricings={pricings} currencySymbol={currencySymbol} />
             </TabsContent>
 
             <TabsContent value="profits">
-               <PlatformProfits profits={platformProfits} />
+               <PlatformProfits profits={platformProfits} currencySymbol={currencySymbol} />
             </TabsContent>
 
             <TabsContent value="billing">
-               <PlatformBillingSettings />
+               <PlatformBillingSettings platformConfig={platformConfig} />
             </TabsContent>
           </Tabs>
         </div>
@@ -404,7 +433,7 @@ export default function AdminDashboard() {
          <DialogContent className="rounded-[40px] max-w-2xl p-0 overflow-hidden bg-white border-none shadow-2xl">
             <div className="bg-primary p-12 text-primary-foreground text-center">
                <DialogTitle className="text-xs font-black uppercase opacity-80 mb-2">Checkout Verification</DialogTitle>
-               <h2 className="text-7xl font-black tracking-tighter">${totalDue.toFixed(2)}</h2>
+               <h2 className="text-7xl font-black tracking-tighter">{currencySymbol}{totalDue.toFixed(2)}</h2>
             </div>
             <div className="p-12 space-y-10">
                <div className="space-y-4">
@@ -419,13 +448,13 @@ export default function AdminDashboard() {
                {paymentMethod === 'cash' && (
                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
                     <div className="space-y-2">
-                       <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Cash Received ($)</Label>
+                       <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Cash Received ({currencySymbol})</Label>
                        <Input type="number" className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none text-center" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
                     </div>
                     {Number(cashReceived) >= totalDue && (
                       <div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center">
                          <span className="text-[10px] font-black uppercase text-primary">Balance to Return</span>
-                         <span className="text-5xl font-black">${changeDue.toFixed(2)}</span>
+                         <span className="text-5xl font-black">{currencySymbol}{changeDue.toFixed(2)}</span>
                       </div>
                     )}
                  </div>
@@ -448,7 +477,7 @@ export default function AdminDashboard() {
   );
 }
 
-function ModulePricingConfig({ pricings }: { pricings: ModulePricing[] | null }) {
+function ModulePricingConfig({ pricings, currencySymbol }: { pricings: ModulePricing[] | null, currencySymbol: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [editing, setEditing] = useState<string | null>(null);
@@ -462,7 +491,7 @@ function ModulePricingConfig({ pricings }: { pricings: ModulePricing[] | null })
       moduleId,
       pricingCycleId: cycleId,
       price: Number(editPrice),
-      currencyId: 'USD'
+      currencyId: 'GLOBAL'
     };
     await setDoc(doc(firestore, 'module_pricings', id), pricing);
     toast({ title: "Pricing Updated" });
@@ -497,7 +526,7 @@ function ModulePricingConfig({ pricings }: { pricings: ModulePricing[] | null })
                            </div>
                          ) : (
                            <div className="group flex flex-col items-center gap-1 cursor-pointer" onClick={() => { setEditing(id); setEditPrice(price.toString()); }}>
-                              <p className="font-black text-xl text-primary">${price.toFixed(2)}</p>
+                              <p className="font-black text-xl text-primary">{currencySymbol}{price.toFixed(2)}</p>
                               <p className="text-[10px] font-bold text-muted-foreground uppercase group-hover:text-primary transition-colors">Edit Price</p>
                            </div>
                          )}
@@ -512,15 +541,15 @@ function ModulePricingConfig({ pricings }: { pricings: ModulePricing[] | null })
   );
 }
 
-function PlatformProfits({ profits }: { profits: PlatformProfitEntry[] | null }) {
+function PlatformProfits({ profits, currencySymbol }: { profits: PlatformProfitEntry[] | null, currencySymbol: string }) {
   const totalRevenue = profits?.reduce((acc, p) => acc + p.amount, 0) || 0;
   
   return (
     <div className="space-y-8">
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <ReportStat label="Platform Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={Landmark} />
+          <ReportStat label="Platform Revenue" value={`${currencySymbol}${totalRevenue.toFixed(2)}`} icon={Landmark} />
           <ReportStat label="Active Partners" value="12" icon={Building2} color="text-primary" />
-          <ReportStat label="Avg. MRR" value={`$${(totalRevenue / 12).toFixed(2)}`} icon={TrendingUp} />
+          <ReportStat label="Avg. MRR" value={`${currencySymbol}${(totalRevenue / 12).toFixed(2)}`} icon={TrendingUp} />
        </div>
 
        <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden">
@@ -543,7 +572,7 @@ function PlatformProfits({ profits }: { profits: PlatformProfitEntry[] | null })
                      <td className="p-6 font-bold">{new Date(p.entryDate).toLocaleString()}</td>
                      <td className="p-6"><Badge variant="outline" className="font-black uppercase text-[9px]">{p.type}</Badge></td>
                      <td className="p-6 font-mono text-[10px]">{p.companyId}</td>
-                     <td className="p-6 text-right font-black text-primary text-lg">${p.amount.toFixed(2)}</td>
+                     <td className="p-6 text-right font-black text-primary text-lg">{currencySymbol}{p.amount.toFixed(2)}</td>
                   </tr>
                 ))}
              </tbody>
@@ -553,29 +582,84 @@ function PlatformProfits({ profits }: { profits: PlatformProfitEntry[] | null })
   );
 }
 
-function PlatformBillingSettings() {
+function PlatformBillingSettings({ platformConfig }: { platformConfig: any }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+
+  const handleCurrencyChange = async (code: string) => {
+    if (!firestore) return;
+    const selected = WORLD_CURRENCIES.find(c => c.code === code);
+    if (!selected) return;
+
+    const localizationRef = doc(firestore, 'platform_config', 'localization');
+    await setDoc(localizationRef, {
+      currencyCode: selected.code,
+      currencySymbol: selected.symbol,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    toast({ title: "Localization Updated", description: `Platform currency set to ${selected.code} (${selected.symbol})` });
+  };
+
+  const handleUpload = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setDoc(doc(firestore, 'platform_config', 'localization'), { duitNowQr: reader.result as string }, { merge: true });
+      toast({ title: "Platform Gateway Updated" });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div className="max-w-xl mx-auto py-12">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 py-12 max-w-5xl mx-auto">
        <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 text-center space-y-8">
           <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-10 h-10" /></div>
           <h2 className="text-3xl font-black tracking-tight">Platform Gateway</h2>
           <p className="text-sm text-muted-foreground font-medium">Configure the DuitNow QR where partners will settle their dashboard subscription fees.</p>
           
-          <label className="w-full h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/20 transition-all gap-4 border-secondary">
-             <Plus className="w-10 h-10 text-primary" />
-             <p className="text-xs font-black uppercase tracking-widest">Upload Platform QR Code</p>
-             <input type="file" className="hidden" accept="image/*" />
-          </label>
+          {platformConfig?.duitNowQr ? (
+            <div className="relative group mx-auto w-fit">
+              <Image src={platformConfig.duitNowQr} alt="QR" width={200} height={200} className="rounded-3xl border-4" />
+              <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity">
+                 <Upload className="text-white w-8 h-8" />
+                 <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+              </label>
+            </div>
+          ) : (
+            <label className="w-full h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/20 transition-all gap-4 border-secondary">
+               <Plus className="w-10 h-10 text-primary" />
+               <p className="text-xs font-black uppercase tracking-widest">Upload Platform QR Code</p>
+               <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+            </label>
+          )}
+       </Card>
 
-          <div className="space-y-4 pt-4">
-             <Label className="text-[10px] font-black uppercase text-muted-foreground block">Operating Currency</Label>
-             <Select defaultValue="USD">
-                <SelectTrigger className="h-14 rounded-2xl bg-secondary/10 border-none font-black"><SelectValue /></SelectTrigger>
+       <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 text-center space-y-8">
+          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><Globe className="w-10 h-10" /></div>
+          <h2 className="text-3xl font-black tracking-tight">Platform Localization</h2>
+          <p className="text-sm text-muted-foreground font-medium">Define the global operating currency for all partner transactions and SaaS billing.</p>
+          
+          <div className="space-y-4 pt-4 text-left">
+             <Label className="text-[10px] font-black uppercase text-muted-foreground block px-1 tracking-widest">Selected Operating Currency</Label>
+             <Select value={platformConfig?.currencyCode || 'USD'} onValueChange={handleCurrencyChange}>
+                <SelectTrigger className="h-16 rounded-2xl bg-secondary/10 border-none font-black text-lg px-6"><SelectValue /></SelectTrigger>
                 <SelectContent className="rounded-2xl font-black">
-                   <SelectItem value="USD">USD - US Dollar ($)</SelectItem>
-                   <SelectItem value="MYR">MYR - Malaysian Ringgit (RM)</SelectItem>
+                   {WORLD_CURRENCIES.map(curr => (
+                     <SelectItem key={curr.code} value={curr.code}>{curr.name} ({curr.symbol})</SelectItem>
+                   ))}
                 </SelectContent>
              </Select>
+             <p className="text-[10px] font-bold text-muted-foreground italic px-1 mt-2">Note: Changing this will update the symbol shown on all financial statements platform-wide.</p>
+          </div>
+
+          <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/10 flex items-center gap-4 text-left">
+             <ShieldCheck className="w-8 h-8 text-primary" />
+             <div>
+                <p className="text-[10px] font-black uppercase text-primary tracking-widest">Financial Guardrail</p>
+                <p className="text-xs font-bold text-muted-foreground">Currency settings are enforced globally across all SaaS tiers.</p>
+             </div>
           </div>
        </Card>
     </div>
