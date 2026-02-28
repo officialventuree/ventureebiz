@@ -163,7 +163,7 @@ export default function MartPage() {
       module: 'mart',
       totalAmount: subtotal, 
       profit: totalProfit, 
-      totalCost: totalCost, // Recorded for capital claim loop
+      totalCost: totalCost, 
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || null,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
@@ -710,9 +710,18 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   const [cashReceived, setCashReceived] = useState<number | string>('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [registrySearch, setRegistrySearch] = useState('');
 
   const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
+
+  const filteredCoupons = useMemo(() => {
+    if (!coupons) return [];
+    return coupons.filter(c => 
+      c.customerName.toLowerCase().includes(registrySearch.toLowerCase()) || 
+      c.code.toLowerCase().includes(registrySearch.toLowerCase())
+    ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [coupons, registrySearch]);
 
   const uniqueVoucherTypes = useMemo(() => {
     if (!coupons) return [];
@@ -781,7 +790,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
             expiryDate: expiry, 
             status: 'active',
             customerName,
-            customerCompany: customerCompany || undefined,
+            customerCompany: customerCompany || null,
             createdAt: new Date().toISOString(),
             paymentMethod: purchaseMethod 
           };
@@ -972,52 +981,64 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           </Card>
         </div>
 
-        <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden flex flex-col h-fit">
-          <CardHeader className="bg-secondary/10 border-b p-6">
-             <CardTitle className="text-lg font-black flex items-center gap-2">
-                <Ticket className="w-5 h-5 text-primary" /> Issued Stored Balances
-             </CardTitle>
-             <CardDescription className="font-bold">Active customer accounts and card status</CardDescription>
-          </CardHeader>
-          <table className="w-full text-sm text-left">
-            <thead className="bg-secondary/5">
-              <tr>
-                <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
-                <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">System ID</th>
-                <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Initial</th>
-                <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Balance</th>
-                <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Status</th>
-                <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">{coupons?.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => (
-              <tr key={c.id} className="hover:bg-secondary/5 transition-colors">
-                <td className="p-6">
-                   <p className="font-black text-foreground">{c.customerName}</p>
-                   <p className="text-[9px] font-bold text-muted-foreground uppercase">{c.code}</p>
-                </td>
-                <td className="p-6">
-                   <Badge variant="outline" className="font-black text-[10px] bg-secondary/10 text-primary border-primary/20">
-                      VAL{c.initialValue}
-                   </Badge>
-                </td>
-                <td className="p-6 font-bold text-muted-foreground">${c.initialValue.toFixed(2)}</td>
-                <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
-                <td className="p-6"><Badge variant={c.status === 'exhausted' ? "outline" : "secondary"} className="uppercase font-black text-[9px]">{c.status}</Badge></td>
-                <td className="p-6 text-center">
-                   <Button variant="ghost" size="icon" onClick={async () => {
-                      if (confirm("Revoke this stored value card?")) await deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id));
-                   }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
-          {(!coupons || coupons.length === 0) && (
-            <div className="py-24 text-center opacity-30">
-               <Ticket className="w-16 h-16 mx-auto mb-4" />
-               <p className="font-black uppercase tracking-widest">Voucher Registry Empty</p>
-            </div>
-          )}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary w-5 h-5" />
+            <Input 
+              placeholder="SEARCH VOUCHER REGISTRY (NAME OR CODE)..." 
+              className="pl-16 h-16 rounded-[24px] border-none bg-white shadow-lg text-lg font-black"
+              value={registrySearch}
+              onChange={(e) => setRegistrySearch(e.target.value)}
+            />
+          </div>
+
+          <div className="bg-white rounded-[32px] border overflow-hidden flex flex-col h-fit">
+            <CardHeader className="bg-secondary/10 border-b p-6">
+               <CardTitle className="text-lg font-black flex items-center gap-2">
+                  <Ticket className="w-5 h-5 text-primary" /> Issued Stored Balances
+               </CardTitle>
+               <CardDescription className="font-bold">Active customer accounts and card status</CardDescription>
+            </CardHeader>
+            <table className="w-full text-sm text-left">
+              <thead className="bg-secondary/5">
+                <tr>
+                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
+                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">System ID</th>
+                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Initial</th>
+                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Balance</th>
+                  <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Status</th>
+                  <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">{filteredCoupons.map(c => (
+                <tr key={c.id} className="hover:bg-secondary/5 transition-colors">
+                  <td className="p-6">
+                     <p className="font-black text-foreground">{c.customerName}</p>
+                     <p className="text-[9px] font-bold text-muted-foreground uppercase">{c.code}</p>
+                  </td>
+                  <td className="p-6">
+                     <Badge variant="outline" className="font-black text-[10px] bg-secondary/10 text-primary border-primary/20">
+                        VAL{c.initialValue}
+                     </Badge>
+                  </td>
+                  <td className="p-6 font-bold text-muted-foreground">${c.initialValue.toFixed(2)}</td>
+                  <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
+                  <td className="p-6"><Badge variant={c.status === 'exhausted' ? "outline" : "secondary"} className="uppercase font-black text-[9px]">{c.status}</Badge></td>
+                  <td className="p-6 text-center">
+                     <Button variant="ghost" size="icon" onClick={async () => {
+                        if (confirm("Revoke this stored value card?")) await deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id));
+                     }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+            {filteredCoupons.length === 0 && (
+              <div className="py-24 text-center opacity-30">
+                 <Ticket className="w-16 h-16 mx-auto mb-4" />
+                 <p className="font-black uppercase tracking-widest">Voucher Registry Empty</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
