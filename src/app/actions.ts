@@ -3,11 +3,13 @@
 
 import { generateCompanyPasswordId } from '@/ai/flows/generate-company-password-id-flow';
 import { generateViewerPasswordId } from '@/ai/flows/generate-viewer-password-id';
-import { Company, User } from '@/lib/types';
+import { Company, User, ModuleType } from '@/lib/types';
 
 export async function createCompanyAction(formData: FormData) {
   const name = formData.get('name') as string;
   if (!name) return { error: 'Name is required' };
+
+  const enabledModules = formData.getAll('modules') as ModuleType[];
 
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
   const email = `${cleanName}@ventureebiz.com`;
@@ -28,7 +30,8 @@ export async function createCompanyAction(formData: FormData) {
     cancellationPassword,
     createdAt: new Date().toISOString(),
     capitalLimit: 10000,
-    capitalPeriod: 'monthly'
+    capitalPeriod: 'monthly',
+    enabledModules: enabledModules.length > 0 ? enabledModules : ['mart', 'laundry', 'rent', 'services']
   };
   
   return { success: true, company };

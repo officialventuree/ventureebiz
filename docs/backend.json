@@ -18,7 +18,12 @@
         "capitalStartDate": { "type": "string", "format": "date" },
         "capitalEndDate": { "type": "string", "format": "date" },
         "duitNowQr": { "type": "string" },
-        "nextCapitalAmount": { "type": "number", "description": "The reinvestment pool balance available for allocation or injection." }
+        "nextCapitalAmount": { "type": "number", "description": "The reinvestment pool balance available for allocation or injection." },
+        "enabledModules": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] },
+          "description": "Business units enabled for this company dashboard."
+        }
       },
       "required": ["id", "name", "email", "createdAt", "cancellationPassword"]
     },
@@ -33,7 +38,11 @@
         "email": { "type": "string", "format": "email" },
         "password": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "company", "viewer"] },
-        "companyId": { "type": "string" }
+        "companyId": { "type": "string" },
+        "enabledModules": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["mart", "laundry", "rent", "services"] }
+        }
       },
       "required": ["id", "name", "email", "password", "role"]
     },

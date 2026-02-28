@@ -15,6 +15,7 @@ export interface User {
   password?: string;
   role: Role;
   companyId?: string;
+  enabledModules?: ModuleType[];
 }
 
 export interface Company {
@@ -31,6 +32,7 @@ export interface Company {
   capitalEndDate?: string;
   duitNowQr?: string;
   nextCapitalAmount?: number; // Accumulated pool from claimed capital
+  enabledModules?: ModuleType[];
 }
 
 export interface SaleItem {

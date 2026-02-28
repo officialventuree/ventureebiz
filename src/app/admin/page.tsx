@@ -6,19 +6,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Building2, Mail, Key, Search, Trash2, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus, Building2, Mail, Key, Search, Trash2, ShieldAlert, RefreshCw, Layers } from 'lucide-react';
 import { createCompanyAction } from '@/app/actions';
 import { useState } from 'react';
-import { Company } from '@/lib/types';
+import { Company, ModuleType } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
+
+const MODULES: { id: ModuleType; label: string }[] = [
+  { id: 'mart', label: 'Mart' },
+  { id: 'laundry', label: 'Laundry' },
+  { id: 'rent', label: 'Rent' },
+  { id: 'services', label: 'Services' },
+];
 
 export default function AdminDashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedModules, setSelectedModules] = useState<ModuleType[]>(['mart', 'laundry', 'rent', 'services']);
 
   const companiesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -32,12 +42,21 @@ export default function AdminDashboard() {
     c.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const toggleModule = (modId: ModuleType) => {
+    setSelectedModules(prev => 
+      prev.includes(modId) ? prev.filter(m => m !== modId) : [...prev, modId]
+    );
+  };
+
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore) return;
     setIsCreating(true);
     
     const formData = new FormData(e.currentTarget);
+    // Append modules manually since radx checkboxes don't participate in native formData.getAll naturally
+    selectedModules.forEach(mod => formData.append('modules', mod));
+    
     const result = await createCompanyAction(formData);
     
     if (result.success && result.company) {
@@ -53,7 +72,8 @@ export default function AdminDashboard() {
           email: companyData.email.toLowerCase(),
           password: companyData.password,
           role: 'company',
-          companyId: companyData.id
+          companyId: companyData.id,
+          enabledModules: companyData.enabledModules
         });
 
         toast({
@@ -61,6 +81,7 @@ export default function AdminDashboard() {
           description: `Account for ${companyData.name} is synchronized and ready.`,
         });
         (e.target as HTMLFormElement).reset();
+        setSelectedModules(['mart', 'laundry', 'rent', 'services']);
       } catch (e: any) {
         toast({ title: "Registration error", description: e.message, variant: "destructive" });
       }
@@ -96,20 +117,39 @@ export default function AdminDashboard() {
             <div className="lg:col-span-1">
               <Card className="shadow-sm border-none bg-white rounded-[24px]">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
                     <Plus className="w-5 h-5 text-primary" />
                     New Company
                   </CardTitle>
-                  <CardDescription>Register a new business entity on the platform</CardDescription>
+                  <CardDescription>Provision a new business entity</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleCreate} className="space-y-4">
+                  <form onSubmit={handleCreate} className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="name">Company Legal Name</Label>
+                      <Label htmlFor="name">Legal Name</Label>
                       <Input id="name" name="name" placeholder="Acme Corp" required className="rounded-xl h-12" />
                     </div>
+
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Provision Modules</Label>
+                      <div className="grid grid-cols-2 gap-3 bg-secondary/10 p-4 rounded-2xl border border-secondary/20">
+                        {MODULES.map((mod) => (
+                          <div key={mod.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                              id={`mod-${mod.id}`} 
+                              checked={selectedModules.includes(mod.id)}
+                              onCheckedChange={() => toggleModule(mod.id)}
+                            />
+                            <Label htmlFor={`mod-${mod.id}`} className="text-[10px] font-bold uppercase cursor-pointer select-none">
+                              {mod.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     <Button type="submit" className="w-full h-12 rounded-xl font-bold" disabled={isCreating}>
-                      {isCreating ? "Saving..." : "Add Company"}
+                      {isCreating ? "Deploying..." : "Add Company"}
                     </Button>
                   </form>
                 </CardContent>
@@ -151,6 +191,13 @@ export default function AdminDashboard() {
                             <div className="space-y-1">
                               <h4 className="font-bold text-xl">{company.name}</h4>
                               <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">ID: {company.id}</p>
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {company.enabledModules?.map(mod => (
+                                  <Badge key={mod} variant="secondary" className="text-[8px] font-black uppercase px-2 py-0 border-none bg-primary/10 text-primary">
+                                    {mod}
+                                  </Badge>
+                                ))}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Button 

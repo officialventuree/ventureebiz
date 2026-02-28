@@ -42,7 +42,25 @@ export function Sidebar() {
     { href: '/viewer', icon: BarChart3, label: 'Insights' },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : user?.role === 'company' ? companyLinks : viewerLinks;
+  // Filter company links based on provisioned modules
+  const filteredCompanyLinks = companyLinks.filter(link => {
+    // If user is not a company owner or has no module restrictions (legacy), show all
+    if (user?.role !== 'company' || !user?.enabledModules) return true;
+
+    // Core infrastructure links are always visible
+    const coreHrefs = ['/company', '/company/capital', '/company/reports', '/company/viewers'];
+    if (coreHrefs.includes(link.href)) return true;
+
+    // Specific module links check
+    if (link.href === '/company/mart') return user.enabledModules.includes('mart');
+    if (link.href === '/company/laundry') return user.enabledModules.includes('laundry');
+    if (link.href === '/company/rent') return user.enabledModules.includes('rent');
+    if (link.href === '/company/services') return user.enabledModules.includes('services');
+
+    return true;
+  });
+
+  const links = user?.role === 'admin' ? adminLinks : user?.role === 'company' ? filteredCompanyLinks : viewerLinks;
 
   return (
     <div className="w-64 h-full bg-white border-r flex flex-col p-4 shrink-0 overflow-y-auto">
