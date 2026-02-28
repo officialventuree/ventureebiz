@@ -155,6 +155,16 @@ export default function LaundryPage() {
     return now < end;
   }, [companyDoc]);
 
+  // Automated Quota Logic
+  const levelQuotas = useMemo(() => {
+    const counts: Record<number, number> = {};
+    LEVELS.forEach(lv => counts[lv] = 0);
+    schedules?.forEach(s => {
+      if (counts[s.level] !== undefined) counts[s.level]++;
+    });
+    return counts;
+  }, [schedules]);
+
   const studentSoap = inventoryItems?.find(i => i.category === 'student');
   const payableSoap = inventoryItems?.find(i => i.category === 'payable');
 
@@ -172,8 +182,9 @@ export default function LaundryPage() {
 
   const getWashRateForLevel = (level: number) => {
     const config = levelConfigs?.find(c => c.level === level);
-    if (config && config.totalWashesAllowed > 0) {
-      return config.subscriptionFee / config.totalWashesAllowed;
+    const quota = levelQuotas[level] || 0;
+    if (config && quota > 0) {
+      return config.subscriptionFee / quota;
     }
     return defaultWashRate;
   };
@@ -845,11 +856,11 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="schedule">
-             <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelConfigs={levelConfigs} />
+             <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelConfigs={levelConfigs} levelQuotas={levelQuotas} />
           </TabsContent>
 
           <TabsContent value="config">
-             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} />
+             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} levelQuotas={levelQuotas} />
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -1001,16 +1012,17 @@ export default function LaundryPage() {
   );
 }
 
-function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null }) {
+function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number> }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const saveConfig = (level: number, fee: number, quota: number) => {
+  const saveConfig = (level: number, fee: number) => {
     if (!firestore || !companyId) return;
     setIsUpdating(true);
     const id = `LV${level}_CONFIG`;
     const docRef = doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id);
+    const quota = levelQuotas[level] || 0;
     const data = { id, companyId, level, subscriptionFee: fee, totalWashesAllowed: quota };
     setDoc(docRef, data)
       .then(() => toast({ title: `Level ${level} Updated` }))
@@ -1029,6 +1041,7 @@ function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {LEVELS.map(lv => {
             const config = levelConfigs?.find(c => c.level === lv);
+            const quota = levelQuotas[lv] || 0;
             return (
               <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
                  <div className="flex justify-between items-center">
@@ -1041,24 +1054,21 @@ function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, 
                        <Input 
                         type="number" 
                         defaultValue={config?.subscriptionFee || 0} 
-                        onBlur={(e) => saveConfig(lv, Number(e.target.value), config?.totalWashesAllowed || 0)}
+                        onBlur={(e) => saveConfig(lv, Number(e.target.value))}
                         className="h-11 rounded-xl font-bold bg-white border-none"
                        />
                     </div>
                     <div className="space-y-1">
-                       <Label className="text-[10px] font-black uppercase px-1">Wash Quota</Label>
-                       <Input 
-                        type="number" 
-                        defaultValue={config?.totalWashesAllowed || 0} 
-                        onBlur={(e) => saveConfig(lv, config?.subscriptionFee || 0, Number(e.target.value))}
-                        className="h-11 rounded-xl font-bold bg-white border-none"
-                       />
+                       <Label className="text-[10px] font-black uppercase px-1">Wash Quota (Auto)</Label>
+                       <div className="h-11 rounded-xl font-bold bg-secondary/20 flex items-center px-4 text-sm">
+                          {quota} Days
+                       </div>
                     </div>
                  </div>
                  <div className="pt-2">
                     <div className="flex justify-between items-center px-1">
                        <span className="text-[9px] font-black text-muted-foreground uppercase">Internal Service Rate</span>
-                       <span className="text-sm font-black text-primary">${((config?.subscriptionFee || 0) / (config?.totalWashesAllowed || 1)).toFixed(2)}/wash</span>
+                       <span className="text-sm font-black text-primary">${((config?.subscriptionFee || 0) / (quota || 1)).toFixed(2)}/wash</span>
                     </div>
                  </div>
               </div>
@@ -1069,7 +1079,7 @@ function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, 
   );
 }
 
-function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: string, schedules: LaundrySchedule[] | null, levelConfigs: LaundryLevelConfig[] | null }) {
+function LaundryScheduler({ companyId, schedules, levelConfigs, levelQuotas }: { companyId?: string, schedules: LaundrySchedule[] | null, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number> }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1113,18 +1123,18 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
                 <Calculator className="w-6 h-6 text-primary" />
                 <div>
                    <CardTitle className="text-xl font-black">Strategic Quota Overview</CardTitle>
-                   <CardDescription className="font-bold">Total authorized washes per student level</CardDescription>
+                   <CardDescription className="font-bold">Total authorized washes per student level (Auto-calculated)</CardDescription>
                 </div>
              </div>
           </CardHeader>
           <CardContent className="p-8">
              <div className="grid grid-cols-5 gap-4">
                 {LEVELS.map(lv => {
-                  const config = levelConfigs?.find(c => c.level === lv);
+                  const quota = levelQuotas[lv] || 0;
                   return (
                     <div key={lv} className="p-4 bg-secondary/10 rounded-2xl text-center border-2 border-transparent">
                        <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest leading-none">Level {lv}</p>
-                       <p className="text-2xl font-black text-foreground">{config?.totalWashesAllowed || 0}</p>
+                       <p className="text-2xl font-black text-foreground">{quota}</p>
                        <p className="text-[8px] font-bold text-muted-foreground uppercase">Washes Allowed</p>
                     </div>
                   );
