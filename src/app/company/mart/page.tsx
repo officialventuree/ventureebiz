@@ -605,6 +605,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [refillScan, setRefillScan] = useState('');
+  const [refillSearch, setRefillSearch] = useState('');
 
   const [unitsBought, setUnitsBought] = useState<string>('1');
   const [itemsPerUnit, setItemsPerUnit] = useState<string>('1');
@@ -614,7 +615,9 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   useEffect(() => {
     if (selectedProduct) {
       setItemsPerUnit(selectedProduct.itemsPerUnit?.toString() || '1');
-      setCostPerUnit((selectedProduct.costPrice * (selectedProduct.itemsPerUnit || 1)).toFixed(2));
+      // Pre-calculate current total cost based on the unit buying pattern
+      const currentUnitCost = selectedProduct.costPrice * (selectedProduct.itemsPerUnit || 1);
+      setCostPerUnit(currentUnitCost.toFixed(2));
       setRetailPrice(selectedProduct.sellingPrice.toFixed(2));
     }
   }, [selectedProduct]);
@@ -752,6 +755,10 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     toast({ title: "Product Removed" });
   };
 
+  const refillYield = (Number(unitsBought) * Number(itemsPerUnit));
+  const totalRefillCost = (Number(unitsBought) * Number(costPerUnit));
+  const profitPerIndividualItem = Number(retailPrice) - (Number(costPerUnit) / (Number(itemsPerUnit) || 1));
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-12">
       <div className="lg:col-span-1">
@@ -766,61 +773,120 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
           </div>
 
           <div className="space-y-6">
-            <div className="relative">
-              <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input 
-                placeholder="SCAN TO REFILL..." 
-                className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
-                value={refillScan}
-                onChange={(e) => setRefillScan(e.target.value)}
-                onKeyDown={handleRefillScan}
-              />
-            </div>
+            {!selectedProduct && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="SCAN BARCODE..." 
+                    className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
+                    value={refillScan}
+                    onChange={(e) => setRefillScan(e.target.value)}
+                    onKeyDown={handleRefillScan}
+                  />
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="SEARCH ASSET..." 
+                    className="pl-10 h-10 rounded-xl bg-secondary/5 border-none text-xs font-bold"
+                    value={refillSearch}
+                    onChange={(e) => setRefillSearch(e.target.value)}
+                  />
+                </div>
+                <ScrollArea className="h-48 border rounded-xl p-2 bg-secondary/5">
+                   <div className="space-y-1">
+                      {products?.filter(p => p.name.toLowerCase().includes(refillSearch.toLowerCase())).map(p => (
+                        <div 
+                          key={p.id} 
+                          onClick={() => setSelectedProduct(p)}
+                          className="p-2 rounded-lg hover:bg-white cursor-pointer transition-all border border-transparent hover:border-primary/20 group"
+                        >
+                           <p className="text-[11px] font-black group-hover:text-primary transition-colors">{p.name}</p>
+                           <p className="text-[9px] font-bold text-muted-foreground uppercase">{p.barcode || 'Manual Entry'}</p>
+                        </div>
+                      ))}
+                   </div>
+                </ScrollArea>
+              </div>
+            )}
 
             {selectedProduct ? (
               <form onSubmit={handleConfirmRefill} className="space-y-5 animate-in fade-in slide-in-from-top-2">
-                <div className="p-4 bg-primary/5 rounded-2xl border-2 border-primary/10">
-                  <p className="text-[10px] font-black text-primary uppercase">Refilling Asset</p>
-                  <p className="text-lg font-black">{selectedProduct.name}</p>
+                <div className="p-4 bg-primary/5 rounded-2xl border-2 border-primary/10 relative">
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Identified Asset</p>
+                  <p className="text-lg font-black leading-tight pr-8">{selectedProduct.name}</p>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute top-2 right-2 h-6 w-6 text-muted-foreground"
+                    onClick={() => setSelectedProduct(null)}
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-primary/10">
+                     <div>
+                        <p className="text-[8px] font-black uppercase text-muted-foreground">Current Cost</p>
+                        <p className="text-xs font-black">${selectedProduct.costPrice.toFixed(2)}</p>
+                     </div>
+                     <div>
+                        <p className="text-[8px] font-black uppercase text-muted-foreground">Retail Price</p>
+                        <p className="text-xs font-black">${selectedProduct.sellingPrice.toFixed(2)}</p>
+                     </div>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
+                  <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest border-b pb-1">Economic Adjustment</p>
+                  
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-[10px] font-black uppercase">Units Bought</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-tighter">Units Purchased</Label>
                       <Input type="number" value={unitsBought} onChange={(e) => setUnitsBought(e.target.value)} className="h-10 rounded-lg font-bold" />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-[10px] font-black uppercase">Qty per Unit</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-tighter">Qty per Unit</Label>
                       <Input type="number" value={itemsPerUnit} onChange={(e) => setItemsPerUnit(e.target.value)} className="h-10 rounded-lg font-bold" />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase">Cost per Unit ($)</Label>
+                    <Label className="text-[10px] font-black uppercase tracking-tighter">Buying Cost per Unit ($)</Label>
                     <Input type="number" step="0.01" value={costPerUnit} onChange={(e) => setCostPerUnit(e.target.value)} className="h-10 rounded-lg font-bold" />
                   </div>
 
                   <div className="space-y-1">
-                    <Label className="text-[10px] font-black uppercase">New Retail Price ($)</Label>
-                    <Input type="number" step="0.01" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} className="h-10 rounded-lg font-bold text-primary" />
+                    <Label className="text-[10px] font-black uppercase tracking-tighter text-primary">New Retail Price per Item ($)</Label>
+                    <Input type="number" step="0.01" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} className="h-10 rounded-lg font-bold border-primary/20" />
                   </div>
                 </div>
 
-                <div className="bg-secondary/10 p-4 rounded-2xl space-y-2">
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span>Stock Addition</span>
-                      <span className="text-foreground">{(Number(unitsBought) * Number(itemsPerUnit))} {selectedProduct.unit}</span>
+                <div className="bg-secondary/10 p-4 rounded-2xl space-y-2 border-2 border-transparent">
+                   <div className="flex items-center gap-2 text-[9px] font-black text-primary uppercase tracking-widest mb-1">
+                      <Info className="w-3 h-3" /> Batch Preview
                    </div>
                    <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span>Total Purchase</span>
-                      <span className="text-primary">${(Number(unitsBought) * Number(costPerUnit)).toFixed(2)}</span>
+                      <span className="text-muted-foreground">Net Stock Yield</span>
+                      <span className="text-foreground">{refillYield} {selectedProduct.unit}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                      <span className="text-muted-foreground">Individual Yield Margin</span>
+                      <span className={cn(profitPerIndividualItem > 0 ? "text-green-600" : "text-destructive")}>
+                        ${profitPerIndividualItem.toFixed(2)}
+                      </span>
+                   </div>
+                   <div className="flex justify-between items-center text-[10px] font-black uppercase border-t pt-2 mt-2">
+                      <span className="text-muted-foreground">Aggregate Liability</span>
+                      <span className="text-primary font-black text-lg">${totalRefillCost.toFixed(2)}</span>
                    </div>
                 </div>
 
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setSelectedProduct(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
-                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive}>Confirm</Button>
+                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !unitsBought || !costPerUnit}>
+                    {isProcessing ? "Processing..." : "Commit Refill"}
+                  </Button>
                 </div>
               </form>
             ) : (
@@ -941,15 +1007,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [coupons, registrySearch]);
 
-  const uniqueVoucherTypes = useMemo(() => {
-    if (!coupons) return [];
-    const values = Array.from(new Set(coupons.map(c => c.initialValue))).sort((a, b) => a - b);
-    return values.map(val => ({
-      value: val,
-      id: `VAL${val}`
-    }));
-  }, [coupons]);
-
   const bankStats = useMemo(() => {
     if (!coupons) return { totalLiability: 0, totalIssued: 0, cash: 0, card: 0, duitnow: 0 };
     return coupons.reduce((acc, c) => {
@@ -1058,7 +1115,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                   <p className="text-sm font-black text-foreground">${bankStats.duitnow.toFixed(2)}</p>
                </div>
             </div>
-            <p className="text-[9px] font-bold text-muted-foreground opacity-60 mt-4 leading-tight">Total outstanding balance distributed by original funding gateway.</p>
           </div>
         </Card>
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">
@@ -1085,10 +1141,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                    <div className="space-y-1.5">
                       <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
                       <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
-                   </div>
-                   <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
-                      <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
                    </div>
                    <div className="space-y-1.5">
                       <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
@@ -1149,7 +1201,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                    }} className="grid grid-cols-3 gap-2">
                       <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
                       <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
-                      <PaymentOption value="duitnow" label="QR" icon={QrCode} id="duitnow_final" />
+                      <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
                    </RadioGroup>
                 </div>
 
@@ -1168,12 +1220,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
                 {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
                   <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
-                     {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                       <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
-                          <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
-                          <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
-                       </div>
-                     )}
                      <div className="space-y-1">
                         <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
                         <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
@@ -1238,12 +1284,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                 </tr>
               ))}</tbody>
             </table>
-            {filteredCoupons.length === 0 && (
-              <div className="py-24 text-center opacity-30">
-                 <Ticket className="w-16 h-16 mx-auto mb-4" />
-                 <p className="font-black uppercase tracking-widest">Voucher Registry Empty</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
