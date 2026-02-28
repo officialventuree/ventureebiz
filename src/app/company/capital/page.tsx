@@ -328,13 +328,15 @@ export default function CapitalControlPage() {
                       </span>
                       <span className="text-muted-foreground">Limit: ${limit.toLocaleString()}</span>
                     </div>
-                    <Progress 
-                      value={utilization} 
-                      className={cn(
-                        "h-6 bg-secondary/50 rounded-2xl",
-                        utilization > 90 ? "[&>div]:bg-destructive" : utilization > 70 ? "[&>div]:bg-accent" : "[&>div]:bg-primary"
-                      )} 
-                    />
+                    <div className="relative h-6 w-full bg-secondary/50 rounded-2xl overflow-hidden">
+                       <div 
+                        className={cn(
+                          "h-full transition-all duration-500 rounded-2xl",
+                          utilization > 90 ? "bg-destructive" : utilization > 70 ? "bg-accent" : "bg-primary"
+                        )}
+                        style={{ width: `${Math.min(utilization, 100)}%` }}
+                       />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mt-12">
@@ -491,7 +493,7 @@ export default function CapitalControlPage() {
                         Consumption has reached {utilization.toFixed(0)}%. Procurement protocol will block all transactions exceeding the remaining ${remaining.toFixed(2)} balance.
                       </p>
                       <div className="h-2 w-full bg-black/20 rounded-full overflow-hidden">
-                         <div className="h-full bg-white" style={{ width: `${utilization}%` }} />
+                         <div className="h-full bg-white" style={{ width: `${Math.min(utilization, 100)}%` }} />
                       </div>
                    </CardContent>
                 </Card>
