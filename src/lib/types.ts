@@ -78,6 +78,7 @@ export interface SaleTransaction {
   customerName?: string;
   paymentMethod?: PaymentMethod;
   referenceNumber?: string;
+  serviceTypeId?: string;
 }
 
 export interface Product {
@@ -134,6 +135,7 @@ export interface Coupon {
   customerName: string;
   createdAt: string;
   paymentMethod?: PaymentMethod;
+  customerCompany?: string;
 }
 
 export interface CapitalPurchase {
@@ -142,4 +144,40 @@ export interface CapitalPurchase {
   amount: number;
   description: string;
   timestamp: string;
+}
+
+export interface LaundryStudent {
+  id: string;
+  companyId: string;
+  name: string;
+  matrixNumber: string;
+  balance: number;
+  level: number;
+  class: string;
+}
+
+export interface LaundryInventory {
+  id: string;
+  companyId: string;
+  soapStockMl: number;
+  soapCostPerLitre: number;
+  capacityMl: number;
+  category: 'student' | 'payable';
+  lastBottleCost?: number;
+  lastBottleVolume?: number;
+}
+
+export interface LaundryLevelConfig {
+  id: string;
+  companyId: string;
+  level: number;
+  subscriptionFee: number;
+  totalWashesAllowed: number;
+}
+
+export interface LaundrySchedule {
+  id: string;
+  companyId: string;
+  date: string;
+  level: number;
 }
