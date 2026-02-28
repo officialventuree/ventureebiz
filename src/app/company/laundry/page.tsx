@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -16,6 +15,7 @@ import {
   QrCode, 
   Upload, 
   Banknote,
+  CreditCard,
   Edit2,
   CalendarDays,
   Plus,
@@ -214,15 +214,17 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialFee = (editingStudent ? editingStudent.initialAmount : enrollmentDebt) ?? 0;
+    const initialFee = (editingStudent ? (editingStudent.initialAmount ?? 0) : enrollmentDebt) ?? 0;
+    const currentBal = (editingStudent ? (editingStudent.balance ?? 0) : 0);
+    const currentSpent = (editingStudent ? (editingStudent.totalSpent ?? 0) : 0);
 
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: (editingStudent ? (editingStudent.balance ?? 0) : 0), 
-      totalSpent: (editingStudent ? (editingStudent.totalSpent ?? 0) : 0),
+      balance: currentBal, 
+      totalSpent: currentSpent,
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
