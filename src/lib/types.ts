@@ -155,6 +155,7 @@ export interface LaundryStudent {
   name: string;
   matrixNumber: string;
   balance: number;
+  initialAmount: number;
   level: number;
   class: string;
 }

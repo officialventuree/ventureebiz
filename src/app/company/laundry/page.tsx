@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -228,14 +229,15 @@ export default function LaundryPage() {
       return;
     }
 
-    const amountToPay = editingStudent ? 0 : enrollmentDebt;
+    const initialFee = editingStudent ? editingStudent.initialAmount : enrollmentDebt;
 
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: editingStudent ? editingStudent.balance : -amountToPay,
+      balance: editingStudent ? editingStudent.balance : 0, // Wallet starts at 0, debt is tracked via initialAmount - balance
+      initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
     };
@@ -543,8 +545,8 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Balance</p>
-                          <p className={cn("text-3xl font-black", foundTopUpStudent.balance < 0 ? "text-destructive" : "text-foreground")}>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Wallet</p>
+                          <p className={cn("text-3xl font-black", foundTopUpStudent.balance <= 0 ? "text-destructive" : "text-foreground")}>
                             ${foundTopUpStudent.balance.toFixed(2)}
                           </p>
                         </div>
@@ -670,10 +672,10 @@ export default function LaundryPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Wallet</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            selectedStudent.balance < 0 ? "text-destructive" : "text-primary"
+                            selectedStudent.balance <= 0 ? "text-destructive" : "text-primary"
                           )}>${selectedStudent.balance.toFixed(2)}</p>
                           <div className="mt-2">
                              <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
@@ -811,14 +813,14 @@ export default function LaundryPage() {
                       </div>
                       {!editingStudent && (
                         <div className="space-y-1.5">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription / Debt ($)</Label>
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription Amount ($)</Label>
                            <Input 
                             type="number" 
                             value={enrollmentDebt} 
                             onChange={(e) => setEnrollmentDebt(Number(e.target.value))} 
-                            className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" 
+                            className="h-11 rounded-xl bg-secondary/10 border-none font-bold" 
                            />
-                           <p className="text-[9px] font-bold text-muted-foreground italic">Balance will start negative until topped up.</p>
+                           <p className="text-[9px] font-bold text-muted-foreground italic">Wallet will start at $0.00. Deposits will satisfy this debt.</p>
                         </div>
                       )}
                       <div className="flex gap-2">
@@ -839,16 +841,15 @@ export default function LaundryPage() {
                          <tr>
                            <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
                            <th className="p-6 font-black uppercase text-[10px]">Level</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Per Service Fee</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Initial Subscription</th>
                            <th className="p-6 font-black uppercase text-[10px]">Current Bank Balance</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Balance After Wash</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Balance Need to Pay</th>
                            <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y">
                          {students?.map(s => {
-                           const serviceFee = getWashRateForLevel(s.level);
-                           const projectedBalance = s.balance - serviceFee;
+                           const needToPay = Math.max(0, s.initialAmount - s.balance);
                            return (
                              <tr key={s.id} className="hover:bg-secondary/5 group">
                                 <td className="p-6">
@@ -856,18 +857,15 @@ export default function LaundryPage() {
                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
                                 </td>
                                 <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
-                                <td className="p-6 font-bold text-muted-foreground">${serviceFee.toFixed(2)}</td>
+                                <td className="p-6 font-bold text-muted-foreground">${s.initialAmount.toFixed(2)}</td>
                                 <td className="p-6">
-                                   <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-green-600")}>
+                                   <p className={cn("font-black text-lg", s.balance <= 0 ? "text-destructive" : "text-green-600")}>
                                       ${s.balance.toFixed(2)}
-                                      <span className="text-[10px] ml-2 uppercase opacity-60 font-bold">
-                                         {s.balance < 0 ? "(OWED)" : "(CREDIT)"}
-                                      </span>
                                    </p>
                                 </td>
                                 <td className="p-6">
-                                   <p className={cn("font-bold text-lg opacity-80", projectedBalance < 0 ? "text-destructive" : "text-primary")}>
-                                      ${projectedBalance.toFixed(2)}
+                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-primary")}>
+                                      ${needToPay.toFixed(2)}
                                    </p>
                                 </td>
                                 <td className="p-6 text-center">
