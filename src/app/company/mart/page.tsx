@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -43,7 +42,8 @@ import { Product, SaleTransaction, Coupon, Company, PaymentMethod, CapitalPurcha
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, Label } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -923,7 +923,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
+            <DialogContent className="rounded-[40px] max-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
                <div className="bg-primary p-8 text-primary-foreground">
                  <DialogTitle className="text-2xl font-black">{editingProduct ? 'Edit Product Metadata' : 'New Registration'}</DialogTitle>
                </div>
