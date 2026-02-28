@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useAuth } from '@/components/auth-context';
@@ -24,7 +23,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   const adminLinks = [
-    { href: '/admin', icon: LayoutDashboard, label: 'Portal' },
+    { href: '/admin', icon: LayoutDashboard, label: 'SaaS Management' },
   ];
 
   const companyLinks = [
@@ -42,16 +41,16 @@ export function Sidebar() {
     { href: '/viewer', icon: BarChart3, label: 'Insights' },
   ];
 
-  // Filter company links based on provisioned modules
+  // Filter company links based on provisioned modules from admin setup
   const filteredCompanyLinks = companyLinks.filter(link => {
-    // If user is not a company owner or has no module restrictions (legacy), show all
-    if (user?.role !== 'company' || !user?.enabledModules) return true;
+    // If user is not a company owner, return all (handled by layout guard)
+    if (user?.role !== 'CompanyOwner' || !user?.enabledModules) return true;
 
-    // Core infrastructure links are always visible
+    // Infrastructure modules are always visible
     const coreHrefs = ['/company', '/company/capital', '/company/reports', '/company/viewers'];
     if (coreHrefs.includes(link.href)) return true;
 
-    // Specific module links check
+    // Business unit check
     if (link.href === '/company/mart') return user.enabledModules.includes('mart');
     if (link.href === '/company/laundry') return user.enabledModules.includes('laundry');
     if (link.href === '/company/rent') return user.enabledModules.includes('rent');
@@ -60,7 +59,7 @@ export function Sidebar() {
     return true;
   });
 
-  const links = user?.role === 'admin' ? adminLinks : user?.role === 'company' ? filteredCompanyLinks : viewerLinks;
+  const links = user?.role === 'PlatformAdmin' ? adminLinks : user?.role === 'CompanyOwner' ? filteredCompanyLinks : viewerLinks;
 
   return (
     <div className="w-64 h-full bg-white border-r flex flex-col p-4 shrink-0 overflow-y-auto">
@@ -92,7 +91,7 @@ export function Sidebar() {
 
       <div className="pt-4 border-t mt-auto">
         <div className="px-3 py-4 mb-4 bg-secondary/50 rounded-xl">
-          <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-tighter">Logged in as</p>
+          <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-tighter">Identity</p>
           <p className="text-sm font-bold truncate">{user?.name}</p>
           <p className="text-[10px] text-muted-foreground truncate uppercase">{user?.role}</p>
         </div>

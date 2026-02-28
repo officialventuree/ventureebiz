@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const lowerEmail = email.toLowerCase();
 
-      // Platform Admin Check (Manual Credentials)
+      // 1. Platform Admin Check (Hardcoded Official Admin)
       if (lowerEmail === 'officialadmin@ventureebiz.com' && password === 'officialadmin.venturee.300609') {
         const userData: User = {
           id: 'platform-owner-id',
@@ -55,37 +55,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // Company User / Viewer Check strictly from Firestore
+      // 2. Company Registry Check (Synced from Admin Registration)
       const usersRef = collection(firestore, 'company_users');
       const q = query(usersRef, where('email', '==', lowerEmail), limit(1));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        return { success: false, error: 'Account not found' };
+        return { success: false, error: 'No account registered with this email.' };
       }
 
       const foundUser = querySnapshot.docs[0].data() as User;
       
-      // Manual password comparison
+      // Strict password verification against synced admin record
       if (foundUser.password !== password) {
-        return { success: false, error: 'Invalid password' };
+        return { success: false, error: 'Incorrect password.' };
       }
 
       setUser(foundUser);
       localStorage.setItem('venturee_user', JSON.stringify(foundUser));
 
+      // Direct dynamic routing based on provisioned role
       if (foundUser.role === 'CompanyOwner') {
         router.push('/company');
       } else if (foundUser.role === 'CompanyViewer') {
         router.push('/viewer');
-      } else if (foundUser.role === 'PlatformAdmin') {
-        router.push('/admin');
+      } else {
+        router.push('/');
       }
 
       return { success: true };
     } catch (e: any) {
-      console.error("Auth Error:", e);
-      return { success: false, error: 'Authentication protocol failure' };
+      console.error("Auth Failure:", e);
+      return { success: false, error: 'Authentication protocol failure. Check connection.' };
     }
   };
 
