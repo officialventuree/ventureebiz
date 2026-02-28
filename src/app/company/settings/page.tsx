@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, ShieldCheck, Settings2 } from 'lucide-react';
+import { Globe, ShieldCheck, Settings2, Landmark } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -69,11 +69,11 @@ export default function CompanySettingsPage() {
       });
 
       toast({ 
-        title: "Preferences Updated", 
-        description: `Dashboard currency set to ${selected.code} (${selected.symbol})` 
+        title: "Strategic Preferences Synced", 
+        description: `Global dashboard currency updated to ${selected.code} (${selected.symbol})` 
       });
     } catch (e: any) {
-      toast({ title: "Update Failed", description: e.message, variant: "destructive" });
+      toast({ title: "Update Protocol Failed", description: e.message, variant: "destructive" });
     } finally {
       setIsUpdating(false);
     }
@@ -82,67 +82,72 @@ export default function CompanySettingsPage() {
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-10">
-            <h1 className="text-4xl font-black font-headline tracking-tighter">Business Settings</h1>
-            <p className="text-muted-foreground font-medium">Localization & Regional Preferences</p>
+      <main className="flex-1 overflow-auto p-10">
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-12">
+            <h1 className="text-5xl font-black font-headline tracking-tighter uppercase">Regional Config</h1>
+            <p className="text-muted-foreground font-bold text-lg mt-2">Localization & Global Operating Preferences</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-8">
-            <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 overflow-hidden relative">
-              <div className="absolute top-0 right-0 p-12 opacity-5">
-                <Globe className="w-40 h-40" />
+          <div className="grid grid-cols-1 gap-10">
+            <Card className="border-none shadow-2xl rounded-[56px] bg-white p-16 overflow-hidden relative border-4 border-primary/5">
+              <div className="absolute top-0 right-0 p-16 opacity-5 rotate-12">
+                <Globe className="w-64 h-64" />
               </div>
-              <div className="relative z-10 space-y-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-                    <Globe className="w-8 h-8" />
+              <div className="relative z-10 space-y-12">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-primary/10 rounded-[32px] flex items-center justify-center text-primary shadow-inner">
+                    <Landmark className="w-10 h-10" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black tracking-tight">Dashboard Localization</h2>
-                    <p className="text-sm text-muted-foreground font-medium">Define your operating currency for financial statements and retail terminals.</p>
+                    <h2 className="text-3xl font-black tracking-tighter">Dashboard Localization</h2>
+                    <p className="text-muted-foreground font-bold text-lg">Define your tactical operating currency</p>
                   </div>
                 </div>
 
-                <div className="space-y-4 pt-4 max-w-md">
-                  <Label className="text-[10px] font-black uppercase text-muted-foreground block px-1 tracking-widest">Select Dashboard Currency</Label>
+                <div className="space-y-6 pt-4 max-w-xl">
+                  <Label className="text-[10px] font-black uppercase text-muted-foreground block px-2 tracking-[0.3em]">Selected Monetary Protocol</Label>
                   <Select 
                     value={companyDoc?.currencyCode || 'USD'} 
                     onValueChange={handleCurrencyChange}
                     disabled={isUpdating}
                   >
-                    <SelectTrigger className="h-16 rounded-2xl bg-secondary/10 border-none font-black text-lg px-6">
-                      <SelectValue placeholder="Select currency" />
+                    <SelectTrigger className="h-20 rounded-[32px] bg-secondary/10 border-none font-black text-2xl px-10 shadow-inner tracking-tight">
+                      <SelectValue placeholder="Select monetary unit" />
                     </SelectTrigger>
-                    <SelectContent className="rounded-2xl font-black">
+                    <SelectContent className="rounded-[24px] font-black">
                       {WORLD_CURRENCIES.map(curr => (
-                        <SelectItem key={curr.code} value={curr.code}>{curr.name} ({curr.symbol})</SelectItem>
+                        <SelectItem key={curr.code} value={curr.code} className="h-12 text-sm">{curr.name} ({curr.symbol})</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[10px] font-bold text-muted-foreground italic px-1 mt-2">
-                    Note: This updates the symbol shown across Mart, Laundry, Rent, and Service modules.
-                  </p>
+                  <div className="p-6 bg-secondary/20 rounded-[24px] border border-secondary/30">
+                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-2">Architectural Note</p>
+                     <p className="text-sm font-bold text-muted-foreground italic leading-relaxed">
+                       Changing this value updates the currency symbol projection across Mart, Facility, Rent, and Service modules in real-time.
+                     </p>
+                  </div>
                 </div>
 
-                <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/10 flex items-center gap-4 max-w-md">
-                  <ShieldCheck className="w-8 h-8 text-primary" />
+                <div className="bg-primary/5 p-8 rounded-[40px] border-4 border-dashed border-primary/20 flex items-center gap-8 max-w-xl">
+                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl text-primary shrink-0">
+                     <ShieldCheck className="w-8 h-8" />
+                  </div>
                   <div>
-                    <p className="text-[10px] font-black uppercase text-primary tracking-widest">Preference Sync</p>
-                    <p className="text-xs font-bold text-muted-foreground">Currency settings are synced across all authorized company viewers.</p>
+                    <p className="text-xs font-black uppercase text-primary tracking-[0.3em]">Sync Protocol</p>
+                    <p className="text-sm font-bold text-muted-foreground mt-1 leading-relaxed">Regional settings are strictly enforced and synchronized across all provisioned access terminals for this business segment.</p>
                   </div>
                 </div>
               </div>
             </Card>
 
-            <Card className="border-none shadow-sm bg-secondary/10 rounded-[32px] p-8 max-w-4xl">
-               <div className="flex items-center gap-3 mb-4">
-                  <Settings2 className="w-5 h-5 text-primary" />
-                  <h3 className="font-black uppercase text-xs tracking-widest">Regional Compliance</h3>
+            <Card className="border-none shadow-sm bg-secondary/10 rounded-[40px] p-10 max-w-5xl border-2 border-secondary/20">
+               <div className="flex items-center gap-4 mb-6">
+                  <Settings2 className="w-6 h-6 text-primary" />
+                  <h3 className="font-black uppercase text-xs tracking-[0.4em] text-foreground">Strategic Compliance Protocol</h3>
                </div>
-               <p className="text-sm font-medium text-muted-foreground leading-relaxed">
-                 Venturee Biz provides local-currency awareness for small business operations. While this changes visual representation, ensure your accounting entries remain consistent with your registered business jurisdiction.
+               <p className="text-sm font-bold text-muted-foreground leading-loose max-w-4xl">
+                 Venturee Studio provides currency-aware abstraction for localized business operations. While this adjustment updates the visual projection of financial data, operational accounting entries must remain consistent with the verified jurisdiction of your registered enterprise. Dynamic currency switching does not perform real-time FX conversion on historical data.
                </p>
             </Card>
           </div>

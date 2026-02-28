@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,7 +24,7 @@
     --border: 82 20% 88%;
     --input: 82 20% 88%;
     --ring: 87 25% 48%;
-    --radius: 0.75rem;
+    --radius: 1rem;
     --chart-1: 87 25% 48%;
     --chart-2: 60 45% 64%;
     --chart-3: 120 15% 30%;
@@ -59,6 +60,23 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply bg-background text-foreground font-body antialiased;
   }
+  
+  /* Custom Scrollbar for Studio aesthetic */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-secondary-foreground/10 rounded-full transition-colors hover:bg-secondary-foreground/20;
+  }
+}
+
+.font-headline {
+  font-family: 'Inter', sans-serif;
+  letter-spacing: -0.05em;
 }

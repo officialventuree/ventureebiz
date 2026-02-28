@@ -7,7 +7,7 @@ import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, updateDoc, increment } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { TrendingUp, DollarSign, ShoppingBag, Wallet, Waves, AlertTriangle, Package, ShieldCheck, ArrowRightLeft, Landmark, Zap, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, DollarSign, ShoppingBag, Wallet, Waves, AlertTriangle, Package, ShieldCheck, Landmark, Zap } from 'lucide-react';
 import { SaleTransaction, CapitalPurchase, Product, Company } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useMemo, useState } from 'react';
@@ -147,75 +147,81 @@ export default function CompanyDashboard() {
   ];
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background font-body">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-8 flex justify-between items-end">
+      <main className="flex-1 overflow-auto p-10">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-12 flex justify-between items-end">
             <div>
-              <h1 className="text-3xl font-black font-headline text-foreground">Operational Overview</h1>
-              <p className="text-muted-foreground font-medium">Monitoring real-time business health for {user?.name}</p>
+              <h1 className="text-5xl font-black font-headline text-foreground tracking-tighter">Strategic Command</h1>
+              <p className="text-muted-foreground font-bold text-lg mt-2">Aggregated business intelligence for {user?.name}</p>
             </div>
-            <div className="flex items-center gap-2 text-[10px] font-black bg-white px-4 py-2 rounded-full shadow-sm border text-primary tracking-widest uppercase">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              Secure Sync Active
+            <div className="flex items-center gap-3 text-[10px] font-black bg-white px-6 py-3 rounded-full shadow-lg border-2 border-primary/10 text-primary tracking-[0.2em] uppercase">
+              <div className="w-2.5 h-2.5 bg-primary rounded-full animate-pulse" />
+              Tactical Sync Active
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            <StatsCard icon={DollarSign} label="Gross Revenue" value={`${currencySymbol}${totalRevenue.toFixed(2)}`} trend="Total" />
-            <StatsCard icon={TrendingUp} label="Net Profit" value={`${currencySymbol}${totalProfit.toFixed(2)}`} trend="Calculated" color="text-primary" />
-            <StatsCard icon={Package} label="Inventory Value" value={`${currencySymbol}${inventoryValue.toFixed(2)}`} trend="On Hand" color="text-foreground" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
+            <StatsCard icon={DollarSign} label="Aggregate Revenue" value={`${currencySymbol}${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} trend="Cumulative" />
+            <StatsCard icon={TrendingUp} label="Net Realized Profit" value={`${currencySymbol}${totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} trend="Calculated Yield" color="text-primary" />
+            <StatsCard icon={Package} label="Inventory Valuation" value={`${currencySymbol}${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} trend="Net Assets" />
             <StatsCard 
               icon={Wallet} 
-              label="Capital Balance" 
-              value={`${currencySymbol}${remainingCapital.toFixed(2)}`} 
-              trend={`Cap: ${currencySymbol}${totalCapacity/1000}k`} 
-              color="text-foreground" 
+              label="Liquidity Guardrail" 
+              value={`${currencySymbol}${remainingCapital.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} 
+              trend={`Max Cap: ${currencySymbol}${(totalCapacity/1000).toFixed(1)}k`} 
+              color={remainingCapital < (totalCapacity * 0.1) ? "text-destructive" : "text-foreground"} 
             />
           </div>
 
-          {/* Cash Flow & Capital Claim Section */}
-          <div className="mb-12">
-             <div className="flex justify-between items-center mb-6 px-2">
-                <h2 className="text-xl font-black flex items-center gap-2 uppercase tracking-tighter">
-                   <Landmark className="w-6 h-6 text-primary" /> Strategic Cash Flow & Capital Claim
-                </h2>
+          {/* Strategic Capital Recovery Section */}
+          <div className="mb-16">
+             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 px-2">
+                <div>
+                   <h2 className="text-2xl font-black flex items-center gap-3 uppercase tracking-tighter">
+                      <Landmark className="w-8 h-8 text-primary" /> Modal Recovery & Reinvestment
+                   </h2>
+                   <p className="text-sm font-bold text-muted-foreground mt-1">Claim back cost-of-sale capital into your strategic injection pool</p>
+                </div>
                 <Button 
                   onClick={handleClaimAllCapital} 
                   disabled={isClaiming || aggregateCapitalToClaim <= 0}
-                  className="rounded-xl font-black h-12 px-8 shadow-xl gap-2 transition-all hover:scale-105 active:scale-95"
+                  className="rounded-2xl font-black h-16 px-10 shadow-2xl gap-3 transition-all hover:scale-[1.02] active:scale-95 text-lg"
                 >
-                   {isClaiming ? <Zap className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                   Claim All Capital ({currencySymbol}{aggregateCapitalToClaim.toFixed(2)})
+                   {isClaiming ? <Zap className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-current" />}
+                   Claim Restorable Capital ({currencySymbol}{aggregateCapitalToClaim.toFixed(2)})
                 </Button>
              </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                 {flowStats.map(stat => (
-                  <Card key={stat.name} className="border-none shadow-sm rounded-3xl bg-white overflow-hidden group hover:shadow-md transition-all">
-                     <CardHeader className="bg-secondary/10 p-6">
-                        <CardTitle className="text-lg font-black">{stat.name}</CardTitle>
-                        <CardDescription className="font-bold text-[10px] uppercase">Financial Reconciliation</CardDescription>
+                  <Card key={stat.name} className="border-none shadow-sm rounded-[40px] bg-white overflow-hidden group hover:shadow-xl transition-all border-2 border-transparent hover:border-primary/10">
+                     <CardHeader className="bg-secondary/20 p-8">
+                        <div className="flex justify-between items-start">
+                           <CardTitle className="text-2xl font-black tracking-tight">{stat.name}</CardTitle>
+                           <Badge variant="outline" className="text-[10px] font-black tracking-widest h-6 px-3">{stat.unclaimedCount} SALES</Badge>
+                        </div>
+                        <CardDescription className="font-bold text-[10px] uppercase tracking-widest text-muted-foreground mt-2">Operational Segment</CardDescription>
                      </CardHeader>
-                     <CardContent className="p-6 space-y-4">
-                        <div className="space-y-2">
-                           <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Profit Breakdown</p>
+                     <CardContent className="p-8 space-y-6">
+                        <div className="space-y-3">
+                           <p className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.15em]">Profit Velocity</p>
                            {stat.breakdown.map(b => (
                              <div key={b.method} className="flex justify-between items-center text-xs">
-                                <span className="font-bold text-muted-foreground capitalize">{b.method}</span>
+                                <span className="font-bold text-muted-foreground capitalize">{b.method} Terminal</span>
                                 <span className="font-black text-foreground">{currencySymbol}{b.profit.toFixed(2)}</span>
                              </div>
                            ))}
                         </div>
-                        <Separator />
+                        <Separator className="opacity-50" />
                         <div className="pt-2">
                            <div className="flex justify-between items-end">
                               <div>
-                                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Cap. to Claim</p>
-                                 <Badge variant="outline" className="text-[9px] font-black mt-1 h-5">{stat.unclaimedCount} Unclaimed</Badge>
+                                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Restorable Modal</p>
+                                 <p className="text-[9px] font-bold text-muted-foreground mt-1">Ready for reinvestment</p>
                               </div>
-                              <p className="text-2xl font-black text-primary tracking-tighter">{currencySymbol}{stat.capitalToClaim.toFixed(2)}</p>
+                              <p className="text-3xl font-black text-primary tracking-tighter">{currencySymbol}{stat.capitalToClaim.toFixed(2)}</p>
                            </div>
                         </div>
                      </CardContent>
@@ -224,28 +230,28 @@ export default function CompanyDashboard() {
              </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-3xl overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-[48px] overflow-hidden border-2 border-primary/5">
+              <CardHeader className="flex flex-row items-center justify-between p-10">
                 <div>
-                  <CardTitle className="text-lg font-black">Revenue by Module</CardTitle>
-                  <CardDescription className="font-bold">Comparative performance across departments</CardDescription>
+                  <CardTitle className="text-2xl font-black tracking-tight">Revenue Segment Analysis</CardTitle>
+                  <CardDescription className="font-bold">Comparative yield across business pillars</CardDescription>
                 </div>
-                <div className="w-10 h-10 bg-secondary/50 rounded-xl flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-primary" />
+                <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+                  <ShieldCheck className="w-8 h-8" />
                 </div>
               </CardHeader>
-              <CardContent className="h-[350px] p-8 pt-0">
+              <CardContent className="h-[400px] p-10 pt-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={moduleData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                    <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val}`} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontWeight: 800, fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 800, fontSize: 12 }} tickFormatter={(val) => `${currencySymbol}${val}`} />
                     <Tooltip 
-                      cursor={{ fill: 'transparent' }}
-                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)' }}
+                      cursor={{ fill: 'rgba(0,0,0,0.02)', radius: 12 }}
+                      contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)', padding: '20px' }}
                     />
-                    <Bar dataKey="total" radius={[8, 8, 0, 0]} barSize={50}>
+                    <Bar dataKey="total" radius={[12, 12, 0, 0]} barSize={60}>
                       {moduleData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={index === 0 ? 'hsl(var(--primary))' : 'hsl(var(--secondary))'} />
                       ))}
@@ -255,43 +261,50 @@ export default function CompanyDashboard() {
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
-              <Card className="border-none shadow-xl bg-primary text-primary-foreground rounded-3xl overflow-hidden">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2 font-black">
-                    <AlertTriangle className="w-5 h-5" />
-                    Insights & Alerts
+            <div className="space-y-8">
+              <Card className="border-none shadow-2xl bg-primary text-primary-foreground rounded-[40px] overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-10 opacity-10 rotate-12">
+                   <AlertTriangle className="w-32 h-32" />
+                </div>
+                <CardHeader className="relative z-10">
+                  <CardTitle className="text-xl flex items-center gap-3 font-black tracking-tight uppercase">
+                    Tactical Intelligence
                   </CardTitle>
+                  <p className="text-xs font-bold opacity-70">Real-time alerts & guardrail status</p>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <AlertItem label="Low Stock Warning" value={`${products?.filter(p => p.stock < 10).length || 0} items below threshold`} />
-                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / (totalCapacity || 1)) * 100).toFixed(1)}% utilized`} />
-                  <AlertItem label="Pending Recoveries" value={`${currencySymbol}${aggregateCapitalToClaim.toFixed(2)} to claim`} />
+                <CardContent className="space-y-5 relative z-10">
+                  <AlertItem label="Critical Stock Alerts" value={`${products?.filter(p => p.stock < 10).length || 0} Assets below threshold`} />
+                  <AlertItem label="Budget Consumption" value={`${((totalCapitalUsed / (totalCapacity || 1)) * 100).toFixed(1)}% Velocity`} />
+                  <AlertItem label="Unclaimed Restoration" value={`${currencySymbol}${aggregateCapitalToClaim.toFixed(2)} Restorable`} />
                 </CardContent>
               </Card>
 
-              <Card className="border-none shadow-sm bg-white rounded-3xl">
-                <CardHeader>
-                  <CardTitle className="text-lg font-black">Latest Activity</CardTitle>
+              <Card className="border-none shadow-sm bg-white rounded-[40px] border-2 border-secondary/20">
+                <CardHeader className="p-8">
+                  <CardTitle className="text-xl font-black tracking-tight">Recent Ledger Events</CardTitle>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Latest transactions</p>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="divide-y px-6">
+                  <div className="divide-y px-8 pb-4">
                     {transactions?.slice().reverse().slice(0, 5).map((t) => (
-                      <div key={t.id} className="flex items-center justify-between py-4 group">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                            {t.module === 'mart' ? <ShoppingBag className="w-4 h-4 text-primary" /> : <Waves className="w-4 h-4 text-primary" />}
+                      <div key={t.id} className="flex items-center justify-between py-5 group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center group-hover:bg-primary/10 transition-all">
+                            {t.module === 'mart' ? <ShoppingBag className="w-5 h-5 text-primary" /> : <Waves className="w-5 h-5 text-primary" />}
                           </div>
                           <div>
-                            <p className="text-[10px] font-black uppercase text-foreground">{t.module}</p>
-                            <p className="text-[10px] text-muted-foreground font-bold">{new Date(t.timestamp).toLocaleTimeString()}</p>
+                            <p className="text-xs font-black uppercase tracking-tight text-foreground">{t.module} Operational</p>
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">{new Date(t.timestamp).toLocaleTimeString()}</p>
                           </div>
                         </div>
-                        <p className="font-black text-sm text-primary">+{currencySymbol}{t.totalAmount.toFixed(2)}</p>
+                        <p className="font-black text-lg text-primary tracking-tighter">+{currencySymbol}{t.totalAmount.toFixed(2)}</p>
                       </div>
                     ))}
                     {(!transactions || transactions.length === 0) && (
-                      <p className="text-center py-12 text-muted-foreground text-sm font-medium">Awaiting first transaction...</p>
+                      <div className="py-16 text-center opacity-30">
+                         <Landmark className="w-12 h-12 mx-auto mb-4" />
+                         <p className="text-xs font-black uppercase tracking-widest">Awaiting Events</p>
+                      </div>
                     )}
                   </div>
                 </CardContent>
@@ -306,18 +319,18 @@ export default function CompanyDashboard() {
 
 function StatsCard({ icon: Icon, label, value, trend, color }: any) {
   return (
-    <Card className="border-none shadow-sm overflow-hidden bg-white rounded-2xl group hover:shadow-md transition-shadow">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-            <Icon className="w-6 h-6 text-primary" />
+    <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[32px] group hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-primary/5">
+      <CardContent className="p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div className="w-14 h-14 bg-secondary/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+            <Icon className="w-7 h-7 text-primary" />
           </div>
-          <span className="flex items-center text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-tighter">
+          <span className="flex items-center text-[10px] font-black text-primary bg-primary/10 px-4 py-1.5 rounded-full uppercase tracking-widest border border-primary/10">
             {trend}
           </span>
         </div>
-        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">{label}</p>
-        <h4 className={cn("text-2xl font-black mt-1", color)}>{value}</h4>
+        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] leading-none mb-2">{label}</p>
+        <h4 className={cn("text-3xl font-black tracking-tighter leading-none", color)}>{value}</h4>
       </CardContent>
     </Card>
   );
@@ -325,9 +338,9 @@ function StatsCard({ icon: Icon, label, value, trend, color }: any) {
 
 function AlertItem({ label, value }: { label: string, value: string }) {
   return (
-    <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-sm hover:bg-white/20 transition-colors">
-      <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1 tracking-widest">{label}</p>
-      <p className="font-black text-sm">{value}</p>
+    <div className="bg-white/10 p-5 rounded-3xl backdrop-blur-sm hover:bg-white/20 transition-all border border-white/5">
+      <p className="text-[9px] font-black uppercase opacity-60 leading-none mb-2 tracking-widest">{label}</p>
+      <p className="font-black text-sm tracking-tight">{value}</p>
     </div>
   );
 }

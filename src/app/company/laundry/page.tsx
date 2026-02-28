@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -21,17 +22,10 @@ import {
   Plus,
   CheckCircle2,
   ArrowRight,
-  User,
   ShieldCheck,
-  AlertCircle,
   Clock,
   RefreshCw,
-  Calculator,
-  ListFilter,
   AlertTriangle,
-  Scale,
-  HandCoins,
-  BarChart3,
   Lock,
   XCircle,
   Landmark,
@@ -49,13 +43,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import Image from 'next/image';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const CLASSES = ['Biruni', 'Dinawari', 'Farabi', 'Ghazali', 'Khawarizmi', 'Razi'];
@@ -316,39 +307,42 @@ export default function LaundryPage() {
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <div className="mb-8 flex justify-between items-end">
-          <div><h1 className="text-3xl font-black font-headline tracking-tight text-foreground">Laundry Hub</h1><p className="text-muted-foreground font-medium">Smart Scheduling & Quota Billing</p></div>
+      <main className="flex-1 overflow-auto p-10">
+        <div className="mb-10 flex justify-between items-end">
+          <div>
+            <h1 className="text-4xl font-black font-headline tracking-tighter uppercase text-foreground">Facility Hub</h1>
+            <p className="text-muted-foreground font-bold text-lg mt-1">Laundry Operations & Quota Quotas</p>
+          </div>
           <div className="flex gap-4">
-            <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl mr-4">
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBudget > 0 ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive")}><Wallet className="w-5 h-5" /></div>
-              <div><p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p><p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>{currencySymbol}{remainingBudget.toFixed(2)}</p></div>
+            <Card className="p-4 border-none shadow-xl bg-white/80 flex items-center gap-4 rounded-[24px]">
+              <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg", remainingBudget > 0 ? "bg-primary text-white" : "bg-destructive text-white")}><Wallet className="w-6 h-6" /></div>
+              <div><p className="text-[10px] font-black uppercase text-muted-foreground leading-tight tracking-widest">Tactical Budget</p><p className={cn("text-xl font-black tracking-tighter", remainingBudget <= 0 && "text-destructive")}>{currencySymbol}{remainingBudget.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
             </Card>
             <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
-              <DialogTrigger asChild><Button className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2"><Wallet className="w-5 h-5" /> Account Deposit</Button></DialogTrigger>
-              <DialogContent className="rounded-[40px] max-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
-                <div className="bg-primary p-12 text-primary-foreground text-center"><p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">Student Settlement</p><DialogTitle className="text-4xl font-black tracking-tighter">Deposit Registry</DialogTitle></div>
-                <div className="p-10 space-y-8">
-                  <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Subscriber Matrix No</Label><Input placeholder="SCAN OR TYPE MATRIX..." className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6" value={topUpMatrix} onChange={(e) => setTopUpMatrix(e.target.value)}/></div>
+              <DialogTrigger asChild><Button className="rounded-2xl h-16 px-10 font-black text-lg shadow-2xl gap-3 transition-all hover:scale-[1.02]"><Wallet className="w-6 h-6 fill-current" /> Account Deposit</Button></DialogTrigger>
+              <DialogContent className="rounded-[48px] max-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
+                <div className="bg-primary p-12 text-primary-foreground text-center relative"><div className="absolute top-0 right-0 p-8 opacity-10"><Waves className="w-20 h-20" /></div><p className="text-xs font-black uppercase tracking-[0.3em] opacity-80 mb-2">Student Registry Settlement</p><DialogTitle className="text-5xl font-black tracking-tighter">Authorized Deposit</DialogTitle></div>
+                <div className="p-12 space-y-10">
+                  <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Subscriber Matrix Identity</Label><Input placeholder="SCAN OR ENTER MATRIX ID..." className="h-16 rounded-2xl font-black text-2xl bg-secondary/10 border-none px-8" value={topUpMatrix} onChange={(e) => setTopUpMatrix(e.target.value)}/></div>
                   {foundTopUpStudent && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                      <div className="p-6 bg-primary/5 rounded-[32px] border-2 border-primary/10 flex justify-between items-center">
-                        <div><p className="text-[10px] font-black text-primary uppercase">Active Subscriber</p><h4 className="text-2xl font-black">{foundTopUpStudent.name}</h4><p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p></div>
-                        <div className="text-right"><p className="text-[10px] font-black text-muted-foreground uppercase">Need to Pay</p><p className="text-3xl font-black text-destructive">{currencySymbol}{Math.max(0, (foundTopUpStudent.initialAmount ?? 0) - (foundTopUpStudent.balance ?? 0)).toFixed(2)}</p></div>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-4">
+                      <div className="p-8 bg-primary/5 rounded-[32px] border-4 border-primary/10 flex justify-between items-center">
+                        <div><p className="text-[10px] font-black text-primary uppercase tracking-widest">Validated Account</p><h4 className="text-3xl font-black tracking-tighter">{foundTopUpStudent.name}</h4><p className="text-xs font-bold text-muted-foreground mt-1">Level {foundTopUpStudent.level} Operational • {foundTopUpStudent.class} Squadron</p></div>
+                        <div className="text-right"><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Outstanding Liability</p><p className="text-4xl font-black text-destructive tracking-tighter">{currencySymbol}{Math.max(0, (foundTopUpStudent.initialAmount ?? 0) - (foundTopUpStudent.balance ?? 0)).toFixed(2)}</p></div>
                       </div>
-                      <div className="space-y-4"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Deposit Amount ({currencySymbol})</Label><Input type="number" placeholder="0.00" className="h-16 rounded-2xl font-black text-3xl bg-secondary/10 border-none px-6" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)}/></div>
-                      <div className="space-y-4"><Label className="text-[10px] font-black uppercase tracking-widest">Settlement Method</Label><RadioGroup value={topUpPaymentMethod} onValueChange={(v) => setTopUpPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3"><PaymentOption value="cash" label="Cash" icon={Banknote} id="topup_cash" /><PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" /><PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" /></RadioGroup></div>
+                      <div className="space-y-4"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Deposit Volume ({currencySymbol})</Label><Input type="number" placeholder="0.00" className="h-20 rounded-[28px] font-black text-5xl tracking-tighter bg-secondary/10 border-none px-8 text-center" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)}/></div>
+                      <div className="space-y-4"><Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1">Settlement Method Protocol</Label><RadioGroup value={topUpPaymentMethod} onValueChange={(v) => setTopUpPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-4"><PaymentOption value="cash" label="Physical Cash" icon={Banknote} id="topup_cash" /><PaymentOption value="card" label="Bank Card" icon={CreditCard} id="topup_card" /><PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" /></RadioGroup></div>
                       {topUpPaymentMethod === 'cash' ? (
-                        <div className="space-y-4 p-6 bg-secondary/10 rounded-3xl border-2 border-dashed border-primary/20">
-                          <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary px-1">Cash Received ({currencySymbol})</Label><Input type="number" placeholder="0.00" className="h-14 rounded-2xl font-black text-2xl bg-white border-none text-center" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}/></div>
+                        <div className="space-y-6 p-8 bg-secondary/10 rounded-[32px] border-2 border-dashed border-primary/20">
+                          <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary px-1 tracking-widest">Amount Paid In ({currencySymbol})</Label><Input type="number" placeholder="0.00" className="h-16 rounded-2xl font-black text-3xl bg-white border-none text-center shadow-inner" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}/></div>
                           {Number(amountReceived) >= Number(topUpAmount) && Number(topUpAmount) > 0 && (
-                            <div className="flex justify-between items-center px-2 py-2 border-t border-primary/10"><span className="text-xs font-black uppercase text-muted-foreground">Change Due:</span><span className="text-3xl font-black text-foreground">{currencySymbol}{(Number(amountReceived) - Number(topUpAmount)).toFixed(2)}</span></div>
+                            <div className="flex justify-between items-center px-4 py-4 border-t-2 border-primary/10 animate-in fade-in"><span className="text-xs font-black uppercase text-muted-foreground tracking-widest">Return Change:</span><span className="text-4xl font-black text-foreground tracking-tighter">{currencySymbol}{(Number(amountReceived) - Number(topUpAmount)).toFixed(2)}</span></div>
                           )}
                         </div>
                       ) : (
-                        <div className="space-y-2 p-6 bg-secondary/10 rounded-3xl border-2 border-dashed border-primary/20"><Label className="text-[10px] font-black uppercase px-1">Transaction Ref / Trace ID</Label><Input placeholder="ENTER REFERENCE NO..." className="h-14 rounded-2xl font-black text-lg bg-white border-none px-6" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)}/></div>
+                        <div className="space-y-2 p-8 bg-secondary/10 rounded-[32px] border-2 border-dashed border-primary/20"><Label className="text-[10px] font-black uppercase px-1 tracking-widest">Transaction Trace ID / Auth Reference</Label><Input placeholder="ENTER REFERENCE CODE..." className="h-16 rounded-2xl font-black text-xl bg-white border-none px-8 shadow-inner" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)}/></div>
                       )}
-                      <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handleConfirmTopUp} disabled={isProcessing || !topUpAmount}>Confirm & Record Deposit</Button>
+                      <Button className="w-full h-24 rounded-[32px] font-black text-2xl shadow-2xl transition-all hover:scale-[1.02]" onClick={handleConfirmTopUp} disabled={isProcessing || !topUpAmount}>Confirm & Authorize Deposit</Button>
                     </div>
                   )}
                 </div>
@@ -357,74 +351,74 @@ export default function LaundryPage() {
           </div>
         </div>
 
-        {!isBudgetActive && <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20"><AlertTriangle className="h-4 w-4" /><AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Alert</AlertTitle><AlertDescription className="text-sm font-medium">Note: Your <strong>Capital Base Limit</strong> is not set. <Link href="/company/capital" className="underline font-black ml-1">Configure budget</Link></AlertDescription></Alert>}
+        {!isBudgetActive && <Alert variant="destructive" className="mb-10 rounded-[24px] bg-destructive/5 border-2 border-destructive/10 animate-in slide-in-from-top-4"><AlertTriangle className="h-5 w-5" /><AlertTitle className="font-black uppercase text-[10px] tracking-[0.2em] mb-1">Financial Guardrail Alert</AlertTitle><AlertDescription className="text-sm font-bold opacity-80">Your <strong>Capital Base Limit</strong> is not set. <Link href="/company/capital" className="underline font-black hover:opacity-100 ml-2">Configure Strategic Budget</Link></AlertDescription></Alert>}
 
-        <Tabs defaultValue="pos" className="space-y-6">
-          <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm"><TabsTrigger value="pos" className="rounded-lg">POS Terminal</TabsTrigger><TabsTrigger value="payable" className="rounded-lg">Payable Laundry</TabsTrigger><TabsTrigger value="students" className="rounded-lg">Subscribers</TabsTrigger><TabsTrigger value="schedule" className="rounded-lg">Schedule</TabsTrigger><TabsTrigger value="config" className="rounded-lg">Pricing Config</TabsTrigger><TabsTrigger value="consumables" className="rounded-lg">Inventory</TabsTrigger><TabsTrigger value="profits" className="rounded-lg">Analytics</TabsTrigger><TabsTrigger value="billing" className="rounded-lg">Gateway</TabsTrigger></TabsList>
+        <Tabs defaultValue="pos" className="space-y-10">
+          <TabsList className="bg-white/50 border-2 border-primary/5 p-1.5 rounded-[24px] shadow-sm"><TabsTrigger value="pos" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Washing Terminal</TabsTrigger><TabsTrigger value="payable" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Walk-in Registry</TabsTrigger><TabsTrigger value="students" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Authorized Subscribers</TabsTrigger><TabsTrigger value="schedule" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Turn Scheduler</TabsTrigger><TabsTrigger value="config" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Strategic Config</TabsTrigger><TabsTrigger value="consumables" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Consumables</TabsTrigger><TabsTrigger value="profits" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Hub Analytics</TabsTrigger><TabsTrigger value="billing" className="rounded-[18px] px-8 py-2 font-black text-xs uppercase tracking-widest">Gateway Hub</TabsTrigger></TabsList>
 
-          <TabsContent value="pos" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
-                <CardHeader className="bg-secondary/10 p-8"><div className="flex justify-between items-center"><div><CardTitle className="text-xl font-black">Washing Terminal</CardTitle><CardDescription className="font-bold">Subscriber usage verification</CardDescription></div><p className="font-black text-primary">{todayDate ? new Date(todayDate).toLocaleDateString([], { dateStyle: 'long' }) : "---"}</p></div></CardHeader>
-                <CardContent className="p-8 space-y-6">
-                  <div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-6 h-6" /><Input placeholder="SCAN STUDENT MATRIX..." className="h-16 rounded-2xl text-2xl font-black border-2 border-primary/20 bg-secondary/5 pl-14" value={matrixSearch} onChange={(e) => setMatrixSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { const found = students?.find(s => s.matrixNumber === matrixSearch); if (found) setSelectedStudent(found); else toast({ title: "Not Found", variant: "destructive" }); } }}/></div><Button onClick={() => { const found = students?.find(s => s.matrixNumber === matrixSearch); if (found) setSelectedStudent(found); else toast({ title: "Not Found", variant: "destructive" }); }} size="lg" className="rounded-2xl px-10 h-16 font-black text-lg">Verify</Button></div>
+          <TabsContent value="pos" className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <div className="lg:col-span-2 space-y-8">
+              <Card className="border-none shadow-sm bg-white rounded-[40px] overflow-hidden border-2 border-primary/5">
+                <CardHeader className="bg-secondary/20 p-10"><div className="flex justify-between items-center"><div><CardTitle className="text-2xl font-black tracking-tight">Active Wash Terminal</CardTitle><CardDescription className="font-bold text-[10px] uppercase tracking-widest mt-2">Authorized Subscriber Verification</CardDescription></div><div className="text-right"><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Operational Date</p><p className="font-black text-primary text-lg tracking-tighter">{todayDate ? new Date(todayDate).toLocaleDateString([], { dateStyle: 'long' }) : "---"}</p></div></div></CardHeader>
+                <CardContent className="p-10 space-y-8">
+                  <div className="flex gap-4 group"><div className="relative flex-1"><Search className="absolute left-6 top-1/2 -translate-y-1/2 text-primary w-7 h-7 relative z-10" /><Input placeholder="SCAN STUDENT MATRIX OR TYPE ID..." className="h-20 rounded-[28px] text-3xl font-black border-4 border-transparent bg-secondary/10 pl-16 focus-visible:bg-white focus-visible:border-primary/20 transition-all shadow-inner focus-visible:shadow-2xl relative z-0 tracking-tight" value={matrixSearch} onChange={(e) => setMatrixSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { const found = students?.find(s => s.matrixNumber === matrixSearch); if (found) setSelectedStudent(found); else toast({ title: "Not Found", variant: "destructive" }); } }}/></div><Button onClick={() => { const found = students?.find(s => s.matrixNumber === matrixSearch); if (found) setSelectedStudent(found); else toast({ title: "Not Found", variant: "destructive" }); }} className="rounded-[28px] px-12 h-20 font-black text-xl shadow-2xl transition-all hover:scale-[1.02]">VERIFY</Button></div>
                   {selectedStudent ? (
-                    <div className="p-10 bg-primary/5 rounded-[32px] border-4 border-primary/10 space-y-8 animate-in zoom-in-95">
-                      <div className="flex justify-between items-start">
-                        <div><p className="text-[10px] font-black text-primary uppercase mb-1">Subscriber Identity</p><h4 className="text-4xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4><div className="flex items-center gap-2 mt-2"><Badge variant="outline" className="font-bold">Level {selectedStudent.level}</Badge><Badge variant="outline" className="font-bold">{selectedStudent.class}</Badge></div></div>
-                        <div className="text-right"><p className="text-[10px] font-black text-muted-foreground uppercase">Wash Bank Balance</p><p className={cn("text-5xl font-black tracking-tighter", ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) <= 0 ? "text-destructive" : "text-primary")}>{currencySymbol}{((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)).toFixed(2)}</p><p className="text-[10px] font-black text-muted-foreground uppercase mt-2">Rate: {currencySymbol}{getWashRateForLevel(selectedStudent.level).toFixed(2)}</p></div>
+                    <div className="p-12 bg-primary/5 rounded-[40px] border-4 border-primary/10 space-y-10 animate-in zoom-in-95">
+                      <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+                        <div><p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-3">Validated Identity</p><h4 className="text-5xl font-black text-foreground tracking-tighter">{selectedStudent.name}</h4><div className="flex items-center gap-3 mt-4"><Badge variant="outline" className="font-black text-[10px] tracking-widest px-4 h-7 border-2">LEVEL {selectedStudent.level} SEGMENT</Badge><Badge variant="outline" className="font-black text-[10px] tracking-widest px-4 h-7 border-2 uppercase">{selectedStudent.class} SQUADRON</Badge></div></div>
+                        <div className="text-right bg-white p-6 rounded-3xl shadow-sm border border-primary/5"><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">Available Wash Capital</p><p className={cn("text-6xl font-black tracking-tighter", ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) <= 0 ? "text-destructive" : "text-primary")}>{currencySymbol}{((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)).toFixed(2)}</p><p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mt-3 opacity-60">Service Rate: {currencySymbol}{getWashRateForLevel(selectedStudent.level).toFixed(2)}</p></div>
                       </div>
-                      <Button className="w-full h-16 rounded-2xl text-xl font-black shadow-xl group" onClick={handleChargeLaundry} disabled={isProcessing || !isBudgetActive || !isLevelAllowedToday(selectedStudent.level) || ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) < getWashRateForLevel(selectedStudent.level)}>Confirm Wash & Debit Account <ArrowRight className="ml-3 w-6 h-6" /></Button>
+                      <Button className="w-full h-24 rounded-[32px] text-2xl font-black shadow-2xl transition-all hover:scale-[1.02] group" onClick={handleChargeLaundry} disabled={isProcessing || !isBudgetActive || !isLevelAllowedToday(selectedStudent.level) || ((selectedStudent.balance ?? 0) - (selectedStudent.totalSpent ?? 0)) < getWashRateForLevel(selectedStudent.level)}>Confirm Wash & Debit Tactical Account <ArrowRight className="ml-4 w-8 h-8 group-hover:translate-x-2 transition-transform" /></Button>
                     </div>
-                  ) : <div className="py-24 text-center bg-secondary/10 rounded-[32px] border-4 border-dashed border-secondary/30"><Search className="w-16 h-16 mx-auto mb-4 opacity-10" /><p className="font-black text-muted-foreground uppercase">Scanner Ready</p></div>}
+                  ) : <div className="py-32 text-center bg-secondary/5 rounded-[40px] border-4 border-dashed border-secondary/20 group"><Search className="w-20 h-20 mx-auto mb-6 text-primary opacity-10 group-hover:opacity-30 transition-opacity" /><p className="font-black text-muted-foreground uppercase tracking-[0.3em] text-sm">Scanner Protocol Standby</p></div>}
                 </CardContent>
               </Card>
             </div>
-            <div className="lg:col-span-1"><Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[32px] p-8 overflow-hidden relative"><div className="absolute top-0 right-0 p-8 opacity-10"><Clock className="w-32 h-32" /></div><CardTitle className="flex items-center gap-3 text-xl font-black mb-6 relative z-10"><CalendarDays className="w-6 h-6" /> Turn Schedule</CardTitle><div className="space-y-4 relative z-10">{LEVELS.map(lv => { const isAllowed = isLevelAllowedToday(lv); return (<div key={lv} className={cn("p-4 rounded-2xl flex justify-between items-center", isAllowed ? "bg-white/20 border-2 border-white/20" : "bg-black/10 opacity-50")}><p className="font-black text-lg">Level {lv}</p>{isAllowed ? <Badge className="bg-white text-primary font-black">Authorized</Badge> : <Badge variant="outline" className="text-white/40 font-bold">Closed</Badge>}</div>); })}</div></Card></div>
+            <div className="lg:col-span-1"><Card className="bg-primary border-none shadow-2xl text-primary-foreground rounded-[48px] p-10 overflow-hidden relative border-4 border-white/10"><div className="absolute top-0 right-0 p-10 opacity-10 rotate-12"><Clock className="w-48 h-48" /></div><div className="relative z-10"><CardTitle className="flex items-center gap-4 text-2xl font-black tracking-tight mb-8"><CalendarDays className="w-8 h-8" /> Authorized Turns</CardTitle><div className="space-y-4">{LEVELS.map(lv => { const isAllowed = isLevelAllowedToday(lv); return (<div key={lv} className={cn("p-6 rounded-3xl flex justify-between items-center transition-all", isAllowed ? "bg-white/20 border-4 border-white/20 shadow-lg scale-[1.02]" : "bg-black/10 opacity-40 grayscale")}><p className="font-black text-2xl tracking-tighter">Level {lv} Segment</p>{isAllowed ? <Badge className="bg-white text-primary font-black px-4 py-1 rounded-xl uppercase tracking-widest text-[10px]">Authorized</Badge> : <Badge variant="outline" className="text-white/40 font-black px-4 py-1 rounded-xl uppercase tracking-widest text-[10px] border-white/20">Standby</Badge>}</div>); })}</div><div className="mt-10 pt-10 border-t border-white/10"><p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Strategic Notice</p><p className="text-xs font-bold mt-2 leading-relaxed opacity-80">Only authorized segments are permitted terminal access for the current operational cycle.</p></div></div></Card></div>
           </TabsContent>
 
           <TabsContent value="payable">
-             <Card className="border-none shadow-sm bg-white rounded-3xl p-8 max-w-2xl mx-auto">
-                <CardHeader className="px-0 pt-0 mb-8"><CardTitle className="text-2xl font-black">Payable Service Entry</CardTitle></CardHeader>
-                <div className="space-y-8">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label><Input placeholder="Full Name" value={payableName} onChange={(e) => setPayableName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" /></div>
-                      <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Service Amount ({currencySymbol})</Label><Input type="number" placeholder="5.00" value={payableAmount} onChange={(e) => setPayableAmount(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none text-primary" /></div>
+             <Card className="border-none shadow-2xl bg-white rounded-[48px] p-12 max-w-2xl mx-auto border-2 border-primary/5">
+                <CardHeader className="px-0 pt-0 mb-10"><div className="flex items-center gap-4 mb-2"><div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center text-white"><Droplet className="w-6 h-6 fill-current" /></div><h2 className="text-3xl font-black tracking-tighter uppercase">Walk-in Service Entry</h2></div><p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Direct Settlement Protocol</p></CardHeader>
+                <div className="space-y-10">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Customer Identity</Label><Input placeholder="Full Name" value={payableName} onChange={(e) => setPayableName(e.target.value)} className="h-14 rounded-2xl font-black text-lg bg-secondary/10 border-none px-6" /></div>
+                      <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Service Fee ({currencySymbol})</Label><Input type="number" placeholder="5.00" value={payableAmount} onChange={(e) => setPayableAmount(e.target.value)} className="h-14 rounded-2xl font-black text-2xl bg-secondary/10 border-none px-6 text-primary tracking-tighter" /></div>
                    </div>
-                   <div className="space-y-4"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Gateway</Label><RadioGroup value={payablePaymentMethod} onValueChange={(v) => setPayablePaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3"><PaymentOption value="cash" label="Cash" icon={Banknote} id="pay_wash_cash" /><PaymentOption value="card" label="Card" icon={CreditCard} id="pay_wash_card" /><PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="pay_wash_qr" /></RadioGroup></div>
+                   <div className="space-y-4"><Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-1">Settlement Gateway Selection</Label><RadioGroup value={payablePaymentMethod} onValueChange={(v) => setPayablePaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-4"><PaymentOption value="cash" label="Physical Cash" icon={Banknote} id="pay_wash_cash" /><PaymentOption value="card" label="Bank Card" icon={CreditCard} id="pay_wash_card" /><PaymentOption value="duitnow" label="DuitNow Digital" icon={QrCode} id="pay_wash_qr" /></RadioGroup></div>
                    {payablePaymentMethod === 'cash' ? (
-                     <div className="p-6 bg-primary/5 rounded-[32px] border-2 border-primary/10 space-y-6">
-                        <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary">Cash Received ({currencySymbol})</Label><Input type="number" value={payableCashReceived} onChange={(e) => setPayableCashReceived(e.target.value)} className="h-16 rounded-2xl font-black text-3xl text-center bg-white border-none" /></div>
-                        {Number(payableCashReceived) >= Number(payableAmount) && Number(payableAmount) > 0 && (<div className="flex justify-between items-center px-2"><span className="text-xs font-black uppercase text-muted-foreground">Change Due:</span><span className="text-3xl font-black text-foreground">{currencySymbol}{Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)).toFixed(2)}</span></div>)}
+                     <div className="p-8 bg-primary/5 rounded-[40px] border-4 border-primary/10 space-y-8 animate-in fade-in">
+                        <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-primary tracking-widest">Cash Volume Paid In ({currencySymbol})</Label><Input type="number" value={payableCashReceived} onChange={(e) => setPayableCashReceived(e.target.value)} className="h-20 rounded-[28px] font-black text-5xl tracking-tighter text-center bg-white border-none shadow-inner" /></div>
+                        {Number(payableCashReceived) >= Number(payableAmount) && Number(payableAmount) > 0 && (<div className="flex justify-between items-center px-4 py-4 border-t-2 border-primary/10"><span className="text-xs font-black uppercase text-muted-foreground tracking-widest">Settlement Change:</span><span className="text-5xl font-black text-foreground tracking-tighter">{currencySymbol}{Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)).toFixed(2)}</span></div>)}
                      </div>
-                   ) : <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Trace ID / Reference</Label><Input placeholder="Enter Trace No..." value={payableRef} onChange={(e) => setPayableRef(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" /></div>}
-                   <Button onClick={handlePayableWash} className="w-full h-16 rounded-[24px] font-black text-xl shadow-xl" disabled={isProcessing || !payableAmount}>Complete & Confirm Wash</Button>
+                   ) : <div className="space-y-2 p-8 bg-secondary/10 rounded-[32px] border-2 border-dashed border-primary/20"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Trace ID / Authentication Reference</Label><Input placeholder="ENTER REFERENCE CODE..." value={payableRef} onChange={(e) => setPayableRef(e.target.value)} className="h-16 rounded-2xl font-black text-xl bg-white border-none px-8 shadow-inner" /></div>}
+                   <Button onClick={handlePayableWash} className="w-full h-24 rounded-[32px] font-black text-2xl shadow-2xl transition-all hover:scale-[1.02]" disabled={isProcessing || !payableAmount}>Authorize & Confirm Wash</Button>
                 </div>
              </Card>
           </TabsContent>
 
-          <TabsContent value="students" className="space-y-8">
-             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <div className="lg:col-span-1"><Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"><h3 className="text-xl font-black mb-6">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3><form onSubmit={handleRegisterStudent} className="space-y-5"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Full Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Matrix Number</Label><Input name="matrix" defaultValue={editingStudent?.matrixNumber} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Level</Label><Select value={selectedLevel} onValueChange={setSelectedLevel}><SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger><SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Class</Label><Select value={selectedClass} onValueChange={setSelectedClass}><SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger><SelectContent className="rounded-xl font-bold">{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Initial Subscription ({currencySymbol})</Label><div className="h-11 rounded-xl bg-secondary/10 border-none font-black flex items-center px-4 text-primary">{currencySymbol}{(benchmarkSubscription || 0).toFixed(2)}</div></div><div className="flex gap-2">{editingStudent && <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-xl font-bold">Cancel</Button>}<Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={isProcessing}>{editingStudent ? "Update" : "Save"}</Button></div></form></Card></div>
-                <div className="lg:col-span-3"><div className="bg-white rounded-[32px] border shadow-sm overflow-hidden"><table className="w-full text-sm text-left"><thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th><th className="p-6 font-black uppercase text-[10px]">Initial Sub</th><th className="p-6 font-black uppercase text-[10px]">Deposits</th><th className="p-6 font-black uppercase text-[10px]">Net Balance</th><th className="p-6 font-black uppercase text-[10px]">Action</th></tr></thead><tbody className="divide-y">{students?.map(s => { const deposits = s.balance ?? 0; const spent = s.totalSpent ?? 0; const washBalance = deposits - spent; return (<tr key={s.id} className="hover:bg-secondary/5 group"><td className="p-6"><p className="font-black text-lg">{s.name}</p><p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p></td><td className="p-6 font-bold">{currencySymbol}{(s.initialAmount ?? 0).toFixed(2)}</td><td className="p-6 font-black">{currencySymbol}{deposits.toFixed(2)}</td><td className="p-6"><p className={cn("font-black text-lg", washBalance <= 0 ? "text-destructive" : "text-primary")}>{currencySymbol}{washBalance.toFixed(2)}</p></td><td className="p-6 text-center"><div className="flex items-center justify-center gap-2"><Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button></div></td></tr>); })}</tbody></table></div></div>
+          <TabsContent value="students" className="space-y-10">
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
+                <div className="lg:col-span-1"><Card className="border-none shadow-sm rounded-[40px] bg-white p-10 sticky top-10 border-2 border-secondary/10"><h3 className="text-2xl font-black mb-8 tracking-tight">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3><form onSubmit={handleRegisterStudent} className="space-y-6"><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Full Legal Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-12 rounded-xl bg-secondary/10 border-none font-black text-sm" /></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Matrix Identifier</Label><Input name="matrix" defaultValue={editingStudent?.matrixNumber} required className="h-12 rounded-xl bg-secondary/10 border-none font-black text-sm" /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Segment</Label><Select value={selectedLevel} onValueChange={setSelectedLevel}><SelectTrigger className="h-12 rounded-xl bg-secondary/10 border-none font-black text-xs uppercase"><SelectValue placeholder="LEVEL" /></SelectTrigger><SelectContent className="rounded-xl font-black text-xs uppercase">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Squadron</Label><Select value={selectedClass} onValueChange={setSelectedClass}><SelectTrigger className="h-12 rounded-xl bg-secondary/10 border-none font-black text-xs uppercase"><SelectValue placeholder="CLASS" /></SelectTrigger><SelectContent className="rounded-xl font-black text-xs uppercase">{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-primary">Base Subscription Fee ({currencySymbol})</Label><div className="h-14 rounded-2xl bg-primary/5 border-2 border-primary/10 font-black flex items-center px-6 text-primary text-xl tracking-tighter">{currencySymbol}{(benchmarkSubscription || 0).toFixed(2)}</div></div><div className="flex gap-3 pt-4">{editingStudent && <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-2xl h-14 font-black uppercase text-[10px] tracking-widest">Abort</Button>}<Button type="submit" className="flex-1 h-14 rounded-2xl font-black shadow-xl uppercase text-[10px] tracking-widest" disabled={isProcessing}>{editingStudent ? "Update" : "Authorize"}</Button></div></form></Card></div>
+                <div className="lg:col-span-3"><div className="bg-white rounded-[48px] border-2 border-primary/5 shadow-sm overflow-hidden"><table className="w-full text-sm text-left"><thead className="bg-secondary/20 border-b-2"><tr><th className="p-8 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Subscriber / Identity</th><th className="p-8 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Base Sub</th><th className="p-8 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Deposits</th><th className="p-8 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Net Liquidity</th><th className="p-8 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Operations</th></tr></thead><tbody className="divide-y">{students?.map(s => { const deposits = s.balance ?? 0; const spent = s.totalSpent ?? 0; const washBalance = deposits - spent; return (<tr key={s.id} className="hover:bg-secondary/10 transition-all group"><td className="p-8"><p className="font-black text-xl tracking-tight text-foreground">{s.name}</p><p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1.5">{s.matrixNumber} • LEVEL {s.level} • {s.class}</p></td><td className="p-8 font-black text-muted-foreground tracking-tighter text-lg">{currencySymbol}{(s.initialAmount ?? 0).toFixed(2)}</td><td className="p-8 font-black text-foreground tracking-tighter text-lg">{currencySymbol}{deposits.toFixed(2)}</td><td className="p-8"><p className={cn("font-black text-3xl tracking-tighter", washBalance <= 0 ? "text-destructive" : "text-primary")}>{currencySymbol}{washBalance.toFixed(2)}</p></td><td className="p-8 text-center"><div className="flex items-center justify-center gap-3"><Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="h-12 w-12 rounded-2xl text-primary hover:bg-primary/10 transition-all border-2 border-transparent hover:border-primary/20"><Edit2 className="w-5 h-5" /></Button><Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="h-12 w-12 rounded-2xl text-destructive hover:bg-destructive/10 transition-all border-2 border-transparent hover:border-destructive/20"><Trash2 className="w-5 h-5" /></Button></div></td></tr>); })}</tbody></table></div></div>
              </div>
           </TabsContent>
 
           <TabsContent value="schedule"><LaundryScheduler companyId={user?.companyId} schedules={schedules} levelQuotas={levelQuotas} /></TabsContent>
 
-          <TabsContent value="config" className="space-y-8"><GlobalPolicyConfig companyId={user?.companyId} initialConfig={globalConfig} currencySymbol={currencySymbol} /><LaundryConfigurator levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} studentSoap={studentSoap} soapMlPerWash={soapMlPerWash} payableSoap={payableSoap} payableServiceRate={payableServiceRate} payableSoapMlPerWash={payableSoapMlPerWash} currencySymbol={currencySymbol}/></TabsContent>
+          <TabsContent value="config" className="space-y-10"><GlobalPolicyConfig companyId={user?.companyId} initialConfig={globalConfig} currencySymbol={currencySymbol} /><LaundryConfigurator levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} studentSoap={studentSoap} soapMlPerWash={soapMlPerWash} payableSoap={payableSoap} payableServiceRate={payableServiceRate} payableSoapMlPerWash={payableSoapMlPerWash} currencySymbol={currencySymbol}/></TabsContent>
 
           <TabsContent value="consumables">
-             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <div className="lg:col-span-1"><Card className={cn("border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8", !canProcure && "grayscale opacity-80")}><div className="flex items-center gap-2 mb-6"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{canProcure ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}</div><h3 className="text-xl font-black">{canProcure ? 'Stock Replenish' : 'Locked'}</h3></div><form onSubmit={handleRefillInventory} className="space-y-5"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Pool</Label><Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!canProcure}><SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger><SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Bottles</Label><Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">ml/Bottle</Label><Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Price/Bottle ({currencySymbol})</Label><Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure}>Confirm Stock Refill</Button></form></Card></div>
-                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8"><InventoryGauge label="Student Consumables" item={studentSoap} currencySymbol={currencySymbol}/><InventoryGauge label="Payable Consumables" item={payableSoap} currencySymbol={currencySymbol}/></div>
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
+                <div className="lg:col-span-1"><Card className={cn("border-none shadow-sm rounded-[40px] bg-white p-10 sticky top-10 border-2 border-transparent", !canProcure ? "grayscale opacity-80 border-destructive/10" : "hover:border-primary/10")}><div className="flex items-center gap-3 mb-8"><div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg", canProcure ? "bg-primary text-white" : "bg-destructive text-white")}>{canProcure ? <RefreshCw className="w-7 h-7" /> : <Lock className="w-7 h-7" />}</div><div><h3 className="text-xl font-black tracking-tight">{canProcure ? 'Stock Refill' : 'Terminal Locked'}</h3><p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mt-1">Inventory Protocol</p></div></div><form onSubmit={handleRefillInventory} className="space-y-6"><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Tactical Pool</Label><Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!canProcure}><SelectTrigger className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xs uppercase"><SelectValue /></SelectTrigger><SelectContent className="rounded-2xl font-black text-xs uppercase"><SelectItem value="student">Subscriber Pool</SelectItem><SelectItem value="payable">Walk-in Pool</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Units</Label><Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" disabled={!canProcure} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg text-center" /></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Vol/Unit</Label><Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" disabled={!canProcure} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg text-center" /></div></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Unit Liability ({currencySymbol})</Label><Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" disabled={!canProcure} className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-2xl tracking-tighter text-center" /></div><Button type="submit" className="w-full h-20 rounded-[32px] font-black text-lg shadow-2xl transition-all hover:scale-[1.02]" disabled={isProcessing || !canProcure}>Confirm Stock Reinvestment</Button></form></Card></div>
+                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-10"><InventoryGauge label="Subscriber Consumables" item={studentSoap} currencySymbol={currencySymbol}/><InventoryGauge label="Walk-in Consumables" item={payableSoap} currencySymbol={currencySymbol}/></div>
              </div>
           </TabsContent>
 
           <TabsContent value="profits"><LaundryAnalytics transactions={laundryTransactions} currencySymbol={currencySymbol} /></TabsContent>
 
           <TabsContent value="billing">
-             <div className="max-w-xl mx-auto py-12 text-center space-y-8"><Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8"><div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-10 h-10" /></div><h2 className="text-3xl font-black">Laundry Gateway</h2>{companyDoc?.duitNowQr ? (<div className="relative group w-fit mx-auto"><Image src={companyDoc.duitNowQr} alt="QR" width={200} height={200} className="rounded-3xl border-4" /><label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity"><Upload className="text-white w-8 h-8" /><input type="file" className="hidden" accept="image/*" onChange={async (e) => { const file = e.target.files?.[0]; if(!file || !firestore || !user?.companyId) return; const reader = new FileReader(); reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string }); reader.readAsDataURL(file); }} /></label></div>) : <label className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer flex flex-col items-center justify-center gap-4"><Plus className="w-12 h-12" /><input type="file" className="hidden" accept="image/*" /></label>}</Card></div>
+             <div className="max-w-3xl mx-auto py-16 text-center space-y-10"><Card className="border-none shadow-2xl rounded-[56px] bg-white p-16 space-y-10 border-4 border-primary/5"><div className="w-24 h-24 bg-primary/10 rounded-[32px] flex items-center justify-center text-primary mx-auto shadow-inner"><QrCode className="w-12 h-12" /></div><div><h2 className="text-4xl font-black tracking-tighter">Facility Gateway</h2><p className="text-muted-foreground font-bold text-lg mt-3">Subscriber Settlement Protocol Hub</p></div>{companyDoc?.duitNowQr ? (<div className="relative group w-fit mx-auto"><div className="absolute inset-0 bg-primary/20 rounded-[48px] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" /><Image src={companyDoc.duitNowQr} alt="QR" width={300} height={300} className="rounded-[48px] border-8 border-white shadow-2xl relative z-10" /><label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center rounded-[48px] cursor-pointer transition-all duration-300 z-20"><Upload className="text-white w-12 h-12 mb-4" /><p className="text-white font-black uppercase tracking-[0.2em] text-xs">Update Hub Protocol</p><input type="file" className="hidden" accept="image/*" onChange={async (e) => { const file = e.target.files?.[0]; if(!file || !firestore || !user?.companyId) return; const reader = new FileReader(); reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string }); reader.readAsDataURL(file); }} /></label></div>) : <label className="py-32 border-8 border-dashed rounded-[64px] opacity-30 cursor-pointer flex flex-col items-center justify-center gap-6 border-secondary/30 hover:bg-secondary/10 transition-all"><Plus className="w-16 h-16 text-primary" /><p className="font-black uppercase tracking-[0.3em] text-xs">Upload Gateway Protocol</p><input type="file" className="hidden" accept="image/*" /></label>}</Card></div>
           </TabsContent>
         </Tabs>
       </main>
@@ -450,7 +444,7 @@ function GlobalPolicyConfig({ companyId, initialConfig, currencySymbol }: { comp
     const docRef = doc(firestore, 'companies', companyId, 'laundryConfig', 'global');
     setDoc(docRef, { fixedSubscription: Number(subVal), soapMlPerWash: Number(soapVal) || 50, payableServiceRate: Number(payableRateVal), payableSoapMlPerWash: Number(payableSoapVal) || 50 }, { merge: true }).then(() => toast({ title: "Updated" }));
   };
-  return (<Card className="border-none shadow-sm rounded-[32px] bg-white p-8 max-w-5xl mx-auto"><div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Fee ({currencySymbol})</Label><Input type="number" step="0.01" value={subVal} onChange={(e) => setSubVal(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Soap/Wash (ml)</Label><Input type="number" value={soapVal} onChange={(e) => setSoapVal(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Payable Rate ({currencySymbol})</Label><Input type="number" step="0.01" value={payableRateVal} onChange={(e) => setPayableRateVal(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Payable Soap (ml)</Label><Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" /></div><Button onClick={handleSave} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">Set Strategic Policy</Button></div></Card>);
+  return (<Card className="border-none shadow-sm rounded-[40px] bg-white p-10 max-w-6xl mx-auto border-2 border-primary/5"><div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end"><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Base Subscription ({currencySymbol})</Label><Input type="number" step="0.01" value={subVal} onChange={(e) => setSubVal(e.target.value)} className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-2xl tracking-tighter px-6" /></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Soap Vol/Wash (ml)</Label><Input type="number" value={soapVal} onChange={(e) => setSoapVal(e.target.value)} className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-2xl tracking-tighter px-6" /></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Walk-in Rate ({currencySymbol})</Label><Input type="number" step="0.01" value={payableRateVal} onChange={(e) => setPayableRateVal(e.target.value)} className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-2xl tracking-tighter px-6 text-primary" /></div><div className="space-y-2"><Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Walk-in Soap (ml)</Label><Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-2xl tracking-tighter px-6" /></div><Button onClick={handleSave} className="h-16 rounded-[24px] px-12 font-black shadow-2xl md:col-span-4 uppercase tracking-[0.2em] text-sm">Update Strategic Policy Matrix</Button></div></Card>);
 }
 
 function LaundryConfigurator({ levelQuotas, benchmarkSubscription, studentSoap, soapMlPerWash, payableSoap, payableServiceRate, payableSoapMlPerWash, currencySymbol }: any) {
@@ -458,7 +452,7 @@ function LaundryConfigurator({ levelQuotas, benchmarkSubscription, studentSoap, 
   const subscriberCostPrice = soapCostPerMl * soapMlPerWash;
   const payableSoapCostPerMl = (payableSoap?.soapCostPerLitre || 0) / 1000;
   const payableCostPrice = payableSoapCostPerMl * payableSoapMlPerWash;
-  return (<Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-5xl mx-auto"><div className="grid grid-cols-1 md:grid-cols-2 gap-8">{LEVELS.map(lv => { const quota = levelQuotas[lv] || 0; const serviceRate = quota > 0 ? (benchmarkSubscription / quota) : 0; return (<div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-6"><Badge className="h-8 px-4">Level {lv}</Badge><div className="grid grid-cols-2 gap-4"><div className="p-4 bg-white rounded-2xl border"><p className="text-[9px] font-black text-primary uppercase">Service Rate</p><p className="text-xl font-black">{currencySymbol}{serviceRate.toFixed(2)}</p></div><div className="p-4 bg-white rounded-2xl border"><p className="text-[9px] font-black text-destructive uppercase">Cost Price</p><p className="text-xl font-black">{currencySymbol}{subscriberCostPrice.toFixed(2)}</p></div></div></div>); })}<div className="bg-primary/10 p-6 rounded-3xl space-y-6 col-span-1 md:col-span-2"><Badge className="h-8 px-4 bg-primary">Walk-in (Payable)</Badge><div className="grid grid-cols-2 gap-4"><div className="p-4 bg-white rounded-2xl border"><p className="text-[9px] font-black text-primary uppercase">Payable Rate</p><p className="text-xl font-black">{currencySymbol}{payableServiceRate.toFixed(2)}</p></div><div className="p-4 bg-white rounded-2xl border"><p className="text-[9px] font-black text-destructive uppercase">Cost Price</p><p className="text-xl font-black">{currencySymbol}{payableCostPrice.toFixed(2)}</p></div></div></div></div></Card>);
+  return (<Card className="border-none shadow-sm bg-white rounded-[48px] p-12 max-w-6xl mx-auto border-2 border-primary/5"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">{LEVELS.map(lv => { const quota = levelQuotas[lv] || 0; const serviceRate = quota > 0 ? (benchmarkSubscription / quota) : 0; return (<div key={lv} className="bg-secondary/10 p-8 rounded-[32px] space-y-6 border border-secondary/20 shadow-inner"><Badge className="h-8 px-6 rounded-xl font-black uppercase tracking-widest text-[10px]">Segment Level {lv}</Badge><div className="grid grid-cols-2 gap-4"><div className="p-5 bg-white rounded-2xl border shadow-sm"><p className="text-[9px] font-black text-primary uppercase tracking-widest mb-1">Tactical Rate</p><p className="text-2xl font-black tracking-tighter">{currencySymbol}{serviceRate.toFixed(2)}</p></div><div className="p-5 bg-white rounded-2xl border shadow-sm"><p className="text-[9px] font-black text-destructive uppercase tracking-widest mb-1">Unit Cost</p><p className="text-2xl font-black tracking-tighter">{currencySymbol}{subscriberCostPrice.toFixed(2)}</p></div></div><p className="text-[9px] font-bold text-muted-foreground uppercase text-center tracking-widest">Active Quota: {quota} Sessions/Cycle</p></div>); })}<div className="bg-primary/5 p-8 rounded-[32px] space-y-6 border-4 border-primary/10 shadow-lg col-span-1 md:col-span-2 lg:col-span-1"><Badge className="h-8 px-6 rounded-xl font-black uppercase tracking-widest text-[10px] bg-primary">Walk-in Segment</Badge><div className="grid grid-cols-2 gap-4"><div className="p-5 bg-white rounded-2xl border shadow-sm"><p className="text-[9px] font-black text-primary uppercase tracking-widest mb-1">Tactical Rate</p><p className="text-2xl font-black tracking-tighter">{currencySymbol}{payableServiceRate.toFixed(2)}</p></div><div className="p-5 bg-white rounded-2xl border shadow-sm"><p className="text-[9px] font-black text-destructive uppercase tracking-widest mb-1">Unit Cost</p><p className="text-2xl font-black tracking-tighter">{currencySymbol}{payableCostPrice.toFixed(2)}</p></div></div><p className="text-[9px] font-bold text-muted-foreground uppercase text-center tracking-widest">Public Operational Rate</p></div></div></Card>);
 }
 
 function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: string, schedules: LaundrySchedule[] | null, levelQuotas: Record<number, number> }) {
@@ -502,25 +496,28 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
   }, [schedules]);
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto pb-24">
-      <Card className="border-none shadow-sm bg-white rounded-[40px] overflow-hidden">
-        <CardHeader className="bg-secondary/10 p-10 flex flex-row items-center justify-between">
+    <div className="space-y-12 max-w-5xl mx-auto pb-24">
+      <Card className="border-none shadow-2xl bg-white rounded-[56px] overflow-hidden border-4 border-primary/5">
+        <CardHeader className="bg-secondary/20 p-12 flex flex-col md:flex-row items-center justify-between gap-8">
           <div>
-            <CardTitle className="text-2xl font-black">Turn Authorization</CardTitle>
-            <CardDescription className="font-bold">Select student levels authorized for wash on this date</CardDescription>
+            <CardTitle className="text-3xl font-black tracking-tighter uppercase">Turn Authorization Matrix</CardTitle>
+            <CardDescription className="font-bold text-sm text-muted-foreground uppercase tracking-widest mt-2">Active Segment Deployment Control</CardDescription>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border flex items-center gap-3">
-            <CalendarDays className="w-5 h-5 text-primary" />
-            <Input 
-              type="date" 
-              value={selectedDate} 
-              onChange={(e) => setSelectedDate(e.target.value)} 
-              className="w-40 border-none font-black text-sm p-0 h-auto focus-visible:ring-0" 
-            />
+          <div className="bg-white p-6 rounded-3xl shadow-xl border-2 border-primary/10 flex items-center gap-4 transition-all hover:scale-[1.05]">
+            <CalendarDays className="w-7 h-7 text-primary" />
+            <div>
+               <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Selected Period</p>
+               <Input 
+                 type="date" 
+                 value={selectedDate} 
+                 onChange={(e) => setSelectedDate(e.target.value)} 
+                 className="w-44 border-none font-black text-lg p-0 h-auto focus-visible:ring-0 tracking-tight" 
+               />
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="p-10">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+        <CardContent className="p-12">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
             {LEVELS.map(lv => {
               const isActive = selectedLevels.includes(lv);
               return (
@@ -528,82 +525,87 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
                   key={lv} 
                   onClick={() => toggleLevel(lv)} 
                   className={cn(
-                    "relative h-40 rounded-[32px] border-4 flex flex-col items-center justify-center transition-all duration-300 group overflow-hidden",
+                    "relative h-56 rounded-[40px] border-8 flex flex-col items-center justify-center transition-all duration-500 group overflow-hidden shadow-sm",
                     isActive 
-                      ? "bg-primary border-primary text-primary-foreground shadow-2xl scale-105" 
-                      : "bg-secondary/10 border-transparent hover:bg-secondary/20 grayscale opacity-60"
+                      ? "bg-primary border-primary text-primary-foreground shadow-2xl scale-[1.05] z-10" 
+                      : "bg-secondary/10 border-transparent hover:bg-secondary/20 grayscale opacity-50"
                   )}
                 >
                   {isActive && (
-                    <div className="absolute top-4 right-4 bg-white text-primary rounded-full p-1 animate-in zoom-in">
-                      <CheckCircle2 className="w-5 h-5" />
+                    <div className="absolute top-6 right-6 bg-white text-primary rounded-full p-1.5 animate-in zoom-in-50 duration-300">
+                      <CheckCircle2 className="w-6 h-6" />
                     </div>
                   )}
-                  <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-60">Level</p>
-                  <p className="text-6xl font-black tracking-tighter">{lv}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Segment</p>
+                  <p className="text-8xl font-black tracking-tighter leading-none">{lv}</p>
                   <div className={cn(
-                    "mt-4 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    "mt-6 px-6 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest",
                     isActive ? "bg-black/20" : "bg-secondary/30 text-muted-foreground"
                   )}>
-                    {isActive ? "Authorized" : "Closed"}
+                    {isActive ? "DEPLOYED" : "STANDBY"}
                   </div>
                 </button>
               );
             })}
           </div>
 
-          <div className="mt-12 p-8 bg-primary/5 rounded-[32px] border-2 border-dashed border-primary/20 flex items-center gap-6">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary">
-              <ShieldCheck className="w-8 h-8" />
+          <div className="mt-16 p-10 bg-primary/5 rounded-[48px] border-4 border-dashed border-primary/20 flex items-center gap-10">
+            <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-xl text-primary shrink-0">
+              <ShieldCheck className="w-10 h-10" />
             </div>
             <div>
-              <h4 className="font-black text-lg">Strategic Guardrail</h4>
-              <p className="text-sm font-medium text-muted-foreground">Authorized levels are dynamically validated at the POS terminal. Students outside these levels will be automatically blocked from washing today.</p>
+              <h4 className="font-black text-2xl tracking-tight uppercase">Segment Guardrail Active</h4>
+              <p className="text-sm font-bold text-muted-foreground mt-2 leading-relaxed max-w-2xl">Unauthorized segments are dynamically blocked at the POS washing terminal based on this Turn Plan. Terminal access is restricted to deployed segments only.</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="space-y-6">
-        <h3 className="text-xl font-black flex items-center gap-3 px-4">
-          <Calendar className="w-6 h-6 text-primary" /> Master Schedule Registry
-        </h3>
+      <div className="space-y-10 px-4">
+        <div className="flex items-center justify-between">
+           <h3 className="text-3xl font-black flex items-center gap-4 tracking-tighter uppercase">
+             <Calendar className="w-10 h-10 text-primary" /> Master Hub Registry
+           </h3>
+           <Badge className="font-black px-6 h-10 rounded-2xl tracking-widest text-[10px] uppercase border-none bg-primary/10 text-primary">{Object.keys(groupedSchedules).length} SESSIONS PLANNED</Badge>
+        </div>
         {Object.keys(groupedSchedules).length === 0 ? (
-          <div className="py-20 text-center bg-white rounded-[40px] border-4 border-dashed border-secondary/30">
-            <Calendar className="w-16 h-16 mx-auto mb-4 opacity-10" />
-            <p className="font-black text-muted-foreground uppercase tracking-widest">No Turns Scheduled</p>
+          <div className="py-32 text-center bg-white rounded-[56px] border-4 border-dashed border-secondary/20 shadow-inner">
+            <Calendar className="w-24 h-24 mx-auto mb-6 text-primary opacity-10" />
+            <p className="font-black text-muted-foreground uppercase tracking-[0.4em] text-sm">Turn Registry Empty</p>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-6">
             {Object.entries(groupedSchedules).map(([date, levels]) => (
-              <Card key={date} className="border-none shadow-sm bg-white rounded-[32px] overflow-hidden group hover:shadow-md transition-all">
-                <CardContent className="p-8 flex items-center justify-between">
-                  <div className="flex items-center gap-6">
-                    <div className="w-14 h-14 bg-secondary/50 rounded-2xl flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                      <CalendarDays className="w-7 h-7" />
+              <Card key={date} className="border-none shadow-xl bg-white rounded-[40px] overflow-hidden group hover:shadow-2xl transition-all border-2 border-transparent hover:border-primary/10">
+                <CardContent className="p-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="flex items-center gap-8">
+                    <div className="w-20 h-20 bg-secondary/50 rounded-[32px] flex items-center justify-center text-primary group-hover:scale-[1.1] transition-transform duration-500 shadow-inner">
+                      <CalendarDays className="w-10 h-10" />
                     </div>
                     <div>
-                      <p className="font-black text-2xl tracking-tighter text-foreground">
+                      <p className="font-black text-3xl tracking-tighter text-foreground">
                         {new Date(date).toLocaleDateString([], { dateStyle: 'full' })}
                       </p>
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Status: Active Turn Plan</p>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mt-2">Status: Active Tactical Turn Plan</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-muted-foreground mr-2">Authorized:</span>
-                    {levels.sort().map(lv => (
-                      <Badge key={lv} className="bg-primary text-primary-foreground font-black px-4 h-8 rounded-xl">Level {lv}</Badge>
-                    ))}
+                  <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap gap-2 justify-center md:justify-end">
+                      {levels.sort().map(lv => (
+                        <Badge key={lv} className="bg-primary text-primary-foreground font-black px-6 h-10 rounded-2xl text-xs tracking-widest uppercase shadow-lg border-2 border-white/10">LV {lv}</Badge>
+                      ))}
+                    </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 
                       onClick={() => {
                         setSelectedDate(date);
-                        toast({ title: "Date Selected", description: "You can now edit authorizations for this date above." });
+                        toast({ title: "Session Selected", description: "Authorization matrix loaded for the chosen period." });
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className="ml-4 text-primary hover:bg-primary/10"
+                      className="h-14 w-14 rounded-3xl text-primary hover:bg-primary/10 transition-all border-2 border-transparent hover:border-primary/20 shrink-0 ml-4"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-6 h-6" />
                     </Button>
                   </div>
                 </CardContent>
@@ -617,7 +619,8 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
 }
 
 function InventoryGauge({ label, item, currencySymbol }: { label: string, item?: LaundryInventory, currencySymbol: string }) {
-  return (<Card className="border-none shadow-sm bg-white rounded-3xl p-8 relative overflow-hidden"><div className="absolute top-0 right-0 p-6 opacity-5"><Droplet className="w-24 h-24" /></div><p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">{label}</p><h4 className="text-4xl font-black tracking-tighter">{(item?.soapStockMl || 0).toLocaleString()} ml</h4><div className="grid grid-cols-2 gap-4 mb-6 mt-6"><div className="p-3 bg-secondary/10 rounded-xl"><p className="text-[8px] font-black uppercase">Price/Unit</p><p className="text-sm font-black">{currencySymbol}{(item?.lastBottleCost || 0).toFixed(2)}</p></div><div className="p-3 bg-secondary/10 rounded-xl"><p className="text-[8px] font-black uppercase">Vol/Unit</p><p className="text-sm font-black">{(item?.lastBottleVolume || 0).toLocaleString()} ml</p></div></div>{item?.soapCostPerLitre !== undefined && (<div className="flex justify-between items-center mt-4 border-t pt-4 border-secondary/20"><p className="text-[10px] font-black text-primary uppercase">Weighted: {currencySymbol}{item.soapCostPerLitre.toFixed(2)}/L</p></div>)}</Card>);
+  const stock = item?.soapStockMl || 0;
+  return (<Card className="border-none shadow-xl bg-white rounded-[48px] p-12 relative overflow-hidden group border-2 border-transparent hover:border-primary/10 transition-all"><div className="absolute top-0 right-0 p-10 opacity-5 group-hover:scale-110 transition-transform duration-500"><Droplet className="w-32 h-32" /></div><p className="text-[10px] font-black uppercase text-muted-foreground mb-4 tracking-[0.2em] leading-none">{label}</p><h4 className="text-6xl font-black tracking-tighter leading-none">{stock.toLocaleString()} <span className="text-2xl text-muted-foreground">ml</span></h4><div className="grid grid-cols-2 gap-6 mb-10 mt-10"><div className="p-5 bg-secondary/10 rounded-3xl border border-secondary/20 shadow-inner"><p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Protocol Price</p><p className="text-xl font-black tracking-tighter">{currencySymbol}{(item?.lastBottleCost || 0).toFixed(2)}</p></div><div className="p-5 bg-secondary/10 rounded-3xl border border-secondary/20 shadow-inner"><p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Volume/Batch</p><p className="text-xl font-black tracking-tighter">{(item?.lastBottleVolume || 0).toLocaleString()} ml</p></div></div>{item?.soapCostPerLitre !== undefined && (<div className="flex justify-between items-center mt-6 border-t-2 pt-6 border-secondary/10"><p className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">Weighted Analysis: {currencySymbol}{item.soapCostPerLitre.toFixed(2)} / LITRE</p></div>)}</Card>);
 }
 
 function LaundryAnalytics({ transactions, currencySymbol }: { transactions: SaleTransaction[], currencySymbol: string }) {
@@ -637,15 +640,16 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
   };
 
   return (
-    <div className="space-y-12 pb-24">
-       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-6">
-             <div className="grid grid-cols-2 gap-4">
-                <ReportStat label="Sub Revenue" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.totalAmount, 0).toFixed(2)}`} />
-                <ReportStat label="Sub Profit" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.profit, 0).toFixed(2)}`} color="text-primary" />
+    <div className="space-y-16 pb-24">
+       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          <div className="space-y-8">
+             <div className="flex items-center gap-4 px-4"><div className="w-3 h-8 bg-primary rounded-full" /><h3 className="text-2xl font-black tracking-tighter uppercase">Subscriber Metrics</h3></div>
+             <div className="grid grid-cols-2 gap-6">
+                <ReportStat label="Cumulative Revenue" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                <ReportStat label="Realized Yield" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.profit, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="text-primary" />
              </div>
-             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
-                <div className="h-[200px]">
+             <Card className="border-none shadow-xl p-10 bg-white rounded-[48px] border-2 border-primary/5">
+                <div className="h-[250px]">
                    <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={getChartData(subscriberWashes)}>
                          <defs>
@@ -654,23 +658,24 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                             </linearGradient>
                          </defs>
-                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                         <XAxis dataKey="date" axisLine={false} tickLine={false}/>
-                         <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/>
-                         <Tooltip />
-                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorSub)" strokeWidth={3} />
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 900, fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}/>
+                         <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 900, fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${currencySymbol}${v}`}/>
+                         <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorSub)" strokeWidth={5} />
                       </AreaChart>
                    </ResponsiveContainer>
                 </div>
              </Card>
           </div>
-          <div className="space-y-6">
-             <div className="grid grid-cols-2 gap-4">
-                <ReportStat label="Pay Revenue" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.totalAmount, 0).toFixed(2)}`} />
-                <ReportStat label="Pay Profit" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.profit, 0).toFixed(2)}`} color="text-primary" />
+          <div className="space-y-8">
+             <div className="flex items-center gap-4 px-4"><div className="w-3 h-8 bg-accent rounded-full" /><h3 className="text-2xl font-black tracking-tighter uppercase">Walk-in Performance</h3></div>
+             <div className="grid grid-cols-2 gap-6">
+                <ReportStat label="Cumulative Revenue" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                <ReportStat label="Realized Yield" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.profit, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="text-primary" />
              </div>
-             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
-                <div className="h-[200px]">
+             <Card className="border-none shadow-xl p-10 bg-white rounded-[48px] border-2 border-primary/5">
+                <div className="h-[250px]">
                    <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={getChartData(payableWashes)}>
                          <defs>
@@ -679,11 +684,11 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
                                <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0}/>
                             </linearGradient>
                          </defs>
-                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                         <XAxis dataKey="date" axisLine={false} tickLine={false}/>
-                         <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/>
-                         <Tooltip />
-                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorPay)" strokeWidth={3}/>
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 900, fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}/>
+                         <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 900, fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${currencySymbol}${v}`}/>
+                         <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorPay)" strokeWidth={5}/>
                       </AreaChart>
                    </ResponsiveContainer>
                 </div>
@@ -696,16 +701,16 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
 
 function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
-    <div className="flex-1">
+    <div className="relative group flex-1">
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center">
-        <Icon className="mb-2 h-7 w-7 text-primary" />
-        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[32px] border-4 border-transparent bg-secondary/20 p-6 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center shadow-inner">
+        <Icon className="mb-2 h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground">{label}</span>
       </Label>
     </div>
   );
 }
 
 function ReportStat({ label, value, color = "text-foreground" }: any) {
-  return (<Card className="border-none shadow-sm p-8 bg-white rounded-[32px] flex justify-between items-start"><div><p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">{label}</p><h4 className={cn("text-4xl font-black tracking-tighter", color)}>{value}</h4></div></Card>);
+  return (<Card className="border-none shadow-xl p-10 bg-white rounded-[40px] border-2 border-transparent hover:border-primary/10 transition-all"><div><p className="text-[10px] font-black uppercase text-muted-foreground mb-3 tracking-[0.2em]">{label}</p><h4 className={cn("text-4xl font-black tracking-tighter leading-none", color)}>{value}</h4></div></Card>);
 }
