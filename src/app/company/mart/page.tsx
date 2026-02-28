@@ -33,13 +33,15 @@ export default function MartPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [scanValue, setScanValue] = useState('');
-  const [couponCode, setCouponCode] = useState('');
-  const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [cashReceived, setCashReceived] = useState<number | string>('');
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  
+  // Stored Value / Voucher State
+  const [voucherSearch, setVoucherSearch] = useState('');
+  const [selectedVoucher, setSelectedVoucher] = useState<Coupon | null>(null);
   
   const scanInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,13 +60,19 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
+  const vouchersQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return query(collection(firestore, 'companies', user.companyId, 'coupons'), where('status', '==', 'active'));
+  }, [firestore, user?.companyId]);
+
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
+  const { data: vouchers } = useCollection<Coupon>(vouchersQuery);
 
   // Auto-focus barcode scanner
   useEffect(() => {
-    if (scanInputRef.current) {
+    if (scanInputRef.current && !showCheckoutDialog) {
       scanInputRef.current.focus();
     }
   }, [showCheckoutDialog]);
@@ -120,31 +128,15 @@ export default function MartPage() {
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
-  const discount = activeCoupon ? activeCoupon.value : 0;
-  const totalAmount = Math.max(0, subtotal - discount);
-  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - discount;
+  
+  // Stored Value Logic
+  const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
+  const totalAmount = Math.max(0, subtotal - voucherDiscount);
+  const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0) - voucherDiscount;
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < totalAmount;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
-
-  const handleApplyCoupon = async () => {
-    if (!firestore || !user?.companyId || !couponCode) return;
-    const q = query(collection(firestore, 'companies', user.companyId, 'coupons'), where('code', '==', couponCode.toUpperCase()), where('status', '==', 'unused'));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      toast({ title: "Invalid Coupon", description: "Code not found or already used.", variant: "destructive" });
-      setActiveCoupon(null);
-    } else {
-      const couponData = { ...snapshot.docs[0].data(), id: snapshot.docs[0].id } as Coupon;
-      if (new Date(couponData.expiryDate) < new Date()) {
-        toast({ title: "Coupon Expired", variant: "destructive" });
-        return;
-      }
-      setActiveCoupon(couponData);
-      toast({ title: "Coupon Applied", description: `Discount of $${couponData.value.toFixed(2)} added.` });
-    }
-  };
 
   const handleFinalCheckout = async () => {
     if (!user?.companyId || !firestore) return;
@@ -158,9 +150,9 @@ export default function MartPage() {
       module: 'mart',
       totalAmount,
       profit: totalProfit,
-      discountApplied: discount,
-      couponCode: activeCoupon?.code || undefined,
-      customerName: customerName || 'Walk-in Customer',
+      discountApplied: voucherDiscount,
+      couponCode: selectedVoucher?.code || undefined,
+      customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
       timestamp: new Date().toISOString(),
       paymentMethod,
       referenceNumber: referenceNumber || undefined,
@@ -193,14 +185,23 @@ export default function MartPage() {
       });
     }
 
-    if (activeCoupon) {
-      updateDoc(doc(firestore, 'companies', user.companyId, 'coupons', activeCoupon.id), { status: 'used' });
+    if (selectedVoucher) {
+      const voucherRef = doc(firestore, 'companies', user.companyId, 'coupons', selectedVoucher.id);
+      const newBalance = selectedVoucher.balance - voucherDiscount;
+      updateDoc(voucherRef, { 
+        balance: newBalance,
+        status: newBalance <= 0 ? 'exhausted' : 'active'
+      }).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: voucherRef.path,
+          operation: 'update'
+        }));
+      });
     }
 
     toast({ title: "Transaction Successful" });
     setCart([]);
-    setActiveCoupon(null);
-    setCouponCode('');
+    setSelectedVoucher(null);
     setCustomerName('');
     setReferenceNumber('');
     setCashReceived('');
@@ -211,7 +212,6 @@ export default function MartPage() {
   // Analytics
   const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
   const totalRevenue = martTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
-  const totalProfitSum = martTransactions.reduce((acc, t) => acc + t.profit, 0);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -229,7 +229,7 @@ export default function MartPage() {
             <TabsTrigger value="pos" className="gap-2 rounded-xl px-6">POS Terminal</TabsTrigger>
             <TabsTrigger value="history" className="gap-2 rounded-xl px-6">History</TabsTrigger>
             <TabsTrigger value="inventory" className="gap-2 rounded-xl px-6">Inventory</TabsTrigger>
-            <TabsTrigger value="coupons" className="gap-2 rounded-xl px-6">Coupons</TabsTrigger>
+            <TabsTrigger value="coupons" className="gap-2 rounded-xl px-6">Generate Vouchers</TabsTrigger>
             <TabsTrigger value="profits" className="gap-2 rounded-xl px-6">Analytics</TabsTrigger>
             <TabsTrigger value="billing" className="gap-2 rounded-xl px-6">Billing</TabsTrigger>
           </TabsList>
@@ -283,7 +283,7 @@ export default function MartPage() {
                   <CardFooter className="flex-col gap-6 p-8 border-t bg-secondary/5">
                     <div className="w-full flex justify-between items-end pt-2">
                       <span className="text-xs font-black uppercase text-muted-foreground mb-1">Payable Total</span>
-                      <span className="text-5xl font-black text-foreground tracking-tighter">${totalAmount.toFixed(2)}</span>
+                      <span className="text-5xl font-black text-foreground tracking-tighter">${subtotal.toFixed(2)}</span>
                     </div>
                     <Button className="w-full h-16 text-xl font-black rounded-2xl shadow-xl" disabled={cart.length === 0} onClick={() => setShowCheckoutDialog(true)}>Initiate Checkout</Button>
                   </CardFooter>
@@ -296,14 +296,51 @@ export default function MartPage() {
                 <div className="bg-primary p-12 text-primary-foreground text-center">
                    <p className="text-xs font-black uppercase tracking-widest opacity-80">Settlement Due</p>
                    <h2 className="text-6xl font-black tracking-tighter">${totalAmount.toFixed(2)}</h2>
+                   {voucherDiscount > 0 && (
+                     <p className="text-sm font-bold opacity-70 mt-2">Voucher Coverage: -${voucherDiscount.toFixed(2)}</p>
+                   )}
                 </div>
-                <div className="p-12 space-y-10">
+                <div className="p-12 space-y-8">
                   <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-2 gap-4">
                     <PaymentOption value="cash" label="Cash" icon={Banknote} id="cash_final" />
                     <PaymentOption value="card" label="Card" icon={CreditCard} id="card_final" />
                     <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
-                    <PaymentOption value="coupon" label="Voucher" icon={Ticket} id="coupon_final" />
+                    <PaymentOption value="coupon" label="Stored Value" icon={Ticket} id="coupon_final" />
                   </RadioGroup>
+
+                  {paymentMethod === 'coupon' && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                       <Label className="text-[10px] font-black uppercase tracking-widest">Search Customer Vouchers</Label>
+                       <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input 
+                            placeholder="Type customer name or code..." 
+                            className="pl-10 h-12 rounded-xl"
+                            value={voucherSearch}
+                            onChange={(e) => setVoucherSearch(e.target.value)}
+                          />
+                       </div>
+                       <div className="max-h-40 overflow-auto space-y-2">
+                          {vouchers?.filter(v => v.customerName.toLowerCase().includes(voucherSearch.toLowerCase()) || v.code.toLowerCase().includes(voucherSearch.toLowerCase())).map(v => (
+                            <div 
+                              key={v.id} 
+                              onClick={() => setSelectedVoucher(v)}
+                              className={cn(
+                                "p-3 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center",
+                                selectedVoucher?.id === v.id ? "border-primary bg-primary/5" : "border-secondary/20 hover:bg-secondary/5"
+                              )}
+                            >
+                               <div>
+                                  <p className="font-black text-xs">{v.customerName}</p>
+                                  <p className="text-[9px] font-bold text-muted-foreground uppercase">{v.code}</p>
+                               </div>
+                               <p className="font-black text-primary">${v.balance.toFixed(2)}</p>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                  )}
+
                   {paymentMethod === 'cash' && (
                     <div className="space-y-4">
                       <Label className="text-[10px] font-black uppercase tracking-widest">Cash Received ($)</Label>
@@ -322,10 +359,6 @@ export default function MartPage() {
                        <Input placeholder="Enter trace ID..." className="h-14 rounded-2xl font-black text-lg" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <Input placeholder="PROMO CODE" className="h-14 rounded-2xl font-black uppercase" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} />
-                    <Button onClick={handleApplyCoupon} variant="secondary" className="rounded-2xl font-black h-14">Verify</Button>
-                  </div>
                 </div>
                 <div className="p-12 pt-0">
                   <Button onClick={handleFinalCheckout} className="w-full h-20 rounded-[28px] font-black text-xl shadow-xl" disabled={isProcessing || isInsufficientCash || isMissingReference}>
@@ -437,8 +470,7 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
     }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: productRef.path,
-        operation: 'update',
-        requestResourceData: { stock: increment(totalStockAdded) }
+        operation: 'update'
       }));
     });
 
@@ -448,11 +480,6 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
       amount: totalCost,
       description: `Restock: ${units}x Unit(s) of ${selectedProduct.name} (${ipu} per unit)`,
       timestamp: new Date().toISOString()
-    }).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: `companies/${companyId}/purchases`,
-        operation: 'create'
-      }));
     });
 
     toast({ title: "Inventory Replenished", description: `Added ${totalStockAdded} items to ${selectedProduct.name}.` });
@@ -618,9 +645,14 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
 function CouponManager({ companyId }: { companyId?: string }) {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [code, setCode] = useState('');
-  const [value, setValue] = useState('');
+  
+  const [customerName, setCustomerName] = useState('');
+  const [customerCompany, setCustomerCompany] = useState('');
+  const [selectedVal, setSelectedVal] = useState<string>('50');
+  const [quantity, setQuantity] = useState<string>('1');
   const [expiry, setExpiry] = useState('');
+  const [purchaseMethod, setPurchaseMethod] = useState<PaymentMethod>('cash');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
@@ -628,34 +660,118 @@ function CouponManager({ companyId }: { companyId?: string }) {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !companyId) return;
-    const id = crypto.randomUUID();
-    const data: Coupon = { id, companyId, code: code.toUpperCase(), value: Number(value), expiryDate: expiry, status: 'unused' };
-    setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
-    toast({ title: "Coupon Generated" });
-    setCode(''); setValue(''); setExpiry('');
+    setIsProcessing(true);
+
+    const val = Number(selectedVal);
+    const qty = Number(quantity);
+    const totalAmount = val * qty;
+
+    try {
+      // Record the sale of vouchers
+      const transactionId = crypto.randomUUID();
+      await setDoc(doc(firestore, 'companies', companyId, 'transactions', transactionId), {
+        id: transactionId,
+        companyId,
+        module: 'mart',
+        totalAmount,
+        profit: totalAmount, // Vouchers are 100% upfront profit until used
+        timestamp: new Date().toISOString(),
+        customerName,
+        paymentMethod: purchaseMethod,
+        status: 'completed',
+        items: [{ name: `Stored Value Issue: $${val} x${qty}`, price: val, quantity: qty }]
+      });
+
+      // Generate individual voucher card records
+      for (let i = 0; i < qty; i++) {
+        const id = crypto.randomUUID();
+        const shortId = id.split('-')[0].toUpperCase();
+        const data: Coupon = { 
+          id, 
+          companyId, 
+          code: `VAL${val}-${shortId}`, 
+          initialValue: val, 
+          balance: val, 
+          expiryDate: expiry, 
+          status: 'active',
+          customerName,
+          customerCompany: customerCompany || undefined,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
+      }
+
+      toast({ title: "Vouchers Issued", description: `Generated ${qty} cards for ${customerName}.` });
+      setCustomerName(''); setCustomerCompany(''); setQuantity('1');
+    } catch (err) {
+      toast({ title: "Issue failed", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
-        <h3 className="text-xl font-black mb-6">Create Voucher</h3>
-        <form onSubmit={handleCreate} className="space-y-4">
-          <Input placeholder="COUPON CODE" value={code} onChange={(e) => setCode(e.target.value)} required className="h-12 rounded-xl font-bold" />
-          <Input placeholder="Value ($)" type="number" value={value} onChange={(e) => setValue(e.target.value)} required className="h-12 rounded-xl font-bold" />
-          <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} required className="h-12 rounded-xl font-bold" />
-          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg">Issue Voucher</Button>
+        <h3 className="text-xl font-black mb-6">Issue Stored Value</h3>
+        <form onSubmit={handleCreate} className="space-y-5">
+          <div className="space-y-1.5">
+             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
+             <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className="h-12 rounded-xl font-bold" />
+          </div>
+          <div className="space-y-1.5">
+             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
+             <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Value ($)</Label>
+                <Select value={selectedVal} onValueChange={setSelectedVal}>
+                   <SelectTrigger className="h-12 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                   <SelectContent className="rounded-xl">
+                      {['10', '20', '50', '100', '200', '500'].map(v => <SelectItem key={v} value={v}>${v}</SelectItem>)}
+                   </SelectContent>
+                </Select>
+             </div>
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Quantity</Label>
+                <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} required className="h-12 rounded-xl font-bold" />
+             </div>
+          </div>
+          <div className="space-y-1.5">
+             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Expiry Date</Label>
+             <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} required className="h-12 rounded-xl font-bold" />
+          </div>
+          <div className="space-y-1.5">
+             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
+             <RadioGroup value={purchaseMethod} onValueChange={(v) => setPurchaseMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-2">
+                <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
+                <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
+                <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
+             </RadioGroup>
+          </div>
+          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing}>
+             {isProcessing ? "Processing..." : "Issue Card(s)"}
+          </Button>
         </form>
       </Card>
       <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden">
         <table className="w-full text-sm text-left">
-          <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Code</th><th className="p-6 font-black uppercase text-[10px]">Value</th><th className="p-6 font-black uppercase text-[10px]">Expiry</th><th className="p-6 font-black uppercase text-[10px]">Status</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
-          <tbody className="divide-y">{coupons?.map(c => (
-            <tr key={c.id} className="hover:bg-secondary/5">
-              <td className="p-6 font-black">{c.code}</td>
-              <td className="p-6 font-black text-primary">${c.value.toFixed(2)}</td>
-              <td className="p-6 font-bold">{c.expiryDate}</td>
-              <td className="p-6"><Badge variant={c.status === 'used' ? "outline" : "secondary"}>{c.status}</Badge></td>
-              <td className="p-6 text-center"><Button variant="ghost" size="icon" onClick={() => deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id))} className="text-destructive"><Trash2 className="w-4 h-4" /></Button></td>
+          <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Customer / Card</th><th className="p-6 font-black uppercase text-[10px]">Initial</th><th className="p-6 font-black uppercase text-[10px]">Balance</th><th className="p-6 font-black uppercase text-[10px]">Status</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
+          <tbody className="divide-y">{coupons?.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => (
+            <tr key={c.id} className="hover:bg-secondary/5 transition-colors">
+              <td className="p-6">
+                 <p className="font-black">{c.customerName}</p>
+                 <p className="text-[9px] font-bold text-muted-foreground uppercase">{c.code}</p>
+              </td>
+              <td className="p-6 font-bold text-muted-foreground">${c.initialValue.toFixed(2)}</td>
+              <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
+              <td className="p-6"><Badge variant={c.status === 'exhausted' ? "outline" : "secondary"} className="uppercase font-black text-[9px]">{c.status}</Badge></td>
+              <td className="p-6 text-center">
+                 <Button variant="ghost" size="icon" onClick={async () => {
+                    if (confirm("Revoke this stored value card?")) await deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id));
+                 }} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+              </td>
             </tr>
           ))}</tbody>
         </table>
@@ -752,9 +868,9 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div>
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-6 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32">
-        <Icon className="mb-2 h-8 w-8 text-primary" />
-        <span className="text-sm font-black uppercase tracking-widest">{label}</span>
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-24">
+        <Icon className="mb-1 h-6 w-6 text-primary" />
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
     </div>
   );

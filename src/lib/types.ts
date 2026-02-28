@@ -4,7 +4,7 @@ export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
 export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
-export type CouponStatus = 'unused' | 'used';
+export type CouponStatus = 'active' | 'exhausted';
 export type PaymentMethod = 'cash' | 'card' | 'duitnow' | 'coupon';
 
 export interface User {
@@ -159,9 +159,13 @@ export interface Coupon {
   id: string;
   companyId: string;
   code: string;
-  value: number;
+  initialValue: number;
+  balance: number;
   expiryDate: string;
   status: CouponStatus;
+  customerName: string;
+  customerCompany?: string;
+  createdAt: string;
 }
 
 export interface LuckyDrawEntry {
