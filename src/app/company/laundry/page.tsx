@@ -186,7 +186,7 @@ export default function LaundryPage() {
       const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
       if (config) {
         const quota = levelQuotas[Number(selectedLevel)] || 0;
-        setEnrollmentDebt(config.serviceRate ? config.serviceRate * quota : config.subscriptionFee);
+        setEnrollmentDebt(config.serviceRate ? config.serviceRate * quota : 0);
       } else {
         setEnrollmentDebt(0);
       }
@@ -199,11 +199,6 @@ export default function LaundryPage() {
   const getWashRateForLevel = (level: number) => {
     const config = levelConfigs?.find(c => c.level === level);
     if (config?.serviceRate) return config.serviceRate;
-    
-    const quota = levelQuotas[level] || 0;
-    if (config && quota > 0) {
-      return config.subscriptionFee / quota;
-    }
     return defaultWashRate;
   };
 
@@ -232,6 +227,7 @@ export default function LaundryPage() {
       return;
     }
 
+    // Benchmark never changes once set. Legacy records fallback to current calculated debt.
     const initialFee = (editingStudent ? editingStudent.initialAmount : enrollmentDebt) ?? 0;
 
     const student: LaundryStudent = {
@@ -239,8 +235,8 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      // For new enrollment, debt starts at the initialFee. For edit, we never change debt here.
-      balance: (editingStudent ? editingStudent.balance : initialFee) ?? 0, 
+      // Current Bank Balance is deposit amount added. New enrollment starts at 0.
+      balance: (editingStudent ? (editingStudent.balance ?? 0) : 0), 
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
@@ -389,8 +385,8 @@ export default function LaundryPage() {
       items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
     };
 
-    // Wash increases the "Balance Need to Pay" (debt)
-    updateDoc(studentRef, { balance: increment(washRate) }).catch(async (err) => {
+    // Wash deducts from the "Current Bank Balance"
+    updateDoc(studentRef, { balance: increment(-washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
     updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
@@ -480,8 +476,8 @@ export default function LaundryPage() {
       items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
     };
 
-    // Top up decreases the "Balance Need to Pay" (debt)
-    updateDoc(studentRef, { balance: increment(-amount) }).catch(async (err) => {
+    // Top up increases the "Current Bank Balance"
+    updateDoc(studentRef, { balance: increment(amount) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
     addDoc(transRef, transData).catch(async (err) => {
@@ -551,9 +547,9 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Wallet</p>
-                          <p className={cn("text-3xl font-black", (foundTopUpStudent.initialAmount - (foundTopUpStudent.balance || 0)) <= 0 ? "text-destructive" : "text-foreground")}>
-                            ${(foundTopUpStudent.initialAmount - (foundTopUpStudent.balance || 0)).toFixed(2)}
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Bank Balance</p>
+                          <p className={cn("text-3xl font-black", (foundTopUpStudent.balance ?? 0) <= 0 ? "text-destructive" : "text-foreground")}>
+                            ${(foundTopUpStudent.balance ?? 0).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -678,11 +674,11 @@ export default function LaundryPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Wallet</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Current Bank Balance</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            (selectedStudent.initialAmount - (selectedStudent.balance || 0)) <= 0 ? "text-destructive" : "text-primary"
-                          )}>${(selectedStudent.initialAmount - (selectedStudent.balance || 0)).toFixed(2)}</p>
+                            (selectedStudent.balance ?? 0) <= 0 ? "text-destructive" : "text-primary"
+                          )}>${(selectedStudent.balance ?? 0).toFixed(2)}</p>
                           <div className="mt-2">
                              <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
                           </div>
@@ -821,7 +817,7 @@ export default function LaundryPage() {
                          <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription Amount ($)</Label>
                          <Input 
                           type="number" 
-                          value={editingStudent ? editingStudent.initialAmount : enrollmentDebt} 
+                          value={editingStudent ? (editingStudent.initialAmount ?? 0) : enrollmentDebt} 
                           onChange={(e) => !editingStudent && setEnrollmentDebt(Number(e.target.value))} 
                           disabled={!!editingStudent}
                           className="h-11 rounded-xl bg-secondary/10 border-none font-bold" 
@@ -854,9 +850,9 @@ export default function LaundryPage() {
                       </thead>
                       <tbody className="divide-y">
                          {students?.map(s => {
-                           const initialAmt = s.initialAmount || 0;
-                           const debtAmt = s.balance || 0; // Balance field stores the debt (Need to Pay)
-                           const bankBalance = initialAmt - debtAmt;
+                           const initialAmt = s.initialAmount ?? 0;
+                           const bankBalance = s.balance ?? 0; 
+                           const needToPay = initialAmt - bankBalance;
                            return (
                              <tr key={s.id} className="hover:bg-secondary/5 group">
                                 <td className="p-6">
@@ -871,8 +867,8 @@ export default function LaundryPage() {
                                    </p>
                                 </td>
                                 <td className="p-6">
-                                   <p className={cn("font-bold text-lg", debtAmt > 0 ? "text-destructive" : "text-primary")}>
-                                      ${debtAmt.toFixed(2)}
+                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-primary")}>
+                                      ${needToPay.toFixed(2)}
                                    </p>
                                 </td>
                                 <td className="p-6 text-center">
@@ -1077,7 +1073,7 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
           {LEVELS.map(lv => {
             const config = levelConfigs?.find(c => c.level === lv);
             const quota = levelQuotas[lv] || 0;
-            const currentRate = config?.serviceRate || (config?.subscriptionFee && quota > 0 ? config.subscriptionFee / quota : 0);
+            const currentRate = config?.serviceRate || 0;
             return (
               <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
                  <div className="flex justify-between items-center">
