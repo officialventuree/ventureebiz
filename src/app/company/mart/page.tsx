@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import Image from 'next/image';
@@ -402,7 +403,7 @@ export default function MartPage() {
           </TabsContent>
 
           <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} products={products} /></TabsContent>
-          <TabsContent value="coupons"><CouponManager companyId={user?.companyId} /></TabsContent>
+          <TabsContent value="coupons"><CouponManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
           <TabsContent value="profits"><ProfitAnalytics transactions={martTransactions} /></TabsContent>
           <TabsContent value="billing"><BillingManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
         </Tabs>
@@ -642,7 +643,7 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
   );
 }
 
-function CouponManager({ companyId }: { companyId?: string }) {
+function CouponManager({ companyId, companyDoc }: { companyId?: string, companyDoc: Company | null }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   
@@ -652,14 +653,24 @@ function CouponManager({ companyId }: { companyId?: string }) {
   const [quantity, setQuantity] = useState<string>('1');
   const [expiry, setExpiry] = useState('');
   const [purchaseMethod, setPurchaseMethod] = useState<PaymentMethod>('cash');
+  const [cashReceived, setCashReceived] = useState<number | string>('');
+  const [referenceNumber, setReferenceNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
+  const subtotal = Number(selectedVal) * Number(quantity);
+  const cashChange = purchaseMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - subtotal) : 0;
+  const isPaymentValid = useMemo(() => {
+    if (purchaseMethod === 'cash') return Number(cashReceived) >= subtotal;
+    if (purchaseMethod === 'card' || purchaseMethod === 'duitnow') return referenceNumber.trim().length > 0;
+    return true;
+  }, [purchaseMethod, cashReceived, subtotal, referenceNumber]);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firestore || !companyId) return;
+    if (!firestore || !companyId || !isPaymentValid) return;
     setIsProcessing(true);
 
     const val = Number(selectedVal);
@@ -677,7 +688,9 @@ function CouponManager({ companyId }: { companyId?: string }) {
         profit: totalAmount, // Vouchers are 100% upfront profit until used
         timestamp: new Date().toISOString(),
         customerName,
+        customerCompany: customerCompany || undefined,
         paymentMethod: purchaseMethod,
+        referenceNumber: referenceNumber || undefined,
         status: 'completed',
         items: [{ name: `Stored Value Issue: $${val} x${qty}`, price: val, quantity: qty }]
       });
@@ -702,7 +715,7 @@ function CouponManager({ companyId }: { companyId?: string }) {
       }
 
       toast({ title: "Vouchers Issued", description: `Generated ${qty} cards for ${customerName}.` });
-      setCustomerName(''); setCustomerCompany(''); setQuantity('1');
+      setCustomerName(''); setCustomerCompany(''); setQuantity('1'); setCashReceived(''); setReferenceNumber('');
     } catch (err) {
       toast({ title: "Issue failed", variant: "destructive" });
     } finally {
@@ -744,13 +757,46 @@ function CouponManager({ companyId }: { companyId?: string }) {
           </div>
           <div className="space-y-1.5">
              <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
-             <RadioGroup value={purchaseMethod} onValueChange={(v) => setPurchaseMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-2">
+             <RadioGroup value={purchaseMethod} onValueChange={(v) => {
+               setPurchaseMethod(v as PaymentMethod);
+               setReferenceNumber('');
+               setCashReceived('');
+             }} className="grid grid-cols-3 gap-2">
                 <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
                 <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
                 <PaymentOption value="duitnow" label="QR" icon={QrCode} id="cou_qr" />
              </RadioGroup>
           </div>
-          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing}>
+
+          {purchaseMethod === 'cash' && (
+            <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
+               <div className="space-y-1">
+                  <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
+                  <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
+               </div>
+               <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                  <span>Balance to Return</span>
+                  <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
+               </div>
+            </div>
+          )}
+
+          {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
+            <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+               {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                 <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
+                    <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
+                    <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
+                 </div>
+               )}
+               <div className="space-y-1">
+                  <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
+                  <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
+               </div>
+            </div>
+          )}
+
+          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
              {isProcessing ? "Processing..." : "Issue Card(s)"}
           </Button>
         </form>
