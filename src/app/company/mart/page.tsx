@@ -649,8 +649,9 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   
   const [customerName, setCustomerName] = useState('');
   const [customerCompany, setCustomerCompany] = useState('');
-  const [selectedVal, setSelectedVal] = useState<string>('50');
-  const [quantity, setQuantity] = useState<string>('1');
+  const [batch, setBatch] = useState<{ id: string, value: number, qty: number }[]>([]);
+  const [inputVal, setInputVal] = useState<string>('');
+  const [inputQty, setInputQty] = useState<string>('1');
   const [expiry, setExpiry] = useState('');
   const [purchaseMethod, setPurchaseMethod] = useState<PaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState<number | string>('');
@@ -660,22 +661,34 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
   const { data: coupons } = useCollection<Coupon>(couponsQuery);
 
-  const subtotal = Number(selectedVal) * Number(quantity);
+  const addToBatch = () => {
+    if (!inputVal || Number(inputVal) <= 0 || !inputQty || Number(inputQty) <= 0) {
+      toast({ title: "Invalid Input", description: "Value and quantity must be greater than zero.", variant: "destructive" });
+      return;
+    }
+    setBatch([...batch, { id: crypto.randomUUID(), value: Number(inputVal), qty: Number(inputQty) }]);
+    setInputVal('');
+    setInputQty('1');
+  };
+
+  const removeFromBatch = (id: string) => {
+    setBatch(batch.filter(item => item.id !== id));
+  };
+
+  const subtotal = batch.reduce((acc, item) => acc + (item.value * item.qty), 0);
   const cashChange = purchaseMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - subtotal) : 0;
+  
   const isPaymentValid = useMemo(() => {
+    if (batch.length === 0) return false;
     if (purchaseMethod === 'cash') return Number(cashReceived) >= subtotal;
     if (purchaseMethod === 'card' || purchaseMethod === 'duitnow') return referenceNumber.trim().length > 0;
     return true;
-  }, [purchaseMethod, cashReceived, subtotal, referenceNumber]);
+  }, [batch, purchaseMethod, cashReceived, subtotal, referenceNumber]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !companyId || !isPaymentValid) return;
     setIsProcessing(true);
-
-    const val = Number(selectedVal);
-    const qty = Number(quantity);
-    const totalAmount = val * qty;
 
     try {
       // Record the sale of vouchers
@@ -684,38 +697,40 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
         id: transactionId,
         companyId,
         module: 'mart',
-        totalAmount,
-        profit: totalAmount, // Vouchers are 100% upfront profit until used
+        totalAmount: subtotal,
+        profit: subtotal, // Vouchers are 100% upfront profit until used
         timestamp: new Date().toISOString(),
         customerName,
         customerCompany: customerCompany || undefined,
         paymentMethod: purchaseMethod,
         referenceNumber: referenceNumber || undefined,
         status: 'completed',
-        items: [{ name: `Stored Value Issue: $${val} x${qty}`, price: val, quantity: qty }]
+        items: batch.map(item => ({ name: `Stored Value Issue: $${item.value} x${item.qty}`, price: item.value, quantity: item.qty }))
       });
 
       // Generate individual voucher card records
-      for (let i = 0; i < qty; i++) {
-        const id = crypto.randomUUID();
-        const shortId = id.split('-')[0].toUpperCase();
-        const data: Coupon = { 
-          id, 
-          companyId, 
-          code: `VAL${val}-${shortId}`, 
-          initialValue: val, 
-          balance: val, 
-          expiryDate: expiry, 
-          status: 'active',
-          customerName,
-          customerCompany: customerCompany || undefined,
-          createdAt: new Date().toISOString()
-        };
-        await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
+      for (const item of batch) {
+        for (let i = 0; i < item.qty; i++) {
+          const id = crypto.randomUUID();
+          const shortId = id.split('-')[0].toUpperCase();
+          const data: Coupon = { 
+            id, 
+            companyId, 
+            code: `VAL${item.value}-${shortId}`, 
+            initialValue: item.value, 
+            balance: item.value, 
+            expiryDate: expiry, 
+            status: 'active',
+            customerName,
+            customerCompany: customerCompany || undefined,
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
+        }
       }
 
-      toast({ title: "Vouchers Issued", description: `Generated ${qty} cards for ${customerName}.` });
-      setCustomerName(''); setCustomerCompany(''); setQuantity('1'); setCashReceived(''); setReferenceNumber('');
+      toast({ title: "Batch Vouchers Issued", description: `Generated all cards for ${customerName}.` });
+      setCustomerName(''); setCustomerCompany(''); setBatch([]); setCashReceived(''); setReferenceNumber('');
     } catch (err) {
       toast({ title: "Issue failed", variant: "destructive" });
     } finally {
@@ -726,36 +741,68 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
-        <h3 className="text-xl font-black mb-6">Issue Stored Value</h3>
-        <form onSubmit={handleCreate} className="space-y-5">
-          <div className="space-y-1.5">
-             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-             <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required className="h-12 rounded-xl font-bold" />
-          </div>
-          <div className="space-y-1.5">
-             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
-             <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        <h3 className="text-xl font-black mb-6">Batch Issue Stored Value</h3>
+        <div className="space-y-6">
+          <div className="space-y-4">
              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Value ($)</Label>
-                <Select value={selectedVal} onValueChange={setSelectedVal}>
-                   <SelectTrigger className="h-12 rounded-xl font-bold"><SelectValue /></SelectTrigger>
-                   <SelectContent className="rounded-xl">
-                      {['10', '20', '50', '100', '200', '500'].map(v => <SelectItem key={v} value={v}>${v}</SelectItem>)}
-                   </SelectContent>
-                </Select>
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
+                <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
              </div>
              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Quantity</Label>
-                <Input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} required className="h-12 rounded-xl font-bold" />
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
+                <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
+             </div>
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
+                <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
              </div>
           </div>
-          <div className="space-y-1.5">
-             <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Expiry Date</Label>
-             <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} required className="h-12 rounded-xl font-bold" />
+
+          <Separator />
+
+          <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
+             <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
+             <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                   <Label className="text-[9px] font-black uppercase">Value ($)</Label>
+                   <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
+                </div>
+                <div className="space-y-1.5">
+                   <Label className="text-[9px] font-black uppercase">Qty</Label>
+                   <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
+                </div>
+             </div>
+             <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
+                <Plus className="w-3.5 h-3.5" /> Add to Batch
+             </Button>
           </div>
-          <div className="space-y-1.5">
+
+          {batch.length > 0 && (
+            <div className="space-y-3 animate-in fade-in zoom-in-95">
+               <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
+               <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                  {batch.map(item => (
+                    <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
+                       <div>
+                          <p className="font-black text-xs">${item.value.toFixed(2)}</p>
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
+                       </div>
+                       <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                          <Trash2 className="w-3.5 h-3.5" />
+                       </Button>
+                    </div>
+                  ))}
+               </div>
+               <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
+                  <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
+               </div>
+            </div>
+          )}
+
+          <Separator />
+
+          <div className="space-y-4">
              <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
              <RadioGroup value={purchaseMethod} onValueChange={(v) => {
                setPurchaseMethod(v as PaymentMethod);
@@ -796,10 +843,10 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
             </div>
           )}
 
-          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
-             {isProcessing ? "Processing..." : "Issue Card(s)"}
+          <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
+             {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
           </Button>
-        </form>
+        </div>
       </Card>
       <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden">
         <table className="w-full text-sm text-left">
