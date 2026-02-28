@@ -25,6 +25,7 @@ export default function CapitalControlPage() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Form states for live calculation
+  const [formLimit, setFormLimit] = useState<number>(0);
   const [formStartDate, setFormStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [formPeriod, setFormPeriod] = useState<CapitalPeriod>('monthly');
 
@@ -44,6 +45,7 @@ export default function CapitalControlPage() {
   // Sync internal form states with DB when it loads
   useEffect(() => {
     if (companyDoc) {
+      if (companyDoc.capitalLimit) setFormLimit(companyDoc.capitalLimit);
       if (companyDoc.capitalStartDate) setFormStartDate(companyDoc.capitalStartDate);
       if (companyDoc.capitalPeriod) setFormPeriod(companyDoc.capitalPeriod);
     }
@@ -51,7 +53,6 @@ export default function CapitalControlPage() {
 
   const totalSpent = purchases?.reduce((acc, p) => acc + p.amount, 0) || 0;
   const limit = companyDoc?.capitalLimit || 0;
-  const period = companyDoc?.capitalPeriod || 'monthly';
   const remaining = Math.max(0, limit - totalSpent);
   const utilization = limit > 0 ? (totalSpent / limit) * 100 : 0;
 
@@ -68,11 +69,13 @@ export default function CapitalControlPage() {
     return date.toISOString().split('T')[0];
   }, [formStartDate, formPeriod]);
 
-  // Lock-in feature logic
+  // Lock-in feature logic: Lock if end date is in the future
   const isLocked = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
     const now = new Date();
     const end = new Date(companyDoc.capitalEndDate);
+    // Add 23:59:59 to end date to ensure it lasts the full day
+    end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
 
@@ -81,15 +84,10 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || isLocked) return;
     setIsUpdating(true);
     
-    const formData = new FormData(e.currentTarget);
-    const newLimit = Number(formData.get('limit'));
-    const newPeriod = formData.get('period') as CapitalPeriod;
-    const newStart = formData.get('startDate') as string;
-
     const updateData = {
-      capitalLimit: newLimit,
-      capitalPeriod: newPeriod,
-      capitalStartDate: newStart,
+      capitalLimit: formLimit,
+      capitalPeriod: formPeriod,
+      capitalStartDate: formStartDate,
       capitalEndDate: calculatedEndDate
     };
 
@@ -97,7 +95,7 @@ export default function CapitalControlPage() {
     
     updateDoc(docRef, updateData)
       .then(() => {
-        toast({ title: "Budget Locked", description: `Capital controls active until ${calculatedEndDate}.` });
+        toast({ title: "Configuration Locked", description: `Budget cycle active until ${calculatedEndDate}.` });
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -139,7 +137,7 @@ export default function CapitalControlPage() {
                   <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">Live Capital Utilization</p>
                   <CardTitle className="text-6xl font-black tracking-tighter">${totalSpent.toFixed(2)}</CardTitle>
                   <CardDescription className="font-bold text-lg mt-2">
-                    Cycle: {companyDoc?.capitalStartDate || "N/A"} → {companyDoc?.capitalEndDate || "N/A"}
+                    Cycle: {companyDoc?.capitalStartDate || "Pending"} → {companyDoc?.capitalEndDate || "Pending"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
@@ -168,13 +166,16 @@ export default function CapitalControlPage() {
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
                         <Zap className="w-8 h-8 text-accent mb-4 group-hover:scale-125 transition-transform" />
                         <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Burn Rate</p>
-                        <p className="text-3xl font-black text-foreground tracking-tighter">${(totalSpent / 7).toFixed(2)}/day</p>
+                        <p className="text-3xl font-black text-foreground tracking-tighter">${(totalSpent / (purchases?.length || 1)).toFixed(2)}/tx</p>
                      </div>
-                     <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 md:col-span-1 col-span-2 flex items-center gap-6">
-                        <ShieldCheck className="w-14 h-14 text-primary opacity-50" />
+                     <div className={cn(
+                       "p-8 rounded-[32px] border-2 md:col-span-1 col-span-2 flex items-center gap-6",
+                       isLocked ? "bg-primary/5 border-primary/20" : "bg-orange-50 border-orange-200"
+                     )}>
+                        {isLocked ? <ShieldCheck className="w-14 h-14 text-primary opacity-50" /> : <AlertCircle className="w-14 h-14 text-orange-500 opacity-50" />}
                         <div>
-                          <p className="text-[10px] font-black uppercase text-primary tracking-widest mb-1">Status</p>
-                          <p className="text-lg font-black text-foreground uppercase tracking-tight">Active Guard</p>
+                          <p className={cn("text-[10px] font-black uppercase tracking-widest mb-1", isLocked ? "text-primary" : "text-orange-600")}>Status</p>
+                          <p className="text-lg font-black text-foreground uppercase tracking-tight">{isLocked ? "Active Guard" : "Setup Required"}</p>
                         </div>
                      </div>
                   </div>
@@ -220,18 +221,18 @@ export default function CapitalControlPage() {
                 <CardHeader className="bg-primary/10 p-10">
                   <CardTitle className="flex items-center gap-3 text-xl font-black">
                     <Settings className="w-6 h-6 text-primary" />
-                    Limit Config
+                    Setup Limit
                   </CardTitle>
-                  <CardDescription className="font-bold text-muted-foreground">Rigorous period setup & locking</CardDescription>
+                  <CardDescription className="font-bold text-muted-foreground">Automatic end-date detection & lock-in</CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Maximum Budget Limit ($)</label>
                       <Input 
-                        name="limit" 
                         type="number" 
-                        defaultValue={limit} 
+                        value={formLimit} 
+                        onChange={(e) => setFormLimit(Number(e.target.value))}
                         disabled={isLocked}
                         className="h-16 rounded-2xl bg-secondary/10 border-none text-2xl font-black px-6" 
                         required 
@@ -241,7 +242,6 @@ export default function CapitalControlPage() {
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Spending Period</label>
                       <Select 
-                        name="period" 
                         value={formPeriod} 
                         onValueChange={(v) => setFormPeriod(v as CapitalPeriod)}
                         disabled={isLocked}
@@ -263,7 +263,6 @@ export default function CapitalControlPage() {
                       <div className="relative">
                         <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <Input 
-                          name="startDate" 
                           type="date" 
                           value={formStartDate} 
                           onChange={(e) => setFormStartDate(e.target.value)}
@@ -299,7 +298,7 @@ export default function CapitalControlPage() {
                 </CardContent>
               </Card>
 
-              {utilization > 75 && (
+              {isLocked && utilization > 75 && (
                 <Card className="bg-destructive border-none text-destructive-foreground shadow-2xl rounded-[32px] animate-pulse">
                    <CardHeader className="p-8 pb-4">
                       <CardTitle className="flex items-center gap-3 text-sm font-black uppercase tracking-widest">
