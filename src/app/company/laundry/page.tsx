@@ -248,13 +248,13 @@ export default function LaundryPage() {
     if (!firestore || !user?.companyId) return;
     setIsProcessing(true);
 
-    const bottles = Number(refillBottles);
-    const volPerBottle = Number(refillVolPerBottle);
-    const costPerBottle = Number(refillCostPerBottle);
+    const units = Number(refillBottles);
+    const volPerUnitMl = Number(refillVolPerBottle);
+    const pricePerUnit = Number(refillCostPerBottle);
     
-    const newAmountMl = bottles * volPerBottle * 1000;
-    const newTotalCost = bottles * costPerBottle;
-    const newBatchCostPerLitre = (newTotalCost / (bottles * volPerBottle)) || 0;
+    const newAmountMl = units * volPerUnitMl;
+    const newTotalCost = units * pricePerUnit;
+    const newBatchCostPerLitre = (newTotalCost / (newAmountMl / 1000)) || 0;
     
     const docId = `${refillCategory}_soap`;
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', docId);
@@ -268,12 +268,12 @@ export default function LaundryPage() {
         soapCostPerLitre: newBatchCostPerLitre,
         capacityMl: 50000,
         category: refillCategory,
-        lastBottleCost: costPerBottle,
-        lastBottleVolume: volPerBottle
+        lastBottleCost: pricePerUnit,
+        lastBottleVolume: volPerUnitMl
       };
       setDoc(invRef, data);
     } else {
-      const currentStockMl = existing.soapStockMl;
+      const currentStockMl = existing.soapStockMl || 0;
       const currentCostPerLitre = existing.soapCostPerLitre || 0;
       const totalMl = currentStockMl + newAmountMl;
       const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
@@ -281,8 +281,8 @@ export default function LaundryPage() {
       updateDoc(invRef, {
         soapStockMl: increment(newAmountMl),
         soapCostPerLitre: weightedCostPerLitre || 0,
-        lastBottleCost: costPerBottle,
-        lastBottleVolume: volPerBottle
+        lastBottleCost: pricePerUnit,
+        lastBottleVolume: volPerUnitMl
       });
     }
 
@@ -291,7 +291,7 @@ export default function LaundryPage() {
       id: crypto.randomUUID(),
       companyId: user.companyId,
       amount: newTotalCost,
-      description: `${refillCategory.toUpperCase()} Soap Refill (${bottles}x ${volPerBottle}L)`,
+      description: `${refillCategory.toUpperCase()} Soap Refill (${units}x ${volPerUnitMl}ml)`,
       timestamp: new Date().toISOString()
     });
 
@@ -912,16 +912,16 @@ export default function LaundryPage() {
                          </div>
                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Amount of Bottles</Label>
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Units (Bottles)</Label>
                                <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
                             </div>
                             <div className="space-y-1.5">
-                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Litres/Bottle</Label>
-                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.0" />
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Volume per Unit (ml)</Label>
+                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="5000" />
                             </div>
                          </div>
                          <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Price/Bottle ($)</Label>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Price per Unit ($)</Label>
                             <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
                          <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
@@ -1302,10 +1302,27 @@ function InventoryGauge({ label, item }: { label: string, item?: LaundryInventor
     <Card className="border-none shadow-sm bg-white rounded-3xl p-8 relative overflow-hidden">
        <div className="absolute top-0 right-0 p-6 opacity-5"><Droplet className="w-24 h-24" /></div>
        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">{label}</p>
-       <h4 className="text-4xl font-black tracking-tighter">{(stock / 1000).toFixed(1) || '0.0'}L</h4>
-       <p className="text-xs font-bold opacity-60 mb-6">of {(capacity / 1000)}L Capacity</p>
+       <h4 className="text-4xl font-black tracking-tighter">{stock.toLocaleString()} ml</h4>
+       <p className="text-xs font-bold opacity-60 mb-6">of {capacity.toLocaleString()} ml Capacity</p>
+       
+       <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="p-3 bg-secondary/10 rounded-xl">
+             <p className="text-[8px] font-black uppercase text-muted-foreground">Price per Unit</p>
+             <p className="text-sm font-black text-foreground">${item?.lastBottleCost?.toFixed(2) || '0.00'}</p>
+          </div>
+          <div className="p-3 bg-secondary/10 rounded-xl">
+             <p className="text-[8px] font-black uppercase text-muted-foreground">Vol per Unit</p>
+             <p className="text-sm font-black text-foreground">{item?.lastBottleVolume?.toLocaleString() || '0'} ml</p>
+          </div>
+       </div>
+
        <Progress value={percentage} className="h-3 rounded-full" />
-       {item?.soapCostPerLitre && <p className="text-[10px] font-black text-primary uppercase mt-4">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>}
+       {item?.soapCostPerLitre && (
+         <div className="flex justify-between items-center mt-4">
+            <p className="text-[10px] font-black text-primary uppercase">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>
+            <p className="text-[9px] font-bold text-muted-foreground uppercase">{(stock / 1000).toFixed(1)}L Total</p>
+         </div>
+       )}
     </Card>
   );
 }
