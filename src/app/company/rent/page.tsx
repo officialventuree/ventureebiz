@@ -31,7 +31,9 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertTriangle,
-  Lock
+  Lock,
+  BarChart3,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -53,6 +55,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function RentPage() {
   const { user } = useAuth();
@@ -116,7 +119,8 @@ export default function RentPage() {
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const activeRentals = transactions?.filter(t => t.module === 'rent' && t.status === 'in-progress') || [];
+  const rentTransactions = transactions?.filter(t => t.module === 'rent') || [];
+  const activeRentals = rentTransactions.filter(t => t.status === 'in-progress');
 
   useEffect(() => {
     if (selectedAssetForAgreement) {
@@ -336,6 +340,7 @@ export default function RentPage() {
             <TabsTrigger value="workflow" className="rounded-xl px-6 gap-2 font-black"><ArrowRightLeft className="w-4 h-4" /> Workflow</TabsTrigger>
             <TabsTrigger value="pos" className="rounded-xl px-6 gap-2 font-black"><CalendarDays className="w-4 h-4" /> Create Agreement</TabsTrigger>
             <TabsTrigger value="registry" className="rounded-xl px-6 gap-2 font-black"><LayoutGrid className="w-4 h-4" /> Asset Catalog</TabsTrigger>
+            <TabsTrigger value="analysis" className="rounded-xl px-6 gap-2 font-black"><BarChart3 className="w-4 h-4" /> Analysis</TabsTrigger>
             <TabsTrigger value="settings" className="rounded-xl px-6 gap-2 font-black"><Settings2 className="w-4 h-4" /> Gateway</TabsTrigger>
           </TabsList>
 
@@ -646,6 +651,10 @@ export default function RentPage() {
              </div>
           </TabsContent>
 
+          <TabsContent value="analysis" className="space-y-8">
+             <RentAnalytics transactions={rentTransactions} currencySymbol={currencySymbol} />
+          </TabsContent>
+
           <TabsContent value="settings">
              <div className="max-w-xl mx-auto py-12 text-center space-y-8">
                 <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8">
@@ -694,6 +703,113 @@ function RateInput({ id, label, enabled, defaultValue, currencySymbol, disabled 
             disabled={!isChecked || disabled} 
             className="h-8 pl-6 pr-2 rounded-lg text-xs font-black text-right" 
           />
+       </div>
+    </div>
+  );
+}
+
+function RentAnalytics({ transactions, currencySymbol }: { transactions: SaleTransaction[], currencySymbol: string }) {
+  const totalRevenue = transactions.reduce((acc, t) => acc + t.totalAmount, 0);
+  const totalProfit = transactions.reduce((acc, t) => acc + t.profit, 0);
+  const efficiency = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+  const chartData = useMemo(() => {
+    const daily: Record<string, { date: string, revenue: number, profit: number }> = {};
+    transactions.forEach(t => {
+      const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' });
+      if (!daily[day]) daily[day] = { date: day, revenue: 0, profit: 0 };
+      daily[day].revenue += t.totalAmount;
+      daily[day].profit += t.profit;
+    });
+    return Object.values(daily).slice(-7);
+  }, [transactions]);
+
+  return (
+    <div className="space-y-10">
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="border-none shadow-sm p-8 bg-white rounded-[32px] flex justify-between items-start">
+             <div>
+                <p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">Aggregate Lease Revenue</p>
+                <h4 className="text-4xl font-black tracking-tighter">{currencySymbol}{totalRevenue.toFixed(2)}</h4>
+             </div>
+             <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center text-primary"><DollarSign className="w-6 h-6" /></div>
+          </Card>
+          <Card className="border-none shadow-sm p-8 bg-white rounded-[32px] flex justify-between items-start">
+             <div>
+                <p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">Net Rental Yield</p>
+                <h4 className="text-4xl font-black tracking-tighter text-primary">{currencySymbol}{totalProfit.toFixed(2)}</h4>
+             </div>
+             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary"><TrendingUp className="w-6 h-6" /></div>
+          </Card>
+          <Card className="border-none shadow-sm p-8 bg-white rounded-[32px] flex justify-between items-start">
+             <div>
+                <p className="text-[10px] font-black uppercase text-muted-foreground mb-2 tracking-widest">Portfolio Efficiency</p>
+                <h4 className="text-4xl font-black tracking-tighter">{efficiency.toFixed(1)}%</h4>
+             </div>
+             <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center text-primary"><ShieldCheck className="w-6 h-6" /></div>
+          </Card>
+       </div>
+
+       <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
+          <CardHeader className="px-0 pt-0 mb-8">
+             <CardTitle className="text-2xl font-black">7-Day Performance Trajectory</CardTitle>
+             <CardDescription className="font-bold">Comparative tracking of revenue vs localized profits</CardDescription>
+          </CardHeader>
+          <div className="h-[400px]">
+             <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                   <defs>
+                      <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                         <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                         <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      </linearGradient>
+                   </defs>
+                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 700, fontSize: 12 }} />
+                   <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700, fontSize: 12 }} tickFormatter={(v) => `${currencySymbol}${v}`} />
+                   <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
+                   <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRev)" strokeWidth={4} name="Gross Revenue" />
+                   <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={4} strokeDasharray="5 5" name="Net Profit" />
+                </AreaChart>
+             </ResponsiveContainer>
+          </div>
+       </Card>
+
+       <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
+          <div className="flex justify-between items-center mb-10">
+             <div>
+                <h3 className="text-2xl font-black tracking-tight">Rental Service Feed</h3>
+                <p className="text-sm font-bold text-muted-foreground">Historical ledger of all leasing agreements</p>
+             </div>
+          </div>
+          <div className="divide-y">
+             {transactions.slice().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(t => (
+               <div key={t.id} className="py-6 flex justify-between items-center group hover:bg-secondary/5 transition-colors px-4 rounded-2xl">
+                  <div className="flex items-center gap-6">
+                     <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center transition-transform group-hover:scale-110">
+                        <CalendarDays className="w-6 h-6" />
+                     </div>
+                     <div>
+                        <p className="font-black text-lg">{t.customerName}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                           <Badge variant="outline" className="text-[9px] font-black uppercase px-2">{t.items[0].name}</Badge>
+                           <p className="text-[10px] font-bold text-muted-foreground uppercase">{new Date(t.timestamp).toLocaleDateString()} | {t.paymentMethod}</p>
+                        </div>
+                     </div>
+                  </div>
+                  <div className="text-right">
+                     <p className="text-2xl font-black tracking-tighter text-foreground">{currencySymbol}{t.totalAmount.toFixed(2)}</p>
+                     <p className="text-[10px] font-black text-primary uppercase">Net Yield: {currencySymbol}{t.profit.toFixed(2)}</p>
+                  </div>
+               </div>
+             ))}
+             {transactions.length === 0 && (
+               <div className="py-32 text-center opacity-20">
+                  <History className="w-20 h-20 mx-auto mb-4" />
+                  <p className="font-black text-xl uppercase tracking-widest">No activity recorded</p>
+               </div>
+             )}
+          </div>
        </div>
     </div>
   );
