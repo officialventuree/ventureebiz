@@ -26,6 +26,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Link from 'next/link';
 import Image from 'next/image';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function MartPage() {
   const { user } = useAuth();
@@ -139,10 +140,7 @@ export default function MartPage() {
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
-  
-  // Stored Value Logic
   const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
-  // Settlement amount is what's left after voucher application
   const settlementDue = Math.max(0, subtotal - voucherDiscount);
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
   const totalCost = cart.reduce((acc, item) => acc + (item.product.costPrice * item.quantity), 0);
@@ -229,7 +227,6 @@ export default function MartPage() {
     if (!firestore || !user?.companyId) return;
     if (!confirm("Reverse this transaction? Inventory will be restored and the record will be removed.")) return;
     
-    // 1. Restore Inventory
     for (const item of t.items) {
       if (item.productId) {
         const productRef = doc(firestore, 'companies', user.companyId, 'products', item.productId);
@@ -239,7 +236,6 @@ export default function MartPage() {
       }
     }
 
-    // 2. Remove Transaction
     const transRef = doc(firestore, 'companies', user.companyId, 'transactions', t.id);
     deleteDocumentNonBlocking(transRef);
     toast({ title: "Transaction Reversed" });
@@ -248,7 +244,7 @@ export default function MartPage() {
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
-      <main className="flex-1 overflow-hidden p-8 flex flex-col">
+      <main className="flex-1 overflow-auto p-8 flex flex-col">
         <div className="mb-6 flex justify-between items-end">
           <div>
             <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Mart Control</h1>
@@ -267,7 +263,7 @@ export default function MartPage() {
           </Alert>
         )}
 
-        <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-hidden">
+        <Tabs defaultValue="pos" className="flex-1 flex flex-col">
           <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm">
             <TabsTrigger value="pos" className="gap-2 rounded-xl px-6">POS Terminal</TabsTrigger>
             <TabsTrigger value="history" className="gap-2 rounded-xl px-6">History</TabsTrigger>
@@ -277,7 +273,7 @@ export default function MartPage() {
             <TabsTrigger value="billing" className="gap-2 rounded-xl px-6">Billing</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pos" className="flex-1 overflow-hidden">
+          <TabsContent value="pos" className="flex-1 overflow-hidden h-[calc(100vh-250px)]">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
                 <div className="relative">
@@ -413,7 +409,7 @@ export default function MartPage() {
           </TabsContent>
 
           <TabsContent value="history" className="flex-1 overflow-auto">
-             <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+             <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden mb-8">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-secondary/20 border-b">
                     <tr><th className="p-6 font-black uppercase text-[10px]">Reference</th><th className="p-6 font-black uppercase text-[10px]">Customer</th><th className="p-6 font-black uppercase text-[10px]">Total</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr>
@@ -434,10 +430,18 @@ export default function MartPage() {
              </div>
           </TabsContent>
 
-          <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} /></TabsContent>
-          <TabsContent value="coupons"><CouponManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
-          <TabsContent value="profits"><ProfitAnalytics transactions={martTransactions} /></TabsContent>
-          <TabsContent value="billing"><BillingManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
+          <TabsContent value="inventory" className="flex-1 overflow-auto">
+            <InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} />
+          </TabsContent>
+          <TabsContent value="coupons" className="flex-1 overflow-auto">
+            <CouponManager companyId={user?.companyId} companyDoc={companyDoc} />
+          </TabsContent>
+          <TabsContent value="profits" className="flex-1 overflow-auto">
+            <ProfitAnalytics transactions={martTransactions} />
+          </TabsContent>
+          <TabsContent value="billing" className="flex-1 overflow-auto">
+            <BillingManager companyId={user?.companyId} companyDoc={companyDoc} />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
@@ -453,7 +457,6 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [refillScan, setRefillScan] = useState('');
 
-  // Refill Form States
   const [unitsBought, setUnitsBought] = useState<string>('1');
   const [itemsPerUnit, setItemsPerUnit] = useState<string>('1');
   const [costPerUnit, setCostPerUnit] = useState<string>('');
@@ -559,7 +562,6 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     const docRef = doc(firestore, 'companies', companyId, 'products', id);
     setDoc(docRef, productData)
       .then(() => {
-        // Log as Capital Purchase for startup stock ONLY if new registration
         if (!editingProduct && totalInitialCost > 0) {
           const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
           const purchaseData = {
@@ -602,10 +604,10 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-8">
       <div className="lg:col-span-1">
         <Card className={cn(
-          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
+          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0"
         )}>
           <div className="flex items-center gap-2 mb-6">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
@@ -883,7 +885,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
@@ -923,119 +925,121 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-1 space-y-6">
-          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col h-[calc(100vh-200px)] sticky top-8">
+        <div className="lg:col-span-1">
+          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col sticky top-0 max-h-[calc(100vh-100px)]">
             <div className="p-8 pb-4">
               <h3 className="text-xl font-black">Batch Issue Stored Value</h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-8 pt-0 space-y-6">
-              <div className="space-y-4">
-                 <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-                    <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
-                 </div>
-                 <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
-                    <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
-                 </div>
-                 <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
-                    <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
-                 </div>
-              </div>
-
-              <Separator />
-
-              <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
-                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
-                 <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                       <Label className="text-[9px] font-black uppercase">Value ($)</Label>
-                       <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
-                    </div>
-                    <div className="space-y-1.5">
-                       <Label className="text-[9px] font-black uppercase">Qty</Label>
-                       <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
-                    </div>
-                 </div>
-                 <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
-                    <Plus className="w-3.5 h-3.5" /> Add to Batch
-                 </Button>
-              </div>
-
-              {batch.length > 0 && (
-                <div className="space-y-3 animate-in fade-in zoom-in-95">
-                   <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
-                   <div className="space-y-2 max-h-40 overflow-auto pr-1">
-                      {batch.map(item => (
-                        <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
-                           <div>
-                              <p className="font-black text-xs">${item.value.toFixed(2)}</p>
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
-                           </div>
-                           <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
-                              <Trash2 className="w-3.5 h-3.5" />
-                           </Button>
-                        </div>
-                      ))}
+            <ScrollArea className="flex-1 px-8 pb-8">
+              <div className="space-y-6">
+                <div className="space-y-4">
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
+                      <Input placeholder="Full Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold" />
                    </div>
-                   <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
-                      <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
-                      <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Company (Optional)</Label>
+                      <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="h-12 rounded-xl font-bold" />
+                   </div>
+                   <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Global Expiry Date</Label>
+                      <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="h-12 rounded-xl font-bold" />
                    </div>
                 </div>
-              )}
 
-              <Separator />
+                <Separator />
 
-              <div className="space-y-4">
-                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
-                 <RadioGroup value={purchaseMethod} onValueChange={(v) => {
-                   setPurchaseMethod(v as PaymentMethod);
-                   setReferenceNumber('');
-                   setCashReceived('');
-                 }} className="grid grid-cols-3 gap-2">
-                    <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
-                    <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
-                    <PaymentOption value="duitnow" label="QR" icon={QrCode} id="duitnow_final" />
-                 </RadioGroup>
-              </div>
-
-              {purchaseMethod === 'cash' && (
-                <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
-                   <div className="space-y-1">
-                      <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
-                      <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
+                <div className="p-4 bg-secondary/10 rounded-2xl space-y-4">
+                   <p className="text-[10px] font-black uppercase text-primary tracking-widest">Coupon Item Builder</p>
+                   <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                         <Label className="text-[9px] font-black uppercase">Value ($)</Label>
+                         <Input type="number" step="0.01" value={inputVal} onChange={(e) => setInputVal(e.target.value)} placeholder="0.00" className="h-10 rounded-lg font-bold" />
+                      </div>
+                      <div className="space-y-1.5">
+                         <Label className="text-[9px] font-black uppercase">Qty</Label>
+                         <Input type="number" value={inputQty} onChange={(e) => setInputQty(e.target.value)} className="h-10 rounded-lg font-bold" />
+                      </div>
                    </div>
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span>Balance to Return</span>
-                      <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
-                   </div>
+                   <Button onClick={addToBatch} variant="secondary" className="w-full h-10 rounded-xl font-black text-xs gap-2">
+                      <Plus className="w-3.5 h-3.5" /> Add to Batch
+                   </Button>
                 </div>
-              )}
 
-              {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
-                <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
-                   {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
-                     <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
-                        <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
-                        <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
+                {batch.length > 0 && (
+                  <div className="space-y-3 animate-in fade-in zoom-in-95">
+                     <p className="text-[10px] font-black uppercase text-muted-foreground px-1">Batch Composition</p>
+                     <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                        {batch.map(item => (
+                          <div key={item.id} className="bg-white border rounded-xl p-2.5 flex justify-between items-center group shadow-sm">
+                             <div>
+                                <p className="font-black text-xs">${item.value.toFixed(2)}</p>
+                                <p className="text-[9px] font-bold text-muted-foreground uppercase">Quantity: {item.qty}</p>
+                             </div>
+                             <Button variant="ghost" size="icon" onClick={() => removeFromBatch(item.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                                <Trash2 className="w-3.5 h-3.5" />
+                             </Button>
+                          </div>
+                        ))}
                      </div>
-                   )}
-                   <div className="space-y-1">
-                      <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
-                      <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
-                   </div>
-                </div>
-              )}
+                     <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 flex justify-between items-center">
+                        <span className="text-[10px] font-black uppercase text-primary">Batch Subtotal</span>
+                        <span className="text-lg font-black text-foreground">${subtotal.toFixed(2)}</span>
+                     </div>
+                  </div>
+                )}
 
-              <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
-                 {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
-              </Button>
-            </div>
+                <Separator />
+
+                <div className="space-y-4">
+                   <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Payment Method</Label>
+                   <RadioGroup value={purchaseMethod} onValueChange={(v) => {
+                     setPurchaseMethod(v as PaymentMethod);
+                     setReferenceNumber('');
+                     setCashReceived('');
+                   }} className="grid grid-cols-3 gap-2">
+                      <PaymentOption value="cash" label="Cash" icon={Banknote} id="cou_cash" />
+                      <PaymentOption value="card" label="Card" icon={CreditCard} id="cou_card" />
+                      <PaymentOption value="duitnow" label="QR" icon={QrCode} id="duitnow_final" />
+                   </RadioGroup>
+                </div>
+
+                {purchaseMethod === 'cash' && (
+                  <div className="p-4 bg-secondary/10 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
+                     <div className="space-y-1">
+                        <Label className="text-[9px] font-black uppercase">Amount Received ($)</Label>
+                        <Input type="number" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-10 rounded-lg font-bold" placeholder="0.00" />
+                     </div>
+                     <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                        <span>Balance to Return</span>
+                        <span className="text-primary text-sm">${cashChange.toFixed(2)}</span>
+                     </div>
+                  </div>
+                )}
+
+                {(purchaseMethod === 'card' || paymentMethod === 'duitnow') && (
+                  <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                     {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                       <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
+                          <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto rounded-lg shadow-sm mb-2" />
+                          <p className="text-[9px] font-black text-primary uppercase">Scan Digital Gateway</p>
+                       </div>
+                     )}
+                     <div className="space-y-1">
+                        <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
+                        <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
+                     </div>
+                  </div>
+                )}
+
+                <Button onClick={handleCreate} className="w-full h-14 rounded-2xl font-black shadow-lg" disabled={isProcessing || !isPaymentValid || !customerName}>
+                   {isProcessing ? "Finalizing Batch..." : "Issue Batch Card(s)"}
+                </Button>
+              </div>
+            </ScrollArea>
           </Card>
 
-          <Card className="border-none shadow-sm rounded-3xl bg-primary text-primary-foreground p-6 overflow-hidden relative">
+          <Card className="border-none shadow-sm rounded-3xl bg-primary text-primary-foreground p-6 overflow-hidden relative mt-6">
              <div className="absolute top-0 right-0 p-4 opacity-10"><Barcode className="w-16 h-16" /></div>
              <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-4">
@@ -1136,7 +1140,7 @@ function ProfitAnalytics({ transactions }: { transactions: SaleTransaction[] }) 
   const totalProfit = transactions.reduce((acc, t) => acc + t.profit, 0);
 
   return (
-    <div className="space-y-8 overflow-auto pb-8">
+    <div className="space-y-8 overflow-auto pb-12">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} />
          <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} color="text-primary" />
@@ -1179,7 +1183,7 @@ function BillingManager({ companyId, companyDoc }: any) {
   };
 
   return (
-    <div className="max-w-xl mx-auto py-12">
+    <div className="max-w-xl mx-auto py-12 pb-24">
       <Card className="border-none shadow-sm rounded-[32px] bg-white p-10 text-center space-y-8">
         <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-8 h-8" /></div>
         <h2 className="text-2xl font-black">Digital Gateway</h2>
@@ -1195,7 +1199,7 @@ function BillingManager({ companyId, companyDoc }: any) {
         ) : (
           <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center mx-auto cursor-pointer hover:bg-secondary/20 transition-all gap-4">
              <Plus className="w-8 h-8 text-primary" />
-             <p className="textxs font-black uppercase">Upload QR Code</p>
+             <p className="text-xs font-black uppercase">Upload QR Code</p>
              <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
           </label>
         )}
