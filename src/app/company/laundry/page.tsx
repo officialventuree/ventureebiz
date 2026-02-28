@@ -274,7 +274,7 @@ export default function LaundryPage() {
         companyId: user.companyId,
         soapStockMl: newAmountMl,
         soapCostPerLitre: units > 0 ? (newTotalCost / (newAmountMl / 1000)) : 0,
-        capacityMl: 999999999, // Effectively unlimited
+        capacityMl: 999999999,
         category: refillCategory,
         lastBottleCost: pricePerUnit,
         lastBottleVolume: volPerUnitMl
@@ -798,8 +798,6 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="students" className="space-y-8">
-             <GlobalPolicyConfig companyId={user?.companyId} initialConfig={globalConfig} />
-
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
                    <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
@@ -828,7 +826,7 @@ export default function LaundryPage() {
                             <div className="h-11 rounded-xl bg-secondary/10 border-none font-black flex items-center px-4 text-primary">
                                ${(benchmarkSubscription || 0).toFixed(2)}
                             </div>
-                            <p className="text-[9px] font-bold text-muted-foreground italic mt-1">Benchmark is fixed per policy settings.</p>
+                            <p className="text-[9px] font-bold text-muted-foreground italic mt-1">Benchmark is fixed per pricing policies.</p>
                          </div>
                          <div className="flex gap-2">
                            {editingStudent && (
@@ -900,7 +898,8 @@ export default function LaundryPage() {
              <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelQuotas={levelQuotas} />
           </TabsContent>
 
-          <TabsContent value="config">
+          <TabsContent value="config" className="space-y-8">
+             <GlobalPolicyConfig companyId={user?.companyId} initialConfig={globalConfig} />
              <LaundryConfigurator 
               levelQuotas={levelQuotas} 
               benchmarkSubscription={benchmarkSubscription} 
@@ -1110,7 +1109,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
