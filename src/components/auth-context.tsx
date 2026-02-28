@@ -4,13 +4,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '@/lib/types';
 import { useRouter } from 'next/navigation';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  impersonateCompany: (companyUser: User) => void;
   isLoading: boolean;
 }
 
@@ -39,8 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!email || !password) return { success: false, error: 'Missing credentials' };
 
     try {
+      const lowerEmail = email.toLowerCase();
+
       // Platform Admin Check (Manual Credentials)
-      if (email === 'officialadmin@ventureebiz.com' && password === 'officialadmin.venturee.300609') {
+      if (lowerEmail === 'officialadmin@ventureebiz.com' && password === 'officialadmin.venturee.300609') {
         const userData: User = {
           id: 'platform-owner-id',
           name: 'Platform Owner',
@@ -54,9 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      // Company User / Viewer Check
+      // Company User / Viewer Check strictly from Firestore
       const usersRef = collection(firestore, 'company_users');
-      const q = query(usersRef, where('email', '==', email.toLowerCase()), limit(1));
+      const q = query(usersRef, where('email', '==', lowerEmail), limit(1));
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
@@ -64,6 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const foundUser = querySnapshot.docs[0].data() as User;
+      
+      // Manual password comparison
       if (foundUser.password !== password) {
         return { success: false, error: 'Invalid password' };
       }
@@ -71,21 +74,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(foundUser);
       localStorage.setItem('venturee_user', JSON.stringify(foundUser));
 
-      if (foundUser.role === 'CompanyOwner') router.push('/company');
-      else if (foundUser.role === 'CompanyViewer') router.push('/viewer');
+      if (foundUser.role === 'CompanyOwner') {
+        router.push('/company');
+      } else if (foundUser.role === 'CompanyViewer') {
+        router.push('/viewer');
+      } else if (foundUser.role === 'PlatformAdmin') {
+        router.push('/admin');
+      }
 
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Authentication failed' };
+      console.error("Auth Error:", e);
+      return { success: false, error: 'Authentication protocol failure' };
     }
-  };
-
-  const impersonateCompany = (companyUser: User) => {
-    // Allows admin to jump into a company dashboard
-    const impersonatedUser = { ...companyUser, role: 'CompanyOwner' as const };
-    setUser(impersonatedUser);
-    localStorage.setItem('venturee_user', JSON.stringify(impersonatedUser));
-    router.push('/company');
   };
 
   const logout = () => {
@@ -95,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, impersonateCompany, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

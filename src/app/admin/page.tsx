@@ -11,7 +11,7 @@ import {
   ShieldAlert, Layers, TrendingUp, 
   CreditCard, Banknote, QrCode, 
   Calendar, CheckCircle2, 
-  ArrowRight, Landmark, Settings2, Briefcase, ExternalLink
+  ArrowRight, Landmark, Settings2, Briefcase
 } from 'lucide-react';
 import { createCompanyAction, renewCompanyAction } from '@/app/actions';
 import { useState } from 'react';
@@ -22,7 +22,7 @@ import {
 } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -30,7 +30,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/components/auth-context';
 
 const DEFAULT_MODULES: { id: ModuleType; label: string }[] = [
   { id: 'mart', label: 'Mart' },
@@ -49,7 +48,6 @@ const DEFAULT_CYCLES: PricingCycle[] = [
 export default function AdminDashboard() {
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { impersonateCompany } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   
@@ -134,16 +132,6 @@ export default function AdminDashboard() {
       }
     }
     setIsCreating(false);
-  };
-
-  const handleEnterDashboard = async (companyId: string) => {
-    if (!firestore) return;
-    const userDoc = await getDoc(doc(firestore, 'company_users', companyId));
-    if (userDoc.exists()) {
-      impersonateCompany(userDoc.data() as User);
-    } else {
-      toast({ title: "User Record Missing", variant: "destructive" });
-    }
   };
 
   const handleRenew = async (company: Company) => {
@@ -276,14 +264,6 @@ export default function AdminDashboard() {
                           <div>
                             <div className="flex items-center gap-3">
                               <h4 className="text-2xl font-black tracking-tight">{company.name}</h4>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="rounded-lg font-black text-[9px] uppercase h-7 px-3 gap-1.5"
-                                onClick={() => handleEnterDashboard(company.id)}
-                              >
-                                <ExternalLink className="w-3 h-3" /> Enter Command Center
-                              </Button>
                             </div>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">ID: {company.id}</p>
                             <div className="flex gap-1 mt-3">
