@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { CapitalPurchase, Company, CapitalPeriod } from '@/lib/types';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
 export default function CapitalControlPage() {
@@ -27,7 +27,7 @@ export default function CapitalControlPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
-  const [resetPassword, setResetPassword] = useState('');
+  const [resetKey, setResetKey] = useState('');
 
   // Form states for live calculation
   const [formLimit, setFormLimit] = useState<number>(0);
@@ -117,8 +117,8 @@ export default function CapitalControlPage() {
   const handleResetCycle = async () => {
     if (!firestore || !user?.companyId || !companyDoc) return;
     
-    if (resetPassword !== companyDoc.cancellationPassword) {
-      toast({ title: "Invalid Credential", description: "The cancellation password provided is incorrect.", variant: "destructive" });
+    if (resetKey !== companyDoc.cancellationPassword) {
+      toast({ title: "Invalid Authorization", description: "The Reset Key provided is incorrect.", variant: "destructive" });
       return;
     }
 
@@ -133,9 +133,9 @@ export default function CapitalControlPage() {
 
     updateDoc(docRef, resetData)
       .then(() => {
-        toast({ title: "Cycle Terminated", description: "Capital configuration has been successfully reset." });
+        toast({ title: "Cycle Unlocked", description: "Capital configuration has been successfully reset." });
         setIsResetDialogOpen(false);
-        setResetPassword('');
+        setResetKey('');
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -163,7 +163,7 @@ export default function CapitalControlPage() {
               <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm transition-all">
-                    <RefreshCw className="w-4 h-4" /> Request Cycle Reset
+                    <RefreshCw className="w-4 h-4" /> Reset Configuration
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
@@ -171,31 +171,30 @@ export default function CapitalControlPage() {
                     <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
                       <Lock className="w-6 h-6" />
                     </div>
-                    <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Cycle Cancellation</DialogTitle>
+                    <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Emergency Unlock</DialogTitle>
                     <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
-                      A unique 8-character Cancellation Password provided by the platform admin is required to terminate a locked cycle.
+                      An 8-character Reset Key (provided by your Admin) is required to override this locked budget cycle.
                     </DialogDescription>
                   </div>
                   <div className="p-8 space-y-6">
                     <div className="space-y-2">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Cancellation Password</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorization Reset Key</Label>
                       <div className="relative">
                         <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input 
-                          type="password"
                           placeholder="ENTER 8-CHAR KEY" 
-                          value={resetPassword}
-                          onChange={(e) => setResetPassword(e.target.value)}
+                          value={resetKey}
+                          onChange={(e) => setResetKey(e.target.value.toUpperCase())}
                           className="h-14 rounded-2xl bg-secondary/10 border-none pl-12 font-mono font-bold tracking-widest text-lg" 
                         />
                       </div>
                     </div>
                     <Button 
                       onClick={handleResetCycle} 
-                      disabled={isResetting || resetPassword.length < 1}
+                      disabled={isResetting || resetKey.length < 8}
                       className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
                     >
-                      {isResetting ? "Authenticating..." : "Confirm & Unlock Budget"}
+                      {isResetting ? "Authorizing..." : "Confirm & Unlock Configuration"}
                     </Button>
                   </div>
                 </DialogContent>

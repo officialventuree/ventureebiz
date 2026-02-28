@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Building2, Mail, Key, Search, Trash2, ShieldAlert } from 'lucide-react';
+import { Plus, Building2, Mail, Key, Search, Trash2, ShieldAlert, RefreshCw } from 'lucide-react';
 import { createCompanyAction } from '@/app/actions';
 import { useState } from 'react';
 import { Company } from '@/lib/types';
@@ -182,11 +182,11 @@ export default function AdminDashboard() {
                                 <p className="text-sm font-medium truncate font-mono">{company.password}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 p-3 bg-destructive/10 rounded-xl">
-                              <ShieldAlert className="w-4 h-4 text-destructive" />
+                            <div className="flex items-center gap-3 p-3 bg-destructive/10 rounded-xl border border-destructive/20">
+                              <RefreshCw className="w-4 h-4 text-destructive" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-semibold text-destructive uppercase">Cancel PW</p>
-                                <p className="text-sm font-medium truncate font-mono text-destructive">{company.cancellationPassword}</p>
+                                <p className="text-[10px] font-black text-destructive uppercase">Reset Key</p>
+                                <p className="text-sm font-black truncate font-mono text-destructive">{company.cancellationPassword}</p>
                               </div>
                             </div>
                           </div>
