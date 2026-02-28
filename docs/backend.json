@@ -13,6 +13,8 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "capitalLimit": { "type": "number" },
         "capitalPeriod": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
+        "capitalStartDate": { "type": "string", "format": "date" },
+        "capitalEndDate": { "type": "string", "format": "date" },
         "duitNowQr": { "type": "string" }
       },
       "required": ["id", "name", "email", "createdAt"]
@@ -134,7 +136,6 @@
       "description": "Dates assigned for laundry usage by level.",
       "properties": {
         "id": { "type": "string" },
-        "companyId": { "type": "string" },
         "date": { "type": "string", "format": "date" },
         "level": { "type": "number" }
       }

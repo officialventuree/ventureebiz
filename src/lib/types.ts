@@ -25,6 +25,8 @@ export interface Company {
   createdAt: string;
   capitalLimit?: number;
   capitalPeriod?: CapitalPeriod;
+  capitalStartDate?: string;
+  capitalEndDate?: string;
   duitNowQr?: string;
 }
 
@@ -126,14 +128,6 @@ export interface LaundryInventory {
   category: 'student' | 'payable';
   lastBottleCost?: number;
   lastBottleVolume?: number;
-}
-
-export interface LaundryLevelConfig {
-  id: string;
-  companyId: string;
-  level: number;
-  subscriptionFee: number;
-  totalWashesAllowed: number;
 }
 
 export interface LaundryLevelConfig {
