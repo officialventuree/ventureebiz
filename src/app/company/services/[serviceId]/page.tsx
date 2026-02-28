@@ -1,3 +1,4 @@
+
 'use client';
 
 import { use, useEffect } from 'react';
@@ -295,10 +296,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
           {!isBudgetActive && activeTab === 'inventory' && (
             <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+              <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Alert</AlertTitle>
               <AlertDescription className="text-sm font-medium">
-                You cannot replenish materials because your <strong>Capital Base Limit</strong> is not set. 
-                Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+                Note: Your <strong>Capital Base Limit</strong> is not set. You can still replenish materials for testing. 
+                <Link href="/company/capital" className="underline font-black hover:opacity-80 ml-1">Configure budget</Link>
               </AlertDescription>
             </Alert>
           )}
@@ -370,39 +371,38 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             <TabsContent value="inventory" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                <div className="lg:col-span-1">
                   <Card className={cn(
-                    "border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8",
-                    !isBudgetActive && "opacity-50 pointer-events-none"
+                    "border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8"
                   )}>
                      <h3 className="text-xl font-black mb-6">Replenish Materials</h3>
                      <form onSubmit={handleAddMaterial} className="space-y-4">
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Material Name</Label>
-                           <Input name="name" placeholder="Thermal Paste" required disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                           <Input name="name" placeholder="Thermal Paste" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Qty Bought</Label>
-                              <Input type="number" value={matQuantity} onChange={(e) => setMatQuantity(e.target.value)} disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" value={matQuantity} onChange={(e) => setMatQuantity(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Measure/Item</Label>
-                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} disabled={!isBudgetActive} placeholder="1.0" className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} placeholder="1.0" className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Unit</Label>
-                              <Select value={matUnit} onValueChange={setMatUnit} disabled={!isBudgetActive}>
+                              <Select value={matUnit} onValueChange={setMatUnit}>
                                  <SelectTrigger className="h-12 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
                                  <SelectContent className="rounded-xl font-bold">{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                               </Select>
                            </div>
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Cost/Item ($)</Label>
-                              <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
-                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Log Material</Button>
+                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Log Material</Button>
                      </form>
                   </Card>
                </div>

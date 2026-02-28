@@ -239,10 +239,10 @@ export default function MartPage() {
         {!isBudgetActive && (
           <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Alert</AlertTitle>
             <AlertDescription className="text-sm font-medium">
-              You cannot add products or refill stock because your <strong>Capital Base Limit</strong> is not set. 
-              Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+              Note: Your <strong>Capital Base Limit</strong> is not set. You can still use the system, but procurement records will not be locked to a strategic period. 
+              <Link href="/company/capital" className="underline font-black hover:opacity-80 ml-1">Configure budget</Link>
             </AlertDescription>
           </Alert>
         )}
@@ -558,8 +558,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <div className="lg:col-span-1">
         <Card className={cn(
-          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
-          !isBudgetActive && "opacity-50 pointer-events-none"
+          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
         )}>
           <div className="flex items-center gap-2 mb-6">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
@@ -572,8 +571,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
             <div className="relative">
               <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder={isBudgetActive ? "SCAN TO REFILL..." : "LOCKED"} 
-                disabled={!isBudgetActive}
+                placeholder="SCAN TO REFILL..." 
                 className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
                 value={refillScan}
                 onChange={(e) => setRefillScan(e.target.value)}
@@ -642,8 +640,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button disabled={!isBudgetActive} className="rounded-xl font-black shadow-lg">
-                {!isBudgetActive && <Lock className="w-4 h-4 mr-2" />}
+              <Button className="rounded-xl font-black shadow-lg">
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>

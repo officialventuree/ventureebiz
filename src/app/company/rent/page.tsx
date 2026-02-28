@@ -340,10 +340,10 @@ export default function RentPage() {
         {!isBudgetActive && (
           <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Alert</AlertTitle>
             <AlertDescription className="text-sm font-medium">
-              You cannot register new assets because your <strong>Capital Base Limit</strong> is not set. 
-              Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+              Note: Your <strong>Capital Base Limit</strong> is not set. You can still register assets for testing purposes. 
+              <Link href="/company/capital" className="underline font-black hover:opacity-80 ml-1">Configure budget</Link>
             </AlertDescription>
           </Alert>
         )}
@@ -541,8 +541,7 @@ export default function RentPage() {
           <TabsContent value="registry" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
              <div className="lg:col-span-1">
                 <Card className={cn(
-                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
-                  !isBudgetActive && "opacity-50 pointer-events-none"
+                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
                 )}>
                    <div className="flex items-center gap-2 mb-6">
                       <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
@@ -553,22 +552,22 @@ export default function RentPage() {
                    <form onSubmit={handleSaveAsset} className="space-y-5">
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Asset Name</Label>
-                        <Input name="name" defaultValue={editingAsset?.name} required disabled={!isBudgetActive} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
+                        <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
                       </div>
                       <Separator />
                       <p className="text-[10px] font-black uppercase text-primary tracking-widest">Rate Configuration</p>
                       <div className="space-y-4">
-                         <RateInput id="hourly" label="Hourly" enabled={!!editingAsset?.hourlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.hourlyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="daily" label="Daily" enabled={!!editingAsset?.dailyRate || !editingAsset} disabled={!isBudgetActive} defaultValue={editingAsset?.dailyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="weekly" label="Weekly" enabled={!!editingAsset?.weeklyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.weeklyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="monthly" label="Monthly" enabled={!!editingAsset?.monthlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.monthlyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="yearly" label="Yearly" enabled={!!editingAsset?.yearlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.yearlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="hourly" label="Hourly" enabled={!!editingAsset?.hourlyRate} defaultValue={editingAsset?.hourlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="daily" label="Daily" enabled={!!editingAsset?.dailyRate || !editingAsset} defaultValue={editingAsset?.dailyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="weekly" label="Weekly" enabled={!!editingAsset?.weeklyRate} defaultValue={editingAsset?.weeklyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="monthly" label="Monthly" enabled={!!editingAsset?.monthlyRate} defaultValue={editingAsset?.monthlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="yearly" label="Yearly" enabled={!!editingAsset?.yearlyRate} defaultValue={editingAsset?.yearlyRate} currencySymbol={currencySymbol} />
                       </div>
                       <div className="pt-4 flex gap-2">
                          {editingAsset && (
                            <Button type="button" variant="outline" onClick={() => setEditingAsset(null)} className="flex-1 rounded-xl font-black">Cancel</Button>
                          )}
-                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Save Asset</Button>
+                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg">Save Asset</Button>
                       </div>
                    </form>
                 </Card>
