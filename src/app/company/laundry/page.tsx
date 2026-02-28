@@ -172,7 +172,7 @@ export default function LaundryPage() {
       setRefillVolPerBottle(item.lastBottleVolume?.toString() || '');
       setRefillCostPerBottle(item.lastBottleCost?.toString() || '');
     }
-  }, [refillCategory, studentSoap, payableSoap]);
+  }, [refillCategory, !!studentSoap, !!payableSoap]);
 
   // Sync payable rate when loading
   useEffect(() => {
@@ -257,13 +257,12 @@ export default function LaundryPage() {
     if (!firestore || !user?.companyId) return;
     setIsProcessing(true);
 
-    const units = Number(refillBottles);
+    const units = Number(refillBottles) || 0;
     const volPerUnitMl = Number(refillVolPerBottle);
     const pricePerUnit = Number(refillCostPerBottle);
     
     const newAmountMl = units * volPerUnitMl;
     const newTotalCost = units * pricePerUnit;
-    const newBatchCostPerLitre = (newTotalCost / (newAmountMl / 1000)) || 0;
     
     const docId = `${refillCategory}_soap`;
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', docId);
@@ -274,7 +273,7 @@ export default function LaundryPage() {
         id: docId,
         companyId: user.companyId,
         soapStockMl: newAmountMl,
-        soapCostPerLitre: newBatchCostPerLitre,
+        soapCostPerLitre: units > 0 ? (newTotalCost / (newAmountMl / 1000)) : 0,
         capacityMl: 50000,
         category: refillCategory,
         lastBottleCost: pricePerUnit,
@@ -282,29 +281,37 @@ export default function LaundryPage() {
       };
       setDoc(invRef, data);
     } else {
-      const currentStockMl = existing.soapStockMl || 0;
-      const currentCostPerLitre = existing.soapCostPerLitre || 0;
-      const totalMl = currentStockMl + newAmountMl;
-      const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
-
-      updateDoc(invRef, {
-        soapStockMl: increment(newAmountMl),
-        soapCostPerLitre: weightedCostPerLitre || 0,
+      const updateData: any = {
         lastBottleCost: pricePerUnit,
         lastBottleVolume: volPerUnitMl
+      };
+
+      if (units > 0) {
+        const currentStockMl = existing.soapStockMl || 0;
+        const currentCostPerLitre = existing.soapCostPerLitre || 0;
+        const totalMl = currentStockMl + newAmountMl;
+        const newBatchCostPerLitre = (newTotalCost / (newAmountMl / 1000)) || 0;
+        const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
+
+        updateData.soapStockMl = increment(newAmountMl);
+        updateData.soapCostPerLitre = weightedCostPerLitre || 0;
+      }
+
+      updateDoc(invRef, updateData);
+    }
+
+    if (units > 0) {
+      const purchaseRef = collection(firestore, 'companies', user.companyId, 'purchases');
+      addDoc(purchaseRef, {
+        id: crypto.randomUUID(),
+        companyId: user.companyId,
+        amount: newTotalCost,
+        description: `${refillCategory.toUpperCase()} Soap Refill (${units}x ${volPerUnitMl}ml)`,
+        timestamp: new Date().toISOString()
       });
     }
 
-    const purchaseRef = collection(firestore, 'companies', user.companyId, 'purchases');
-    addDoc(purchaseRef, {
-      id: crypto.randomUUID(),
-      companyId: user.companyId,
-      amount: newTotalCost,
-      description: `${refillCategory.toUpperCase()} Soap Refill (${units}x ${volPerUnitMl}ml)`,
-      timestamp: new Date().toISOString()
-    });
-
-    toast({ title: "Inventory Replenished" });
+    toast({ title: units > 0 ? "Inventory Replenished" : "Information Updated" });
     setRefillBottles('');
     setIsProcessing(false);
   };
@@ -352,12 +359,10 @@ export default function LaundryPage() {
       items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
     };
 
-    // Deduct Wash Bank Balance by incrementing totalSpent
     updateDoc(studentRef, { totalSpent: increment(washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
 
-    // Deduct Soap Stock Volume with consumed soap per wash
     updateDoc(invRef, { soapStockMl: increment(-soapMlPerWash) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
     });
@@ -939,8 +944,8 @@ export default function LaundryPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Price per Unit ($)</Label>
                             <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
-                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
-                            {isProcessing ? "Processing..." : "Confirm Stock Refill"}
+                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillVolPerBottle || !refillCostPerBottle}>
+                            {isProcessing ? "Processing..." : (Number(refillBottles) > 0 ? "Confirm Stock Refill" : "Update Information")}
                          </Button>
                       </form>
                    </Card>
@@ -1105,7 +1110,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
