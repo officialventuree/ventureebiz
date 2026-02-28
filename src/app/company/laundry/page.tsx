@@ -36,7 +36,8 @@ import {
   HandCoins,
   BarChart3,
   Lock,
-  XCircle
+  XCircle,
+  Landmark
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -275,6 +276,47 @@ export default function LaundryPage() {
     setIsProcessing(false);
   };
 
+  const handlePayableWash = () => {
+    if (!payableName || !payableAmount || !firestore || !user?.companyId || !payableSoap) return;
+    
+    const amount = Number(payableAmount);
+    const mlRequired = globalConfig?.payableSoapMlPerWash || 50;
+    
+    if (payableSoap.soapStockMl < mlRequired) {
+      toast({ title: "Insufficient Soap Stock", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessing(true);
+    
+    const soapCost = (mlRequired / 1000) * (payableSoap.soapCostPerLitre || 0);
+    const transId = crypto.randomUUID();
+    const transData: SaleTransaction = {
+      id: transId,
+      companyId: user.companyId,
+      module: 'laundry',
+      totalAmount: amount,
+      profit: amount - soapCost,
+      totalCost: soapCost,
+      timestamp: new Date().toISOString(),
+      customerName: payableName,
+      paymentMethod: payablePaymentMethod,
+      referenceNumber: payableRef || null,
+      status: 'completed',
+      items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
+    };
+
+    setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transId), transData).then(() => {
+      updateDoc(doc(firestore, 'companies', user.companyId!, 'laundryInventory', 'payable_soap'), {
+        soapStockMl: increment(-mlRequired)
+      });
+      toast({ title: "Payable Wash Fulfilled" });
+      setPayableName('');
+      setPayableRef('');
+      setPayableCashReceived('');
+    }).finally(() => setIsProcessing(false));
+  };
+
   const handleConfirmTopUp = () => {
     if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
     setIsProcessing(true);
@@ -456,7 +498,18 @@ function InventoryGauge({ label, item, currencySymbol }: { label: string, item?:
 function LaundryAnalytics({ transactions, currencySymbol }: { transactions: SaleTransaction[], currencySymbol: string }) {
   const subscriberWashes = transactions.filter(t => t.items[0].name.includes('Service Wash (Lv'));
   const payableWashes = transactions.filter(t => t.items[0].name === 'Payable Service Wash');
-  const getChartData = (data: SaleTransaction[]) => { const daily: Record<string, { date: string, revenue: number, profit: number }> = {}; data.forEach(t => { const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' }); if (!daily[day]) daily[day] = { date: day, revenue: 0, profit: 0 }; daily[day].revenue += t.totalAmount; daily[day].profit += t.profit; }); return Object.values(daily).slice(-7); };
+  
+  const getChartData = (data: SaleTransaction[]) => { 
+    const daily: Record<string, { date: string, revenue: number, profit: number }> = {}; 
+    data.forEach(t => { 
+      const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' }); 
+      if (!daily[day]) daily[day] = { date: day, revenue: 0, profit: 0 }; 
+      daily[day].revenue += t.totalAmount; 
+      daily[day].profit += t.profit; 
+    }); 
+    return Object.values(daily).slice(-7); 
+  };
+
   return (
     <div className="space-y-12 pb-24">
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -465,14 +518,50 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
                 <ReportStat label="Sub Revenue" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.totalAmount, 0).toFixed(2)}`} />
                 <ReportStat label="Sub Profit" value={`${currencySymbol}${subscriberWashes.reduce((acc, t) => acc + t.profit, 0).toFixed(2)}`} color="text-primary" />
              </div>
-             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]"><div className="h-[200px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={getChartData(subscriberWashes)}><defs><linearGradient id="colorSub" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" axisLine={false} tickLine={false}/><YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/><Tooltip /><Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorSub)" strokeWidth={3} /></AreaChart></ResponsiveContainer></div></Card>
+             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
+                <div className="h-[200px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={getChartData(subscriberWashes)}>
+                         <defs>
+                            <linearGradient id="colorSub" x1="0" x2="0" y2="1">
+                               <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                               <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                            </linearGradient>
+                         </defs>
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false}/>
+                         <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/>
+                         <Tooltip />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorSub)" strokeWidth={3} />
+                      </AreaChart>
+                   </ResponsiveContainer>
+                </div>
+             </Card>
           </div>
           <div className="space-y-6">
              <div className="grid grid-cols-2 gap-4">
                 <ReportStat label="Pay Revenue" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.totalAmount, 0).toFixed(2)}`} />
                 <ReportStat label="Pay Profit" value={`${currencySymbol}${payableWashes.reduce((acc, t) => acc + t.profit, 0).toFixed(2)}`} color="text-primary" />
              </div>
-             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]"><div className="h-[200px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={getChartData(payableWashes)}><defs><linearGradient id="colorPay" x1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" axisLine={false} tickLine={false}/><YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/><Tooltip /><Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorPay)" strokeWidth={3}/></AreaChart></ResponsiveContainer></div></Card>
+             <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
+                <div className="h-[200px]">
+                   <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={getChartData(payableWashes)}>
+                         <defs>
+                            <linearGradient id="colorPay" x1="0" x2="0" y2="1">
+                               <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.3}/>
+                               <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0}/>
+                            </linearGradient>
+                         </defs>
+                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                         <XAxis dataKey="date" axisLine={false} tickLine={false}/>
+                         <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `${currencySymbol}${v}`}/>
+                         <Tooltip />
+                         <Area type="monotone" dataKey="revenue" stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorPay)" strokeWidth={3}/>
+                      </AreaChart>
+                   </ResponsiveContainer>
+                </div>
+             </Card>
           </div>
        </div>
     </div>
