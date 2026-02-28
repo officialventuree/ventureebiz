@@ -239,7 +239,8 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: (editingStudent ? editingStudent.balance : 0) ?? 0, 
+      // For new enrollment, debt starts at the initialFee. For edit, we never change debt here.
+      balance: (editingStudent ? editingStudent.balance : initialFee) ?? 0, 
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
@@ -388,7 +389,8 @@ export default function LaundryPage() {
       items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
     };
 
-    updateDoc(studentRef, { balance: increment(-washRate) }).catch(async (err) => {
+    // Wash increases the "Balance Need to Pay" (debt)
+    updateDoc(studentRef, { balance: increment(washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
     updateDoc(invRef, { soapStockMl: increment(-mlPerWash) }).catch(async (err) => {
@@ -478,7 +480,8 @@ export default function LaundryPage() {
       items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
     };
 
-    updateDoc(studentRef, { balance: increment(amount) }).catch(async (err) => {
+    // Top up decreases the "Balance Need to Pay" (debt)
+    updateDoc(studentRef, { balance: increment(-amount) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
     addDoc(transRef, transData).catch(async (err) => {
@@ -549,8 +552,8 @@ export default function LaundryPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Wallet</p>
-                          <p className={cn("text-3xl font-black", (foundTopUpStudent.balance || 0) <= 0 ? "text-destructive" : "text-foreground")}>
-                            ${(foundTopUpStudent.balance || 0).toFixed(2)}
+                          <p className={cn("text-3xl font-black", (foundTopUpStudent.initialAmount - (foundTopUpStudent.balance || 0)) <= 0 ? "text-destructive" : "text-foreground")}>
+                            ${(foundTopUpStudent.initialAmount - (foundTopUpStudent.balance || 0)).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -678,8 +681,8 @@ export default function LaundryPage() {
                           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Wallet</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
-                            (selectedStudent.balance || 0) <= 0 ? "text-destructive" : "text-primary"
-                          )}>${(selectedStudent.balance || 0).toFixed(2)}</p>
+                            (selectedStudent.initialAmount - (selectedStudent.balance || 0)) <= 0 ? "text-destructive" : "text-primary"
+                          )}>${(selectedStudent.initialAmount - (selectedStudent.balance || 0)).toFixed(2)}</p>
                           <div className="mt-2">
                              <Badge variant="secondary" className="font-black text-[10px] uppercase">Service Fee: ${getWashRateForLevel(selectedStudent.level).toFixed(2)}</Badge>
                           </div>
@@ -814,24 +817,23 @@ export default function LaundryPage() {
                             </Select>
                          </div>
                       </div>
-                      {!editingStudent && (
-                        <div className="space-y-1.5">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription Amount ($)</Label>
-                           <Input 
-                            type="number" 
-                            value={enrollmentDebt} 
-                            onChange={(e) => setEnrollmentDebt(Number(e.target.value))} 
-                            className="h-11 rounded-xl bg-secondary/10 border-none font-bold" 
-                           />
-                           <p className="text-[9px] font-bold text-muted-foreground italic">Wallet will start at $0.00. Deposits will satisfy this debt.</p>
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription Amount ($)</Label>
+                         <Input 
+                          type="number" 
+                          value={editingStudent ? editingStudent.initialAmount : enrollmentDebt} 
+                          onChange={(e) => !editingStudent && setEnrollmentDebt(Number(e.target.value))} 
+                          disabled={!!editingStudent}
+                          className="h-11 rounded-xl bg-secondary/10 border-none font-bold" 
+                         />
+                         {editingStudent && <p className="text-[9px] font-bold text-muted-foreground italic">Benchmark value is locked after registration.</p>}
+                      </div>
                       <div className="flex gap-2">
                         {editingStudent && (
                           <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-xl font-bold">Cancel</Button>
                         )}
                         <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={(!isBudgetActive && !editingStudent) || isProcessing}>
-                          {isProcessing ? "Saving..." : editingStudent ? "Update Account" : "Save Subscriber"}
+                          {isProcessing ? "Saving..." : editingStudent ? "Update Profile" : "Save Subscriber"}
                         </Button>
                       </div>
                    </form>
@@ -853,8 +855,8 @@ export default function LaundryPage() {
                       <tbody className="divide-y">
                          {students?.map(s => {
                            const initialAmt = s.initialAmount || 0;
-                           const balanceAmt = s.balance || 0;
-                           const needToPay = Math.max(0, initialAmt - balanceAmt);
+                           const debtAmt = s.balance || 0; // Balance field stores the debt (Need to Pay)
+                           const bankBalance = initialAmt - debtAmt;
                            return (
                              <tr key={s.id} className="hover:bg-secondary/5 group">
                                 <td className="p-6">
@@ -864,13 +866,13 @@ export default function LaundryPage() {
                                 <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
                                 <td className="p-6 font-bold text-muted-foreground">${initialAmt.toFixed(2)}</td>
                                 <td className="p-6">
-                                   <p className={cn("font-black text-lg", balanceAmt <= 0 ? "text-destructive" : "text-green-600")}>
-                                      ${balanceAmt.toFixed(2)}
+                                   <p className={cn("font-black text-lg", bankBalance <= 0 ? "text-destructive" : "text-green-600")}>
+                                      ${bankBalance.toFixed(2)}
                                    </p>
                                 </td>
                                 <td className="p-6">
-                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-primary")}>
-                                      ${needToPay.toFixed(2)}
+                                   <p className={cn("font-bold text-lg", debtAmt > 0 ? "text-destructive" : "text-primary")}>
+                                      ${debtAmt.toFixed(2)}
                                    </p>
                                 </td>
                                 <td className="p-6 text-center">
