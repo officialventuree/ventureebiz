@@ -5,7 +5,46 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload, Info, Landmark, AlertTriangle, Lock } from 'lucide-react';
+import { 
+  ShoppingCart, 
+  Plus, 
+  Minus, 
+  Search, 
+  Package, 
+  Receipt, 
+  TrendingUp, 
+  DollarSign, 
+  Calendar, 
+  Ticket, 
+  Trophy, 
+  Truck, 
+  Trash2, 
+  CheckCircle2, 
+  CreditCard, 
+  QrCode, 
+  Image as ImageIcon, 
+  Wallet, 
+  Banknote, 
+  ArrowRight, 
+  UserPlus, 
+  Barcode, 
+  Scan, 
+  Settings2, 
+  Power, 
+  History, 
+  XCircle, 
+  MoreVertical, 
+  Star, 
+  RefreshCw, 
+  Edit2, 
+  ShieldCheck, 
+  ChevronRight, 
+  Upload, 
+  Info, 
+  Landmark, 
+  AlertTriangle, 
+  Lock 
+} from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
@@ -409,23 +448,70 @@ export default function MartPage() {
 
           <TabsContent value="history" className="flex-1 overflow-auto">
              <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden mb-8">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-secondary/20 border-b">
-                    <tr><th className="p-6 font-black uppercase text-[10px]">Reference</th><th className="p-6 font-black uppercase text-[10px]">Customer</th><th className="p-6 font-black uppercase text-[10px]">Total</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {martTransactions.slice().reverse().map(t => (
-                      <tr key={t.id} className="hover:bg-secondary/5 transition-colors">
-                        <td className="p-6"><p className="font-bold font-mono text-xs">#{t.id.split('-')[0].toUpperCase()}</p></td>
-                        <td className="p-6 font-bold">{t.customerName}</td>
-                        <td className="p-6 font-black text-primary text-lg">${t.totalAmount.toFixed(2)}</td>
-                        <td className="p-6 text-center">
-                          <Button variant="ghost" size="icon" onClick={() => handleReverseTransaction(t)}><XCircle className="w-4 h-4 text-destructive" /></Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <CardHeader className="bg-secondary/10 border-b p-8">
+                   <div className="flex justify-between items-center">
+                      <div>
+                         <CardTitle className="text-xl font-black flex items-center gap-2">
+                            <History className="w-6 h-6 text-primary" /> Mart Sales Registry
+                         </CardTitle>
+                         <CardDescription className="font-bold">Audit trail of all retail transactions</CardDescription>
+                      </div>
+                      <Badge variant="outline" className="font-black text-xs h-8 px-4">{martTransactions.length} Total Sales</Badge>
+                   </div>
+                </CardHeader>
+                <div className="overflow-x-auto">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-secondary/5 border-b">
+                       <tr>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Reference</th>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Customer / Account</th>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Settlement</th>
+                         <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Amount</th>
+                         <th className="p-6 text-center font-black uppercase text-[10px] tracking-widest text-muted-foreground">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                       {martTransactions.slice().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(t => (
+                         <tr key={t.id} className="hover:bg-secondary/5 transition-colors group">
+                           <td className="p-6">
+                              <p className="font-bold font-mono text-xs text-primary">#{t.id.split('-')[0].toUpperCase()}</p>
+                              <p className="text-[10px] font-medium text-muted-foreground mt-1">{new Date(t.timestamp).toLocaleString()}</p>
+                           </td>
+                           <td className="p-6">
+                              <p className="font-black text-foreground">{t.customerName || 'Walk-in Customer'}</p>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.items?.length || 0} Items Sold</p>
+                           </td>
+                           <td className="p-6">
+                              <Badge variant="secondary" className="font-black uppercase text-[9px] h-6 px-3">{t.paymentMethod || 'cash'}</Badge>
+                              {t.referenceNumber && <p className="text-[10px] font-mono text-muted-foreground mt-1">Ref: {t.referenceNumber}</p>}
+                           </td>
+                           <td className="p-6">
+                              <p className="font-black text-primary text-xl tracking-tighter">${t.totalAmount.toFixed(2)}</p>
+                           </td>
+                           <td className="p-6 text-center">
+                             <Button 
+                               variant="ghost" 
+                               size="icon" 
+                               onClick={() => handleReverseTransaction(t)}
+                               className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
+                               title="Reverse Transaction"
+                             >
+                                <XCircle className="w-5 h-5" />
+                             </Button>
+                           </td>
+                         </tr>
+                       ))}
+                       {martTransactions.length === 0 && (
+                         <tr>
+                            <td colSpan={5} className="py-24 text-center opacity-30">
+                               <Receipt className="w-16 h-16 mx-auto mb-4" />
+                               <p className="font-black uppercase tracking-widest">No Sales Found</p>
+                            </td>
+                         </tr>
+                       )}
+                     </tbody>
+                   </table>
+                </div>
              </div>
           </TabsContent>
 
