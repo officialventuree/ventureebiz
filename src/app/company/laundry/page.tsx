@@ -38,7 +38,9 @@ import {
   DollarSign,
   Calculator,
   ListFilter,
-  Info
+  Info,
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -55,6 +57,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -137,6 +141,14 @@ export default function LaundryPage() {
   const { data: levelConfigs } = useCollection<LaundryLevelConfig>(configQuery);
   const { data: schedules } = useCollection<LaundrySchedule>(scheduleQuery);
   const { data: companyDoc } = useDoc<Company>(companyRef);
+
+  const isBudgetActive = useMemo(() => {
+    if (!companyDoc?.capitalEndDate) return false;
+    const now = new Date();
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return now < end;
+  }, [companyDoc]);
 
   const studentSoap = inventoryItems?.find(i => i.category === 'student');
   const payableSoap = inventoryItems?.find(i => i.category === 'payable');
@@ -492,6 +504,17 @@ export default function LaundryPage() {
           </div>
         </div>
 
+        {!isBudgetActive && (
+          <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+            <AlertDescription className="text-sm font-medium">
+              You cannot register new students or replenish soap inventory because your <strong>Capital Base Limit</strong> is not set. 
+              Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="pos" className="space-y-6">
           <TabsList className="bg-white/50 border p-1 rounded-xl shadow-sm overflow-x-auto max-w-full">
             <TabsTrigger value="pos" className="rounded-lg gap-2">POS Terminal</TabsTrigger>
@@ -690,22 +713,25 @@ export default function LaundryPage() {
 
           <TabsContent value="students" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
              <div className="lg:col-span-1">
-                <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+                <Card className={cn(
+                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                  !isBudgetActive && "opacity-50 pointer-events-none"
+                )}>
                    <h3 className="text-xl font-black mb-6">New Enrollment</h3>
                    <form onSubmit={handleRegisterStudent} className="space-y-5">
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" required disabled={!isBudgetActive} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" required disabled={!isBudgetActive} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
                       <div className="grid grid-cols-2 gap-3">
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Level</Label>
-                            <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                            <Select value={selectedLevel} onValueChange={setSelectedLevel} disabled={!isBudgetActive}>
                                <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
                                <SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent>
                             </Select>
                          </div>
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Class</Label>
-                            <Select value={selectedClass} onValueChange={setSelectedClass}>
+                            <Select value={selectedClass} onValueChange={setSelectedClass} disabled={!isBudgetActive}>
                                <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
                                <SelectContent className="rounded-xl font-bold">{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                             </Select>
@@ -713,10 +739,10 @@ export default function LaundryPage() {
                       </div>
                       <div className="space-y-1.5">
                          <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Amount Need to Pay ($)</Label>
-                         <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
+                         <Input name="amountDue" type="number" defaultValue="0" disabled={!isBudgetActive} className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
                          <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
                       </div>
-                      <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Save Subscriber</Button>
+                      <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Save Subscriber</Button>
                    </form>
                 </Card>
              </div>
@@ -773,7 +799,10 @@ export default function LaundryPage() {
           <TabsContent value="consumables">
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
-                   <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+                   <Card className={cn(
+                     "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                     !isBudgetActive && "opacity-50 pointer-events-none"
+                   )}>
                       <div className="flex items-center gap-2 mb-6">
                         <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                           <RefreshCw className="w-5 h-5" />
@@ -783,7 +812,7 @@ export default function LaundryPage() {
                       <form onSubmit={handleRefillInventory} className="space-y-5">
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Inventory Pool</Label>
-                            <Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)}>
+                            <Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!isBudgetActive}>
                                <SelectTrigger className="rounded-xl h-11 font-bold bg-secondary/10 border-none"><SelectValue /></SelectTrigger>
                                <SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent>
                             </Select>
@@ -791,16 +820,16 @@ export default function LaundryPage() {
                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                                <Label className="text-[10px] font-black uppercase text-muted-foreground">Amount of Bottles</Label>
-                               <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
+                               <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} disabled={!isBudgetActive} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
                             </div>
                             <div className="space-y-1.5">
                                <Label className="text-[10px] font-black uppercase text-muted-foreground">Litres/Bottle</Label>
-                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.0" />
+                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} disabled={!isBudgetActive} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.0" />
                             </div>
                          </div>
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Price/Bottle ($)</Label>
-                            <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
+                            <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} disabled={!isBudgetActive} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
 
                          {Number(refillBottles) > 0 && (
@@ -823,7 +852,7 @@ export default function LaundryPage() {
                            </div>
                          )}
 
-                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
+                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !refillBottles || !refillVolPerBottle || !refillCostPerBottle || !isBudgetActive}>
                             {isProcessing ? "Processing..." : "Confirm Stock Refill"}
                          </Button>
                       </form>

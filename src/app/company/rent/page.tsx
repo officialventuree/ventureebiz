@@ -28,7 +28,9 @@ import {
   TrendingUp,
   Package,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -45,6 +47,8 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -98,6 +102,14 @@ export default function RentPage() {
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: rentalItems } = useCollection<RentalItem>(rentalItemsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
+
+  const isBudgetActive = useMemo(() => {
+    if (!companyDoc?.capitalEndDate) return false;
+    const now = new Date();
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return now < end;
+  }, [companyDoc]);
 
   const filteredItems = rentalItems?.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -323,6 +335,17 @@ export default function RentPage() {
           </div>
         </div>
 
+        {!isBudgetActive && (
+          <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+            <AlertDescription className="text-sm font-medium">
+              You cannot register new assets because your <strong>Capital Base Limit</strong> is not set. 
+              Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="workflow" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start mb-6">
             <TabsTrigger value="workflow" className="rounded-xl px-6 gap-2 font-black"><ArrowRightLeft className="w-4 h-4" /> Workflow</TabsTrigger>
@@ -515,7 +538,10 @@ export default function RentPage() {
 
           <TabsContent value="registry" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
              <div className="lg:col-span-1">
-                <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+                <Card className={cn(
+                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                  !isBudgetActive && "opacity-50 pointer-events-none"
+                )}>
                    <div className="flex items-center gap-2 mb-6">
                       <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
                         <Plus className="w-5 h-5" />
@@ -525,22 +551,22 @@ export default function RentPage() {
                    <form onSubmit={handleSaveAsset} className="space-y-5">
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Asset Name</Label>
-                        <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
+                        <Input name="name" defaultValue={editingAsset?.name} required disabled={!isBudgetActive} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
                       </div>
                       <Separator />
                       <p className="text-[10px] font-black uppercase text-primary tracking-widest">Rate Configuration</p>
                       <div className="space-y-4">
-                         <RateInput id="hourly" label="Hourly" enabled={!!editingAsset?.hourlyRate} defaultValue={editingAsset?.hourlyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="daily" label="Daily" enabled={!!editingAsset?.dailyRate || !editingAsset} defaultValue={editingAsset?.dailyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="weekly" label="Weekly" enabled={!!editingAsset?.weeklyRate} defaultValue={editingAsset?.weeklyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="monthly" label="Monthly" enabled={!!editingAsset?.monthlyRate} defaultValue={editingAsset?.monthlyRate} currencySymbol={currencySymbol} />
-                         <RateInput id="yearly" label="Yearly" enabled={!!editingAsset?.yearlyRate} defaultValue={editingAsset?.yearlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="hourly" label="Hourly" enabled={!!editingAsset?.hourlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.hourlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="daily" label="Daily" enabled={!!editingAsset?.dailyRate || !editingAsset} disabled={!isBudgetActive} defaultValue={editingAsset?.dailyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="weekly" label="Weekly" enabled={!!editingAsset?.weeklyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.weeklyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="monthly" label="Monthly" enabled={!!editingAsset?.monthlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.monthlyRate} currencySymbol={currencySymbol} />
+                         <RateInput id="yearly" label="Yearly" enabled={!!editingAsset?.yearlyRate} disabled={!isBudgetActive} defaultValue={editingAsset?.yearlyRate} currencySymbol={currencySymbol} />
                       </div>
                       <div className="pt-4 flex gap-2">
                          {editingAsset && (
                            <Button type="button" variant="outline" onClick={() => setEditingAsset(null)} className="flex-1 rounded-xl font-black">Cancel</Button>
                          )}
-                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg">Save Asset</Button>
+                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Save Asset</Button>
                       </div>
                    </form>
                 </Card>
@@ -630,12 +656,12 @@ export default function RentPage() {
   );
 }
 
-function RateInput({ id, label, enabled, defaultValue, currencySymbol }: { id: string, label: string, enabled: boolean, defaultValue?: number, currencySymbol: string }) {
+function RateInput({ id, label, enabled, defaultValue, currencySymbol, disabled }: { id: string, label: string, enabled: boolean, defaultValue?: number, currencySymbol: string, disabled?: boolean }) {
   const [isChecked, setIsChecked] = useState(enabled);
   return (
     <div className="flex items-center justify-between gap-4 p-3 bg-secondary/10 rounded-2xl">
        <div className="flex items-center gap-2">
-          <Checkbox id={`${id}Enabled`} name={`${id}Enabled`} checked={isChecked} onCheckedChange={(v) => setIsChecked(!!v)} />
+          <Checkbox id={`${id}Enabled`} name={`${id}Enabled`} checked={isChecked} onCheckedChange={(v) => setIsChecked(!!v)} disabled={disabled} />
           <Label htmlFor={`${id}Enabled`} className="text-xs font-bold">{label}</Label>
        </div>
        <div className="relative w-24">
@@ -645,7 +671,7 @@ function RateInput({ id, label, enabled, defaultValue, currencySymbol }: { id: s
             type="number" 
             step="0.01" 
             defaultValue={defaultValue || 0} 
-            disabled={!isChecked} 
+            disabled={!isChecked || disabled} 
             className="h-8 pl-6 pr-2 rounded-lg text-xs font-black text-right" 
           />
        </div>

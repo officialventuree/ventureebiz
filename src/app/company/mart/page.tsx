@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload, Info, Landmark } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload, Info, Landmark, AlertTriangle, Lock } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
@@ -22,6 +22,8 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 import Image from 'next/image';
 
 export default function MartPage() {
@@ -69,6 +71,14 @@ export default function MartPage() {
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: vouchers } = useCollection<Coupon>(vouchersQuery);
+
+  const isBudgetActive = useMemo(() => {
+    if (!companyDoc?.capitalEndDate) return false;
+    const now = new Date();
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return now < end;
+  }, [companyDoc]);
 
   // Auto-focus barcode scanner
   useEffect(() => {
@@ -224,6 +234,17 @@ export default function MartPage() {
             <p className="text-muted-foreground font-bold text-sm">Retail Logistics & Analytics</p>
           </div>
         </div>
+
+        {!isBudgetActive && (
+          <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+            <AlertDescription className="text-sm font-medium">
+              You cannot add products or refill stock because your <strong>Capital Base Limit</strong> is not set. 
+              Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm">
@@ -402,7 +423,7 @@ export default function MartPage() {
              </div>
           </TabsContent>
 
-          <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} products={products} /></TabsContent>
+          <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} /></TabsContent>
           <TabsContent value="coupons"><CouponManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
           <TabsContent value="profits"><ProfitAnalytics transactions={martTransactions} /></TabsContent>
           <TabsContent value="billing"><BillingManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
@@ -412,7 +433,7 @@ export default function MartPage() {
   );
 }
 
-function InventoryManager({ companyId, products }: { companyId?: string, products: Product[] | null }) {
+function InventoryManager({ companyId, products, isBudgetActive }: { companyId?: string, products: Product[] | null, isBudgetActive: boolean }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -535,7 +556,10 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <div className="lg:col-span-1">
-        <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+        <Card className={cn(
+          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+          !isBudgetActive && "opacity-50 pointer-events-none"
+        )}>
           <div className="flex items-center gap-2 mb-6">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
               <RefreshCw className="w-5 h-5" />
@@ -547,7 +571,8 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
             <div className="relative">
               <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="SCAN TO REFILL..." 
+                placeholder={isBudgetActive ? "SCAN TO REFILL..." : "LOCKED"} 
+                disabled={!isBudgetActive}
                 className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
                 value={refillScan}
                 onChange={(e) => setRefillScan(e.target.value)}
@@ -615,7 +640,12 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild><Button className="rounded-xl font-black shadow-lg"><Plus className="w-4 h-4 mr-2" /> New Product</Button></DialogTrigger>
+            <DialogTrigger asChild>
+              <Button disabled={!isBudgetActive} className="rounded-xl font-black shadow-lg">
+                {!isBudgetActive && <Lock className="w-4 h-4 mr-2" />}
+                <Plus className="w-4 h-4 mr-2" /> New Product
+              </Button>
+            </DialogTrigger>
             <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden">
                <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-2xl font-black">New Registration</DialogTitle></div>
                <form onSubmit={handleAddNew} className="p-8 space-y-6">

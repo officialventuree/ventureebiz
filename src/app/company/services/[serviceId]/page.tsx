@@ -1,4 +1,3 @@
-
 'use client';
 
 import { use, useEffect } from 'react';
@@ -36,7 +35,9 @@ import {
   AlertCircle,
   Info,
   BarChart3,
-  DollarSign
+  DollarSign,
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -44,7 +45,7 @@ import { collection, doc, setDoc, updateDoc, query, where, addDoc, increment, de
 import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMethod } from '@/lib/types';
+import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMethod, Company } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
@@ -53,6 +54,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -88,6 +90,11 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     return doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId);
   }, [firestore, user?.companyId, serviceId]);
 
+  const companyRef = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return doc(firestore, 'companies', user.companyId);
+  }, [firestore, user?.companyId]);
+
   const bundlesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return collection(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles');
@@ -112,9 +119,18 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const currencySymbol = platformConfig?.currencySymbol || '$';
 
   const { data: serviceType } = useDoc<ServiceType>(serviceRef);
+  const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: bundles } = useCollection<ServicePriceBundle>(bundlesQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: allProducts } = useCollection<Product>(allProductsQuery);
+
+  const isBudgetActive = useMemo(() => {
+    if (!companyDoc?.capitalEndDate) return false;
+    const now = new Date();
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return now < end;
+  }, [companyDoc]);
 
   const materials = allProducts?.filter(p => p.serviceTypeId === serviceId) || [];
   const martProducts = allProducts?.filter(p => !p.serviceTypeId) || [];
@@ -276,6 +292,17 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             </div>
           </div>
 
+          {!isBudgetActive && activeTab === 'inventory' && (
+            <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Active</AlertTitle>
+              <AlertDescription className="text-sm font-medium">
+                You cannot replenish materials because your <strong>Capital Base Limit</strong> is not set. 
+                Please <Link href="/company/capital" className="underline font-black hover:opacity-80">configure your budget</Link> to enable procurement.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <Tabs defaultValue="pipeline" onValueChange={setActiveTab} className="space-y-8">
             <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start">
               <TabsTrigger value="pipeline" className="rounded-xl px-8 gap-2 font-black"><Package className="w-4 h-4" /> Pipeline</TabsTrigger>
@@ -342,37 +369,40 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
             <TabsContent value="inventory" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                <div className="lg:col-span-1">
-                  <Card className="border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8">
+                  <Card className={cn(
+                    "border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8",
+                    !isBudgetActive && "opacity-50 pointer-events-none"
+                  )}>
                      <h3 className="text-xl font-black mb-6">Replenish Materials</h3>
                      <form onSubmit={handleAddMaterial} className="space-y-4">
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Material Name</Label>
-                           <Input name="name" placeholder="Thermal Paste" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                           <Input name="name" placeholder="Thermal Paste" required disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Qty Bought</Label>
-                              <Input type="number" value={matQuantity} onChange={(e) => setMatQuantity(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" value={matQuantity} onChange={(e) => setMatQuantity(e.target.value)} disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Measure/Item</Label>
-                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} placeholder="1.0" className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} disabled={!isBudgetActive} placeholder="1.0" className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Unit</Label>
-                              <Select value={matUnit} onValueChange={setMatUnit}>
+                              <Select value={matUnit} onValueChange={setMatUnit} disabled={!isBudgetActive}>
                                  <SelectTrigger className="h-12 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
                                  <SelectContent className="rounded-xl font-bold">{UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                               </Select>
                            </div>
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Cost/Item ($)</Label>
-                              <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} disabled={!isBudgetActive} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
-                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Log Material</Button>
+                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Log Material</Button>
                      </form>
                   </Card>
                </div>
