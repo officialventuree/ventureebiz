@@ -31,6 +31,7 @@ import {
   ListFilter,
   Info,
   AlertTriangle,
+  Settings2,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -75,9 +76,6 @@ export default function LaundryPage() {
   const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
   const [amountReceived, setAmountReceived] = useState<number | string>('');
   const [transactionNo, setTransactionNo] = useState('');
-
-  // Enrollment Dynamic State
-  const [enrollmentDebt, setEnrollmentDebt] = useState<number>(0);
 
   // Editing State
   const [editingStudent, setEditingStudent] = useState<LaundryStudent | null>(null);
@@ -126,6 +124,11 @@ export default function LaundryPage() {
     return collection(firestore, 'companies', user.companyId, 'laundrySchedules');
   }, [firestore, user?.companyId]);
 
+  const globalConfigRef = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return doc(firestore, 'companies', user.companyId, 'laundryConfig', 'global');
+  }, [firestore, user?.companyId]);
+
   const companyRef = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return doc(firestore, 'companies', user.companyId);
@@ -136,6 +139,7 @@ export default function LaundryPage() {
   const { data: inventoryItems } = useCollection<LaundryInventory>(inventoryQuery);
   const { data: levelConfigs } = useCollection<LaundryLevelConfig>(configQuery);
   const { data: schedules } = useCollection<LaundrySchedule>(scheduleQuery);
+  const { data: globalConfig } = useDoc<any>(globalConfigRef);
   const { data: companyDoc } = useDoc<Company>(companyRef);
 
   const isBudgetActive = useMemo(() => {
@@ -145,6 +149,8 @@ export default function LaundryPage() {
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
+
+  const benchmarkSubscription = globalConfig?.fixedSubscription || 0;
 
   // Automated Quota Logic
   const levelQuotas = useMemo(() => {
@@ -168,25 +174,12 @@ export default function LaundryPage() {
     }
   }, [refillCategory, studentSoap, payableSoap]);
 
-  // Auto-fill Enrollment Debt based on Level Config
-  useEffect(() => {
-    if (selectedLevel && !editingStudent) {
-      const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
-      if (config) {
-        const quota = levelQuotas[Number(selectedLevel)] || 0;
-        const rate = config.serviceRate || 5.00;
-        setEnrollmentDebt(rate * quota);
-      } else {
-        setEnrollmentDebt(0);
-      }
-    }
-  }, [selectedLevel, levelConfigs, editingStudent, levelQuotas]);
-
   const mlPerWash = 50;
 
   const getWashRateForLevel = (level: number) => {
-    const config = levelConfigs?.find(c => c.level === level);
-    return config?.serviceRate || 0;
+    const quota = levelQuotas[level] || 0;
+    if (quota === 0) return 0;
+    return benchmarkSubscription / quota;
   };
 
   const isLevelAllowedToday = (level: number) => {
@@ -211,9 +204,9 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialFee = (editingStudent ? (editingStudent.initialAmount ?? 0) : enrollmentDebt) ?? 0;
-    const currentBal = (editingStudent ? (editingStudent.balance ?? 0) : 0);
-    const currentSpent = (editingStudent ? (editingStudent.totalSpent ?? 0) : 0);
+    const initialFee = editingStudent ? (editingStudent.initialAmount ?? 0) : benchmarkSubscription;
+    const currentBal = editingStudent ? (editingStudent.balance ?? 0) : 0;
+    const currentSpent = editingStudent ? (editingStudent.totalSpent ?? 0) : 0;
 
     const student: LaundryStudent = {
       id: studentId,
@@ -234,7 +227,6 @@ export default function LaundryPage() {
         setEditingStudent(null);
         setSelectedLevel('');
         setSelectedClass('');
-        setEnrollmentDebt(0);
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -796,101 +788,101 @@ export default function LaundryPage() {
              </Card>
           </TabsContent>
 
-          <TabsContent value="students" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-             <div className="lg:col-span-1">
-                <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
-                   <h3 className="text-xl font-black mb-6">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3>
-                   <form onSubmit={handleRegisterStudent} className="space-y-5">
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" defaultValue={editingStudent?.matrixNumber} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Level</Label>
-                            <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-                               <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
-                               <SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent>
-                            </Select>
+          <TabsContent value="students" className="space-y-8">
+             <GlobalSubscriptionConfig companyId={user?.companyId} initialConfig={globalConfig} />
+
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div className="lg:col-span-1">
+                   <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+                      <h3 className="text-xl font-black mb-6">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3>
+                      <form onSubmit={handleRegisterStudent} className="space-y-5">
+                         <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                         <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" defaultValue={editingStudent?.matrixNumber} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                         <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Level</Label>
+                               <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+                                  <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
+                                  <SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent>
+                               </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Class</Label>
+                               <Select value={selectedClass} onValueChange={setSelectedClass}>
+                                  <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
+                                  <SelectContent className="rounded-xl font-bold">{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                               </Select>
+                            </div>
                          </div>
                          <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Class</Label>
-                            <Select value={selectedClass} onValueChange={setSelectedClass}>
-                               <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
-                               <SelectContent className="rounded-xl font-bold">{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Fixed Initial Subscription ($)</Label>
+                            <div className="h-11 rounded-xl bg-secondary/10 border-none font-black flex items-center px-4 text-primary">
+                               ${editingStudent ? (editingStudent.initialAmount ?? 0).toFixed(2) : benchmarkSubscription.toFixed(2)}
+                            </div>
+                            <p className="text-[9px] font-bold text-muted-foreground italic mt-1">Benchmark is fixed per policy settings.</p>
                          </div>
-                      </div>
-                      <div className="space-y-1.5">
-                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription / Debt ($)</Label>
-                         <Input 
-                          type="number" 
-                          value={editingStudent ? (editingStudent.initialAmount ?? 0) : enrollmentDebt} 
-                          onChange={(e) => !editingStudent && setEnrollmentDebt(Number(e.target.value))} 
-                          disabled={!!editingStudent}
-                          className="h-11 rounded-xl bg-secondary/10 border-none font-bold" 
-                         />
-                         {editingStudent && <p className="text-[9px] font-bold text-muted-foreground italic">Benchmark value is locked after registration.</p>}
-                      </div>
-                      <div className="flex gap-2">
-                        {editingStudent && (
-                          <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-xl font-bold">Cancel</Button>
-                        )}
-                        <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={(!isBudgetActive && !editingStudent) || isProcessing}>
-                          {isProcessing ? "Saving..." : editingStudent ? "Update Profile" : "Save Subscriber"}
-                        </Button>
-                      </div>
-                   </form>
-                </Card>
-             </div>
-             <div className="lg:col-span-3">
-                <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
-                   <table className="w-full text-sm text-left">
-                      <thead className="bg-secondary/20">
-                         <tr>
-                           <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Initial Subscription</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Laundry Bank Original Amount</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Wash Bank Balance</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Balance Need to Pay</th>
-                           <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                         {students?.map(s => {
-                           const initialAmt = s.initialAmount ?? 0;
-                           const deposits = s.balance ?? 0;
-                           const spent = s.totalSpent ?? 0;
-                           const washBalance = deposits - spent;
-                           const needToPay = initialAmt - deposits;
-                           return (
-                             <tr key={s.id} className="hover:bg-secondary/5 group">
-                                <td className="p-6">
-                                   <p className="font-black text-lg">{s.name}</p>
-                                   <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
-                                </td>
-                                <td className="p-6 font-bold text-muted-foreground">${initialAmt.toFixed(2)}</td>
-                                <td className="p-6 font-black text-foreground text-lg">${deposits.toFixed(2)}</td>
-                                <td className="p-6">
-                                   <p className={cn("font-black text-lg", washBalance <= 0 ? "text-destructive" : "text-primary")}>
-                                      ${washBalance.toFixed(2)}
-                                   </p>
-                                   <p className="text-[9px] font-bold text-muted-foreground uppercase">Used: ${spent.toFixed(2)}</p>
-                                </td>
-                                <td className="p-6">
-                                   <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-green-600")}>
-                                      ${needToPay.toFixed(2)}
-                                   </p>
-                                </td>
-                                <td className="p-6 text-center">
-                                   <div className="flex items-center justify-center gap-2">
-                                      <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
-                                      <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
-                                   </div>
-                                </td>
-                             </tr>
-                           );
-                         })}
-                      </tbody>
-                   </table>
+                         <div className="flex gap-2">
+                           {editingStudent && (
+                             <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-xl font-bold">Cancel</Button>
+                           )}
+                           <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={isProcessing}>
+                             {isProcessing ? "Saving..." : editingStudent ? "Update Profile" : "Save Subscriber"}
+                           </Button>
+                         </div>
+                      </form>
+                   </Card>
+                </div>
+                <div className="lg:col-span-3">
+                   <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+                      <table className="w-full text-sm text-left">
+                         <thead className="bg-secondary/20">
+                            <tr>
+                              <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
+                              <th className="p-6 font-black uppercase text-[10px]">Initial Subscription</th>
+                              <th className="p-6 font-black uppercase text-[10px]">Laundry Bank Original Amount</th>
+                              <th className="p-6 font-black uppercase text-[10px]">Wash Bank Balance</th>
+                              <th className="p-6 font-black uppercase text-[10px]">Balance Need to Pay</th>
+                              <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y">
+                            {students?.map(s => {
+                              const initialAmt = s.initialAmount ?? 0;
+                              const deposits = s.balance ?? 0;
+                              const spent = s.totalSpent ?? 0;
+                              const washBalance = deposits - spent;
+                              const needToPay = initialAmt - deposits;
+                              return (
+                                <tr key={s.id} className="hover:bg-secondary/5 group">
+                                   <td className="p-6">
+                                      <p className="font-black text-lg">{s.name}</p>
+                                      <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
+                                   </td>
+                                   <td className="p-6 font-bold text-muted-foreground">${initialAmt.toFixed(2)}</td>
+                                   <td className="p-6 font-black text-foreground text-lg">${deposits.toFixed(2)}</td>
+                                   <td className="p-6">
+                                      <p className={cn("font-black text-lg", washBalance <= 0 ? "text-destructive" : "text-primary")}>
+                                         ${washBalance.toFixed(2)}
+                                      </p>
+                                      <p className="text-[9px] font-bold text-muted-foreground uppercase">Used: ${spent.toFixed(2)}</p>
+                                   </td>
+                                   <td className="p-6">
+                                      <p className={cn("font-bold text-lg", needToPay > 0 ? "text-destructive" : "text-green-600")}>
+                                         ${needToPay.toFixed(2)}
+                                      </p>
+                                   </td>
+                                   <td className="p-6 text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                         <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
+                                         <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                                      </div>
+                                   </td>
+                                </tr>
+                              );
+                            })}
+                         </tbody>
+                      </table>
+                   </div>
                 </div>
              </div>
           </TabsContent>
@@ -900,7 +892,7 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="config">
-             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} levelQuotas={levelQuotas} />
+             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} />
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -1027,7 +1019,57 @@ export default function LaundryPage() {
   );
 }
 
-function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number> }) {
+function GlobalSubscriptionConfig({ companyId, initialConfig }: { companyId?: string, initialConfig: any }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [val, setVal] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (initialConfig?.fixedSubscription) setVal(initialConfig.fixedSubscription.toString());
+  }, [initialConfig]);
+
+  const handleSave = () => {
+    if (!firestore || !companyId) return;
+    setIsSaving(true);
+    const docRef = doc(firestore, 'companies', companyId, 'laundryConfig', 'global');
+    setDoc(docRef, { fixedSubscription: Number(val) }, { merge: true })
+      .then(() => toast({ title: "Benchmark Policy Updated", description: `Initial subscription set to $${val} for all subscribers.` }))
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: { fixedSubscription: Number(val) } }));
+      })
+      .finally(() => setIsSaving(false));
+  };
+
+  return (
+    <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden max-w-4xl mx-auto">
+       <CardHeader className="bg-primary/5 p-8 border-b">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                <Settings2 className="w-5 h-5" />
+             </div>
+             <div>
+                <CardTitle className="text-lg font-black">Benchmark Policy</CardTitle>
+                <CardDescription className="font-bold">Set the fixed initial subscription amount for all students.</CardDescription>
+             </div>
+          </div>
+       </CardHeader>
+       <CardContent className="p-8">
+          <div className="flex items-end gap-4">
+             <div className="flex-1 space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Initial Subscription ($)</Label>
+                <Input type="number" step="0.01" value={val} onChange={(e) => setVal(e.target.value)} placeholder="0.00" className="h-12 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+             </div>
+             <Button onClick={handleSave} disabled={isSaving || !val} className="h-12 rounded-xl px-8 font-black shadow-lg">
+                {isSaving ? "Applying..." : "Set Policy"}
+             </Button>
+          </div>
+       </CardContent>
+    </Card>
+  );
+}
+
+function LaundryConfigurator({ companyId, levelConfigs, levelQuotas, benchmarkSubscription }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number>, benchmarkSubscription: number }) {
   const firestore = useFirestore();
   const { toast } = useToast();
 
@@ -1048,13 +1090,13 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
     <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
        <div className="mb-10 text-center">
           <h3 className="text-2xl font-black">Service Rate & Strategic Policy</h3>
-          <p className="text-sm font-bold text-muted-foreground">Define departmental wash rates. Subscription fees are derived from quotas.</p>
+          <p className="text-sm font-bold text-muted-foreground">Define departmental wash rates based on the ${benchmarkSubscription.toFixed(2)} fixed subscription.</p>
        </div>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {LEVELS.map(lv => {
             const config = levelConfigs?.find(c => c.level === lv);
             const quota = levelQuotas[lv] || 0;
-            const currentRate = config?.serviceRate || 0;
+            const currentRate = quota > 0 ? (benchmarkSubscription / quota) : 0;
             return (
               <div key={lv} className="bg-secondary/10 p-6 rounded-3xl space-y-4 border-2 border-transparent hover:border-primary/20 transition-all">
                  <div className="flex justify-between items-center">
@@ -1063,14 +1105,10 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                       <Label className="text-[10px] font-black uppercase px-1 text-primary">Service Rate ($)</Label>
-                       <input 
-                        type="number" 
-                        step="0.01"
-                        defaultValue={currentRate} 
-                        onBlur={(e) => saveConfig(lv, Number(e.target.value))}
-                        className="h-11 rounded-xl font-bold bg-white border-none w-full px-4 outline-none focus:ring-2 focus:ring-primary/20"
-                       />
+                       <Label className="text-[10px] font-black uppercase px-1 text-primary">Service Rate (Auto)</Label>
+                       <div className="h-11 rounded-xl font-black bg-white flex items-center px-4 text-sm text-primary">
+                          ${currentRate.toFixed(2)}
+                       </div>
                     </div>
                     <div className="space-y-1">
                        <Label className="text-[10px] font-black uppercase px-1">Wash Quota (Auto)</Label>
@@ -1081,8 +1119,8 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
                  </div>
                  <div className="pt-2 border-t border-white/50">
                     <div className="flex justify-between items-center px-1">
-                       <span className="text-[9px] font-black text-muted-foreground uppercase">Enrollment Debt (Calculated)</span>
-                       <span className="text-sm font-black text-foreground">${(currentRate * quota).toFixed(2)}</span>
+                       <span className="text-[9px] font-black text-muted-foreground uppercase">Fixed Initial Subscription</span>
+                       <span className="text-sm font-black text-foreground">${benchmarkSubscription.toFixed(2)}</span>
                     </div>
                  </div>
               </div>
