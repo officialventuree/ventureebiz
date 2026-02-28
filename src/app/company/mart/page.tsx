@@ -1,11 +1,12 @@
+
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
@@ -13,14 +14,15 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Product, SaleTransaction, Coupon, LuckyDrawEntry, Company, PaymentMethod, LuckyDrawEvent } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, AreaChart, Area } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
+import Image from 'next/image';
 
 export default function MartPage() {
   const { user } = useAuth();
@@ -56,27 +58,9 @@ export default function MartPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
-  const couponsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.companyId) return null;
-    return collection(firestore, 'companies', user.companyId, 'coupons');
-  }, [firestore, user?.companyId]);
-
-  const eventsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.companyId) return null;
-    return collection(firestore, 'companies', user.companyId, 'luckyDrawEvents');
-  }, [firestore, user?.companyId]);
-
-  const luckyDrawsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.companyId) return null;
-    return collection(firestore, 'companies', user.companyId, 'luckyDraws');
-  }, [firestore, user?.companyId]);
-
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
-  const { data: coupons } = useCollection<Coupon>(couponsQuery);
-  const { data: events } = useCollection<LuckyDrawEvent>(eventsQuery);
-  const { data: luckyDraws } = useCollection<LuckyDrawEntry>(luckyDrawsQuery);
 
   // Auto-focus barcode scanner
   useEffect(() => {
@@ -143,7 +127,6 @@ export default function MartPage() {
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
   const isInsufficientCash = paymentMethod === 'cash' && (Number(cashReceived) || 0) < totalAmount;
   const isMissingReference = (paymentMethod === 'card' || paymentMethod === 'duitnow') && !referenceNumber;
-  const qualifyingEvent = events?.find(e => e.isActive && totalAmount >= e.minSpend);
 
   const handleApplyCoupon = async () => {
     if (!firestore || !user?.companyId || !couponCode) return;
@@ -166,110 +149,69 @@ export default function MartPage() {
   const handleFinalCheckout = async () => {
     if (!user?.companyId || !firestore) return;
     setIsProcessing(true);
-    try {
-      const transactionId = crypto.randomUUID();
-      const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
-      const transactionData: SaleTransaction = {
-        id: transactionId,
-        companyId: user.companyId,
-        module: 'mart',
-        totalAmount,
-        profit: totalProfit,
-        discountApplied: discount,
-        couponCode: activeCoupon?.code || undefined,
-        customerName: customerName || 'Walk-in Customer',
-        timestamp: new Date().toISOString(),
-        paymentMethod,
-        referenceNumber: referenceNumber || undefined,
-        status: 'completed',
-        luckyDrawEventId: qualifyingEvent?.id,
-        items: cart.map(item => ({
-          productId: item.product.id,
-          name: item.product.name,
-          price: item.product.sellingPrice,
-          cost: item.product.costPrice,
-          quantity: item.quantity
-        }))
-      };
+    const transactionId = crypto.randomUUID();
+    const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
+    
+    const transactionData: SaleTransaction = {
+      id: transactionId,
+      companyId: user.companyId,
+      module: 'mart',
+      totalAmount,
+      profit: totalProfit,
+      discountApplied: discount,
+      couponCode: activeCoupon?.code || undefined,
+      customerName: customerName || 'Walk-in Customer',
+      timestamp: new Date().toISOString(),
+      paymentMethod,
+      referenceNumber: referenceNumber || undefined,
+      status: 'completed',
+      items: cart.map(item => ({
+        productId: item.product.id,
+        name: item.product.name,
+        price: item.product.sellingPrice,
+        cost: item.product.costPrice,
+        quantity: item.quantity
+      }))
+    };
 
-      await setDoc(transactionRef, transactionData);
-      for (const item of cart) {
-        const productRef = doc(firestore, 'companies', user.companyId, 'products', item.product.id);
-        await updateDoc(productRef, { stock: increment(-item.quantity) });
-      }
-      if (activeCoupon) {
-        await updateDoc(doc(firestore, 'companies', user.companyId, 'coupons', activeCoupon.id), { status: 'used' });
-      }
-      if (qualifyingEvent) {
-        const drawRef = collection(firestore, 'companies', user.companyId, 'luckyDraws');
-        await addDoc(drawRef, {
-          id: crypto.randomUUID(),
-          companyId: user.companyId,
-          customerName: customerName || 'Anonymous Participant',
-          transactionId,
-          eventId: qualifyingEvent.id,
-          amount: totalAmount,
-          timestamp: new Date().toISOString()
-        });
-      }
-      toast({ title: "Transaction Successful" });
-      setCart([]);
-      setActiveCoupon(null);
-      setCouponCode('');
-      setCustomerName('');
-      setReferenceNumber('');
-      setCashReceived('');
-      setShowCheckoutDialog(false);
-    } catch (e) {
-      toast({ title: "Checkout failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleCancelTransaction = async (transaction: SaleTransaction) => {
-    if (!firestore || !user?.companyId) return;
-    try {
-      for (const item of transaction.items) {
-        if (item.productId) {
-          const productRef = doc(firestore, 'companies', user.companyId, 'products', item.productId);
-          await updateDoc(productRef, { stock: increment(item.quantity) });
-        }
-      }
-      const entriesToDelete = luckyDraws?.filter(e => e.transactionId === transaction.id) || [];
-      for (const entry of entriesToDelete) {
-        await deleteDoc(doc(firestore, 'companies', user.companyId, 'luckyDraws', entry.id));
-      }
-      await deleteDoc(doc(firestore, 'companies', user.companyId, 'transactions', transaction.id));
-      toast({ title: "Transaction Reversed" });
-    } catch (e: any) {
-      toast({ title: "Reversal Failed", variant: "destructive" });
-    }
-  };
-
-  // Analytics Aggregation
-  const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
-  
-  // Group by day
-  const dailyAggregation: Record<string, { date: string, revenue: number, profit: number }> = {};
-  martTransactions.forEach(t => {
-    const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' });
-    if (!dailyAggregation[day]) dailyAggregation[day] = { date: day, revenue: 0, profit: 0 };
-    dailyAggregation[day].revenue += t.totalAmount;
-    dailyAggregation[day].profit += t.profit;
-  });
-  const chartData = Object.values(dailyAggregation).slice(-7);
-
-  // Top Selling Items
-  const productSales: Record<string, { name: string, quantity: number, revenue: number }> = {};
-  martTransactions.forEach(t => {
-    t.items.forEach(item => {
-      if (!productSales[item.name]) productSales[item.name] = { name: item.name, quantity: 0, revenue: 0 };
-      productSales[item.name].quantity += item.quantity;
-      productSales[item.name].revenue += item.price * item.quantity;
+    setDoc(transactionRef, transactionData).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: transactionRef.path,
+        operation: 'create',
+        requestResourceData: transactionData
+      }));
     });
-  });
-  const topProducts = Object.values(productSales).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+
+    for (const item of cart) {
+      const productRef = doc(firestore, 'companies', user.companyId, 'products', item.product.id);
+      updateDoc(productRef, { stock: increment(-item.quantity) }).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: productRef.path,
+          operation: 'update',
+          requestResourceData: { stock: increment(-item.quantity) }
+        }));
+      });
+    }
+
+    if (activeCoupon) {
+      updateDoc(doc(firestore, 'companies', user.companyId, 'coupons', activeCoupon.id), { status: 'used' });
+    }
+
+    toast({ title: "Transaction Successful" });
+    setCart([]);
+    setActiveCoupon(null);
+    setCouponCode('');
+    setCustomerName('');
+    setReferenceNumber('');
+    setCashReceived('');
+    setShowCheckoutDialog(false);
+    setIsProcessing(false);
+  };
+
+  // Analytics
+  const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
+  const totalRevenue = martTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
+  const totalProfitSum = martTransactions.reduce((acc, t) => acc + t.profit, 0);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -280,19 +222,6 @@ export default function MartPage() {
             <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Mart Control</h1>
             <p className="text-muted-foreground font-bold text-sm">Retail Logistics & Analytics</p>
           </div>
-          <div className="flex gap-4">
-             {events?.filter(e => e.isActive).map(e => (
-               <Card key={e.id} className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
-                  <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center text-accent-foreground">
-                     <Trophy className="w-5 h-5" />
-                  </div>
-                  <div>
-                     <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">{e.name}</p>
-                     <p className="text-lg font-black text-foreground">${e.minSpend}+</p>
-                  </div>
-               </Card>
-             ))}
-          </div>
         </div>
 
         <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-hidden">
@@ -301,9 +230,8 @@ export default function MartPage() {
             <TabsTrigger value="history" className="gap-2 rounded-xl px-6">History</TabsTrigger>
             <TabsTrigger value="inventory" className="gap-2 rounded-xl px-6">Inventory</TabsTrigger>
             <TabsTrigger value="coupons" className="gap-2 rounded-xl px-6">Coupons</TabsTrigger>
-            <TabsTrigger value="events" className="gap-2 rounded-xl px-6">Events</TabsTrigger>
+            <TabsTrigger value="profits" className="gap-2 rounded-xl px-6">Analytics</TabsTrigger>
             <TabsTrigger value="billing" className="gap-2 rounded-xl px-6">Billing</TabsTrigger>
-            <TabsTrigger value="profit" className="gap-2 rounded-xl px-6">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="pos" className="flex-1 overflow-hidden">
@@ -353,11 +281,9 @@ export default function MartPage() {
                     ))}
                   </CardContent>
                   <CardFooter className="flex-col gap-6 p-8 border-t bg-secondary/5">
-                    <div className="w-full space-y-3">
-                       <div className="flex justify-between items-end pt-2">
-                          <span className="text-xs font-black uppercase text-muted-foreground mb-1">Payable Total</span>
-                          <span className="text-5xl font-black text-foreground tracking-tighter">${totalAmount.toFixed(2)}</span>
-                        </div>
+                    <div className="w-full flex justify-between items-end pt-2">
+                      <span className="text-xs font-black uppercase text-muted-foreground mb-1">Payable Total</span>
+                      <span className="text-5xl font-black text-foreground tracking-tighter">${totalAmount.toFixed(2)}</span>
                     </div>
                     <Button className="w-full h-16 text-xl font-black rounded-2xl shadow-xl" disabled={cart.length === 0} onClick={() => setShowCheckoutDialog(true)}>Initiate Checkout</Button>
                   </CardFooter>
@@ -383,7 +309,7 @@ export default function MartPage() {
                       <Label className="text-[10px] font-black uppercase tracking-widest">Cash Received ($)</Label>
                       <Input type="number" className="h-14 rounded-2xl font-black text-2xl" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
                       {Number(cashReceived) >= totalAmount && (
-                        <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/20 flex justify-between items-center">
+                        <div className="bg-primary/5 p-6 rounded-3xl border-2 border-primary/10 flex justify-between items-center">
                            <p className="text-[10px] font-black uppercase text-primary">Change Due</p>
                            <p className="text-3xl font-black">${changeAmount.toFixed(2)}</p>
                         </div>
@@ -422,7 +348,19 @@ export default function MartPage() {
                         <td className="p-6"><p className="font-bold font-mono text-xs">#{t.id.split('-')[0].toUpperCase()}</p></td>
                         <td className="p-6 font-bold">{t.customerName}</td>
                         <td className="p-6 font-black text-primary text-lg">${t.totalAmount.toFixed(2)}</td>
-                        <td className="p-6 text-center"><Button variant="ghost" size="icon" onClick={() => handleCancelTransaction(t)}><XCircle className="w-4 h-4 text-destructive" /></Button></td>
+                        <td className="p-6 text-center">
+                          <Button variant="ghost" size="icon" onClick={async () => {
+                            if (confirm("Reverse this transaction? Inventory will be restored.")) {
+                              for (const item of t.items) {
+                                if (item.productId) {
+                                  updateDoc(doc(firestore!, 'companies', user!.companyId!, 'products', item.productId), { stock: increment(item.quantity) });
+                                }
+                              }
+                              deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'transactions', t.id));
+                              toast({ title: "Transaction Reversed" });
+                            }
+                          }}><XCircle className="w-4 h-4 text-destructive" /></Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -430,65 +368,382 @@ export default function MartPage() {
              </div>
           </TabsContent>
 
-          <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} /></TabsContent>
+          <TabsContent value="inventory"><InventoryManager companyId={user?.companyId} products={products} /></TabsContent>
           <TabsContent value="coupons"><CouponManager companyId={user?.companyId} /></TabsContent>
-          <TabsContent value="events"><EventManager companyId={user?.companyId} /></TabsContent>
+          <TabsContent value="profits"><ProfitAnalytics transactions={martTransactions} /></TabsContent>
           <TabsContent value="billing"><BillingManager companyId={user?.companyId} companyDoc={companyDoc} /></TabsContent>
-
-          <TabsContent value="profit" className="space-y-8 overflow-auto pb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-               <ReportStat label="Aggregate Revenue" value={`$${martTransactions.reduce((acc, t) => acc + t.totalAmount, 0).toFixed(2)}`} />
-               <ReportStat label="Realized Profit" value={`$${martTransactions.reduce((acc, t) => acc + t.profit, 0).toFixed(2)}`} color="text-primary" />
-               <ReportStat label="Event Qualifiers" value={`${martTransactions.filter(t => !!t.luckyDrawEventId).length}`} />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               <Card className="lg:col-span-2 border-none shadow-sm p-10 bg-white rounded-[40px]">
-                  <CardHeader className="px-0 pt-0 mb-8">
-                    <CardTitle className="text-2xl font-black">Performance Trajectory</CardTitle>
-                    <CardDescription className="font-bold">Daily revenue and profit aggregation</CardDescription>
-                  </CardHeader>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
-                        <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
-                        <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRev)" strokeWidth={4} name="Revenue" />
-                        <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={4} strokeDasharray="5 5" name="Profit" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-               </Card>
-
-               <Card className="lg:col-span-1 border-none shadow-sm p-10 bg-white rounded-[40px]">
-                  <CardHeader className="px-0 pt-0 mb-6">
-                    <CardTitle className="text-xl font-black flex items-center gap-2"><Star className="w-5 h-5 text-accent-foreground" /> Top Performers</CardTitle>
-                    <CardDescription className="font-bold">Items generating highest yield</CardDescription>
-                  </CardHeader>
-                  <div className="space-y-6">
-                     {topProducts.map((p, idx) => (
-                       <div key={idx} className="flex justify-between items-center group">
-                          <div>
-                             <p className="font-black text-sm text-foreground">{p.name}</p>
-                             <p className="text-[10px] font-bold text-muted-foreground uppercase">{p.quantity} Units Sold</p>
-                          </div>
-                          <div className="text-right">
-                             <p className="font-black text-primary">${p.revenue.toFixed(2)}</p>
-                          </div>
-                       </div>
-                     ))}
-                     {topProducts.length === 0 && <p className="text-center py-20 text-muted-foreground font-bold">Awaiting sales data...</p>}
-                  </div>
-               </Card>
-            </div>
-          </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function InventoryManager({ companyId, products }: { companyId?: string, products: Product[] | null }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [refillScan, setRefillScan] = useState('');
+
+  // Refill Form States
+  const [unitsBought, setUnitsBought] = useState<string>('1');
+  const [itemsPerUnit, setItemsPerUnit] = useState<string>('1');
+  const [costPerUnit, setCostPerUnit] = useState<string>('');
+  const [retailPrice, setRetailPrice] = useState<string>('');
+
+  useEffect(() => {
+    if (selectedProduct) {
+      setItemsPerUnit(selectedProduct.itemsPerUnit?.toString() || '1');
+      setCostPerUnit((selectedProduct.costPrice * (selectedProduct.itemsPerUnit || 1)).toFixed(2));
+      setRetailPrice(selectedProduct.sellingPrice.toFixed(2));
+    }
+  }, [selectedProduct]);
+
+  const handleRefillScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const matched = products?.find(p => p.barcode === refillScan.trim());
+      if (matched) {
+        setSelectedProduct(matched);
+        setRefillScan('');
+      } else {
+        toast({ title: "Product Not Found", variant: "destructive" });
+      }
+    }
+  };
+
+  const handleConfirmRefill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firestore || !companyId || !selectedProduct) return;
+    setIsProcessing(true);
+
+    const units = Number(unitsBought);
+    const ipu = Number(itemsPerUnit);
+    const cpu = Number(costPerUnit);
+    const newRetail = Number(retailPrice);
+
+    const totalStockAdded = units * ipu;
+    const totalCost = units * cpu;
+    const normalizedCost = totalCost / totalStockAdded;
+
+    const productRef = doc(firestore, 'companies', companyId, 'products', selectedProduct.id);
+    const purchaseRef = collection(firestore, 'companies', companyId, 'purchases');
+
+    updateDoc(productRef, {
+      stock: increment(totalStockAdded),
+      costPrice: normalizedCost,
+      sellingPrice: newRetail,
+      itemsPerUnit: ipu
+    }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: productRef.path,
+        operation: 'update',
+        requestResourceData: { stock: increment(totalStockAdded) }
+      }));
+    });
+
+    addDoc(purchaseRef, {
+      id: crypto.randomUUID(),
+      companyId,
+      amount: totalCost,
+      description: `Restock: ${units}x Unit(s) of ${selectedProduct.name} (${ipu} per unit)`,
+      timestamp: new Date().toISOString()
+    }).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: `companies/${companyId}/purchases`,
+        operation: 'create'
+      }));
+    });
+
+    toast({ title: "Inventory Replenished", description: `Added ${totalStockAdded} items to ${selectedProduct.name}.` });
+    setSelectedProduct(null);
+    setUnitsBought('1');
+    setIsProcessing(false);
+  };
+
+  const handleAddNew = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !companyId) return;
+    const formData = new FormData(e.currentTarget);
+    const id = crypto.randomUUID();
+    const productData: Product = {
+      id,
+      companyId,
+      name: formData.get('name') as string,
+      unit: formData.get('unit') as string,
+      barcode: formData.get('barcode') as string,
+      costPrice: Number(formData.get('cost')),
+      sellingPrice: Number(formData.get('price')),
+      stock: Number(formData.get('stock')),
+      itemsPerUnit: Number(formData.get('ipu') || 1)
+    };
+    setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
+    toast({ title: "Product Registered" });
+    setIsAddDialogOpen(false);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="lg:col-span-1">
+        <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <RefreshCw className="w-5 h-5" />
+            </div>
+            <h3 className="text-xl font-black">Stock Refill</h3>
+          </div>
+
+          <div className="space-y-6">
+            <div className="relative">
+              <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="SCAN TO REFILL..." 
+                className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
+                value={refillScan}
+                onChange={(e) => setRefillScan(e.target.value)}
+                onKeyDown={handleRefillScan}
+              />
+            </div>
+
+            {selectedProduct ? (
+              <form onSubmit={handleConfirmRefill} className="space-y-5 animate-in fade-in slide-in-from-top-2">
+                <div className="p-4 bg-primary/5 rounded-2xl border-2 border-primary/10">
+                  <p className="text-[10px] font-black text-primary uppercase">Refilling Asset</p>
+                  <p className="text-lg font-black">{selectedProduct.name}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-black uppercase">Units Bought</Label>
+                      <Input type="number" value={unitsBought} onChange={(e) => setUnitsBought(e.target.value)} className="h-10 rounded-lg font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-black uppercase">Qty per Unit</Label>
+                      <Input type="number" value={itemsPerUnit} onChange={(e) => setItemsPerUnit(e.target.value)} className="h-10 rounded-lg font-bold" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase">Cost per Unit ($)</Label>
+                    <Input type="number" step="0.01" value={costPerUnit} onChange={(e) => setCostPerUnit(e.target.value)} className="h-10 rounded-lg font-bold" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-black uppercase">New Retail Price ($)</Label>
+                    <Input type="number" step="0.01" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} className="h-10 rounded-lg font-bold text-primary" />
+                  </div>
+                </div>
+
+                <div className="bg-secondary/10 p-4 rounded-2xl space-y-2">
+                   <div className="flex justify-between text-[10px] font-black uppercase">
+                      <span>Stock Addition</span>
+                      <span className="text-foreground">{(Number(unitsBought) * Number(itemsPerUnit))} {selectedProduct.unit}</span>
+                   </div>
+                   <div className="flex justify-between text-[10px] font-black uppercase">
+                      <span>Total Purchase</span>
+                      <span className="text-primary">${(Number(unitsBought) * Number(costPerUnit)).toFixed(2)}</span>
+                   </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setSelectedProduct(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
+                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing}>Confirm</Button>
+                </div>
+              </form>
+            ) : (
+              <div className="py-20 text-center border-2 border-dashed rounded-[32px] opacity-30">
+                <Truck className="w-12 h-12 mx-auto mb-2" />
+                <p className="text-[10px] font-black uppercase tracking-widest">Select item to start replenishment</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="lg:col-span-3 space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-xl font-black">Stock Registry</h3>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild><Button className="rounded-xl font-black shadow-lg"><Plus className="w-4 h-4 mr-2" /> New Product</Button></DialogTrigger>
+            <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden">
+               <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-2xl font-black">New Registration</DialogTitle></div>
+               <form onSubmit={handleAddNew} className="p-8 space-y-6">
+                 <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
+                 <div className="grid grid-cols-2 gap-4">
+                   <Input name="unit" placeholder="Unit (pc, kg)" required className="h-12 rounded-xl" />
+                   <Input name="barcode" placeholder="Barcode" className="h-12 rounded-xl" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <Input name="cost" type="number" step="0.01" placeholder="Unit Cost ($)" required className="h-12 rounded-xl" />
+                   <Input name="price" type="number" step="0.01" placeholder="Selling Price ($)" required className="h-12 rounded-xl" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <Input name="stock" type="number" placeholder="Initial Stock" required className="h-12 rounded-xl" />
+                   <Input name="ipu" type="number" placeholder="Qty/Box (Optional)" className="h-12 rounded-xl" />
+                 </div>
+                 <Button type="submit" className="w-full h-14 rounded-2xl font-black">Save Product</Button>
+               </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <div className="bg-white rounded-[32px] border overflow-hidden">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Product</th><th className="p-6 font-black uppercase text-[10px]">Stock</th><th className="p-6 text-right font-black uppercase text-[10px]">Valuation</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
+            <tbody className="divide-y">{products?.map(p => (
+              <tr key={p.id} className="hover:bg-secondary/5 group">
+                <td className="p-6">
+                  <p className="font-black text-foreground">{p.name}</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">{p.barcode || 'NO BARCODE'}</p>
+                </td>
+                <td className="p-6"><Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-bold">{p.stock} {p.unit}</Badge></td>
+                <td className="p-6 text-right font-black text-primary text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
+                <td className="p-6 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedProduct(p)} className="text-primary hover:bg-primary/10"><RefreshCw className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={async () => {
+                      if (confirm("Delete product registry?")) deleteDoc(doc(firestore!, 'companies', companyId!, 'products', p.id));
+                    }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CouponManager({ companyId }: { companyId?: string }) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const [code, setCode] = useState('');
+  const [value, setValue] = useState('');
+  const [expiry, setExpiry] = useState('');
+
+  const couponsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'coupons'), [firestore, companyId]);
+  const { data: coupons } = useCollection<Coupon>(couponsQuery);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firestore || !companyId) return;
+    const id = crypto.randomUUID();
+    const data: Coupon = { id, companyId, code: code.toUpperCase(), value: Number(value), expiryDate: expiry, status: 'unused' };
+    setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
+    toast({ title: "Coupon Generated" });
+    setCode(''); setValue(''); setExpiry('');
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <Card className="lg:col-span-1 border-none shadow-sm rounded-3xl bg-white p-8 h-fit">
+        <h3 className="text-xl font-black mb-6">Create Voucher</h3>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <Input placeholder="COUPON CODE" value={code} onChange={(e) => setCode(e.target.value)} required className="h-12 rounded-xl font-bold" />
+          <Input placeholder="Value ($)" type="number" value={value} onChange={(e) => setValue(e.target.value)} required className="h-12 rounded-xl font-bold" />
+          <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} required className="h-12 rounded-xl font-bold" />
+          <Button type="submit" className="w-full h-14 rounded-2xl font-black shadow-lg">Issue Voucher</Button>
+        </form>
+      </Card>
+      <div className="lg:col-span-3 bg-white rounded-[32px] border overflow-hidden">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Code</th><th className="p-6 font-black uppercase text-[10px]">Value</th><th className="p-6 font-black uppercase text-[10px]">Expiry</th><th className="p-6 font-black uppercase text-[10px]">Status</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
+          <tbody className="divide-y">{coupons?.map(c => (
+            <tr key={c.id} className="hover:bg-secondary/5">
+              <td className="p-6 font-black">{c.code}</td>
+              <td className="p-6 font-black text-primary">${c.value.toFixed(2)}</td>
+              <td className="p-6 font-bold">{c.expiryDate}</td>
+              <td className="p-6"><Badge variant={c.status === 'used' ? "outline" : "secondary"}>{c.status}</Badge></td>
+              <td className="p-6 text-center"><Button variant="ghost" size="icon" onClick={() => deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id))} className="text-destructive"><Trash2 className="w-4 h-4" /></Button></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ProfitAnalytics({ transactions }: { transactions: SaleTransaction[] }) {
+  const chartData = useMemo(() => {
+    const daily: Record<string, { date: string, revenue: number, profit: number }> = {};
+    transactions.forEach(t => {
+      const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' });
+      if (!daily[day]) daily[day] = { date: day, revenue: 0, profit: 0 };
+      daily[day].revenue += t.totalAmount;
+      daily[day].profit += t.profit;
+    });
+    return Object.values(daily).slice(-7);
+  }, [transactions]);
+
+  const totalRevenue = transactions.reduce((acc, t) => acc + t.totalAmount, 0);
+  const totalProfit = transactions.reduce((acc, t) => acc + t.profit, 0);
+
+  return (
+    <div className="space-y-8 overflow-auto pb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} />
+         <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} color="text-primary" />
+         <ReportStat label="Net Yield" value={`${((totalProfit / (totalRevenue || 1)) * 100).toFixed(1)}%`} />
+      </div>
+      <Card className="border-none shadow-sm p-10 bg-white rounded-[40px]">
+        <CardHeader className="px-0 pt-0 mb-8"><CardTitle className="text-2xl font-black">7-Day Trajectory</CardTitle></CardHeader>
+        <div className="h-[350px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontWeight: 700 }} />
+              <Tooltip contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }} />
+              <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorRev)" strokeWidth={4} name="Revenue" />
+              <Area type="monotone" dataKey="profit" stroke="hsl(var(--secondary))" fillOpacity={0} strokeWidth={4} strokeDasharray="5 5" name="Profit" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function BillingManager({ companyId, companyDoc }: any) {
+  const firestore = useFirestore();
+  const { toast } = useToast();
+  const handleUpload = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !companyId) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      updateDoc(doc(firestore, 'companies', companyId), { duitNowQr: reader.result as string });
+      toast({ title: "Settlement QR Updated" });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="max-w-xl mx-auto py-12">
+      <Card className="border-none shadow-sm rounded-[32px] bg-white p-10 text-center space-y-8">
+        <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-8 h-8" /></div>
+        <h2 className="text-2xl font-black">Digital Gateway</h2>
+        <p className="text-sm text-muted-foreground font-medium">Configure business-wide DuitNow QR for digital settlements.</p>
+        {companyDoc?.duitNowQr ? (
+          <div className="relative group mx-auto w-fit">
+            <Image src={companyDoc.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
+            <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity">
+               <Upload className="text-white w-8 h-8" />
+               <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+            </label>
+          </div>
+        ) : (
+          <label className="w-64 h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center mx-auto cursor-pointer hover:bg-secondary/20 transition-all gap-4">
+             <Plus className="w-8 h-8 text-primary" />
+             <p className="text-xs font-black uppercase">Upload QR Code</p>
+             <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+          </label>
+        )}
+      </Card>
     </div>
   );
 }
@@ -505,103 +760,6 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
   );
 }
 
-function InventoryManager({ companyId }: { companyId?: string }) {
-  const firestore = useFirestore();
-  const { toast } = useToast();
-  const [isAdding, setIsAdding] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const productsQuery = useMemoFirebase(() => (!firestore || !companyId) ? null : collection(firestore, 'companies', companyId, 'products'), [firestore, companyId]);
-  const { data: products } = useCollection<Product>(productsQuery);
-
-  const handleReplenish = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!firestore || !companyId || !selectedProduct) return;
-    setIsAdding(true);
-    const formData = new FormData(e.currentTarget);
-    const qty = Number(formData.get('quantity'));
-    const cost = Number(formData.get('cost'));
-    try {
-      await updateDoc(doc(firestore, 'companies', companyId, 'products', selectedProduct.id), { stock: increment(qty), costPrice: cost / qty });
-      await addDoc(collection(firestore, 'companies', companyId, 'purchases'), { id: crypto.randomUUID(), companyId, amount: cost, description: `Restock: ${qty}x ${selectedProduct.name}`, timestamp: new Date().toISOString() });
-      toast({ title: "Inventory Updated" });
-      setSelectedProduct(null);
-    } catch (err) {
-      toast({ title: "Restock failed", variant: "destructive" });
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleAddNew = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!firestore || !companyId) return;
-    setIsAdding(true);
-    const formData = new FormData(e.currentTarget);
-    const id = crypto.randomUUID();
-    const productData = { id, companyId, name: formData.get('name') as string, sku: formData.get('sku') as string, barcode: formData.get('barcode') as string, costPrice: Number(formData.get('cost')), sellingPrice: Number(formData.get('price')), stock: Number(formData.get('stock')), unit: formData.get('unit') as string };
-    try {
-      await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
-      toast({ title: "Product Registered" });
-      setIsAddDialogOpen(false);
-    } catch (err) {
-      toast({ title: "Entry failed", variant: "destructive" });
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-      <div className="lg:col-span-1">
-        <Card className="border-none shadow-sm rounded-3xl bg-white p-8">
-          <CardTitle className="text-xl font-black mb-6">Restock Tool</CardTitle>
-          {selectedProduct ? (
-            <form onSubmit={handleReplenish} className="space-y-6">
-              <div className="p-4 bg-secondary/20 rounded-2xl"><p className="text-lg font-black">{selectedProduct.name}</p></div>
-              <Input name="quantity" type="number" placeholder="Qty" required className="rounded-xl" />
-              <Input name="cost" type="number" step="0.01" placeholder="Batch Cost" required className="rounded-xl" />
-              <Button type="submit" className="w-full rounded-xl font-black" disabled={isAdding}>Confirm</Button>
-            </form>
-          ) : <p className="text-center py-20 opacity-30 font-bold uppercase text-xs">Select product below</p>}
-        </Card>
-      </div>
-      <div className="lg:col-span-3 space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xl font-black">Stock Registry</h3>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild><Button className="rounded-xl font-black shadow-lg"><Plus className="w-4 h-4 mr-2" /> New Product</Button></DialogTrigger>
-            <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden">
-               <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-2xl font-black">New Registration</DialogTitle></div>
-               <form onSubmit={handleAddNew} className="p-8 space-y-6">
-                 <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
-                 <div className="grid grid-cols-2 gap-4">
-                   <Input name="unit" placeholder="Unit (pc, kg)" required className="h-12 rounded-xl" />
-                   <Input name="barcode" placeholder="Barcode" className="h-12 rounded-xl" />
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                   <Input name="cost" type="number" step="0.01" placeholder="Cost ($)" required className="h-12 rounded-xl" />
-                   <Input name="price" type="number" step="0.01" placeholder="Price ($)" required className="h-12 rounded-xl" />
-                 </div>
-                 <Input name="stock" type="number" placeholder="Stock" required className="h-12 rounded-xl" />
-                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={isAdding}>Save Product</Button>
-               </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        <div className="bg-white rounded-[32px] border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/20"><tr><th className="p-6 text-left">Product</th><th className="p-6 text-left">Stock</th><th className="p-6 text-right">Value</th><th className="p-6 text-center">Action</th></tr></thead>
-            <tbody className="divide-y">{products?.map(p => (
-              <tr key={p.id} className="hover:bg-secondary/5"><td className="p-6 font-black">{p.name}</td><td className="p-6"><Badge variant={p.stock < 10 ? "destructive" : "secondary"}>{p.stock} {p.unit}</Badge></td><td className="p-6 text-right font-black">${(p.stock * p.costPrice).toFixed(2)}</td><td className="p-6 text-center"><Button variant="ghost" size="sm" onClick={() => setSelectedProduct(p)} className="font-black">Restock</Button></td></tr>
-            ))}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ReportStat({ label, value, color = "text-foreground" }: any) {
   return (
     <Card className="border-none shadow-sm p-8 bg-white rounded-[32px]">
@@ -610,7 +768,3 @@ function ReportStat({ label, value, color = "text-foreground" }: any) {
     </Card>
   );
 }
-
-function CouponManager({ companyId }: { companyId?: string }) { /* ... same as before ... */ return <div className="p-10 text-center">Refer to previous implementation for detail. (Included in full file content)</div>; }
-function EventManager({ companyId }: { companyId?: string }) { /* ... same as before ... */ return <div className="p-10 text-center">Refer to previous implementation for detail. (Included in full file content)</div>; }
-function BillingManager({ companyId, companyDoc }: any) { /* ... same as before ... */ return <div className="p-10 text-center">Refer to previous implementation for detail. (Included in full file content)</div>; }

@@ -78,6 +78,7 @@ export interface Product {
   sku?: string;
   barcode?: string;
   unit?: string;
+  itemsPerUnit?: number;
 }
 
 export interface RentalItem {

@@ -49,7 +49,8 @@
         "stock": { "type": "number" },
         "sku": { "type": "string" },
         "barcode": { "type": "string" },
-        "unit": { "type": "string" }
+        "unit": { "type": "string" },
+        "itemsPerUnit": { "type": "number", "description": "Number of individual items per bulk unit (e.g. items per box)." }
       }
     },
     "ServiceType": {
