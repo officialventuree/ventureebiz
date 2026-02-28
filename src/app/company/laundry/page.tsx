@@ -232,14 +232,14 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialFee = editingStudent ? editingStudent.initialAmount : enrollmentDebt;
+    const initialFee = (editingStudent ? editingStudent.initialAmount : enrollmentDebt) ?? 0;
 
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: editingStudent ? editingStudent.balance : 0, 
+      balance: (editingStudent ? editingStudent.balance : 0) ?? 0, 
       initialAmount: initialFee,
       level: Number(selectedLevel),
       class: selectedClass,
@@ -285,7 +285,7 @@ export default function LaundryPage() {
     
     const newAmountMl = bottles * volPerBottle * 1000;
     const newTotalCost = bottles * costPerBottle;
-    const newBatchCostPerLitre = newTotalCost / (bottles * volPerBottle);
+    const newBatchCostPerLitre = (newTotalCost / (bottles * volPerBottle)) || 0;
     
     const docId = `${refillCategory}_soap`;
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', docId);
@@ -311,13 +311,13 @@ export default function LaundryPage() {
       });
     } else {
       const currentStockMl = existing.soapStockMl;
-      const currentCostPerLitre = existing.soapCostPerLitre;
+      const currentCostPerLitre = existing.soapCostPerLitre || 0;
       const totalMl = currentStockMl + newAmountMl;
       const weightedCostPerLitre = ((currentStockMl / 1000 * currentCostPerLitre) + (newAmountMl / 1000 * newBatchCostPerLitre)) / (totalMl / 1000);
 
       const updateData = {
         soapStockMl: increment(newAmountMl),
-        soapCostPerLitre: weightedCostPerLitre,
+        soapCostPerLitre: weightedCostPerLitre || 0,
         lastBottleCost: costPerBottle,
         lastBottleVolume: volPerBottle
       };
@@ -422,7 +422,7 @@ export default function LaundryPage() {
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap');
     const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-    const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
+    const soapCost = (mlPerWash / 1000) * (payableSoap.soapCostPerLitre || 0);
     const profit = amount - soapCost;
 
     const transData: SaleTransaction = {
@@ -745,7 +745,7 @@ export default function LaundryPage() {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Name</Label>
-                         <Input placeholder="Full Name" value={payableName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                         <Input placeholder="Full Name" value={payableName} onChange={(e) => setPayableName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
                       </div>
                       <div className="space-y-2">
                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Service Amount ($)</Label>
@@ -968,7 +968,7 @@ export default function LaundryPage() {
              <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                    <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} />
-                   <ReportStat label="Realized Margin" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
+                   <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
                    <ReportStat label="Student Usage Rev." value={`$${studentUsageRevenue.toFixed(2)}`} icon={User} />
                    <ReportStat label="Payable Laundry Rev." value={`$${payableUsageRevenue.toFixed(2)}`} icon={ShoppingBag} />
                 </div>
