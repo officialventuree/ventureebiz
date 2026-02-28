@@ -30,6 +30,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const DEFAULT_MODULES: { id: ModuleType; label: string }[] = [
   { id: 'mart', label: 'Mart' },
@@ -178,6 +180,37 @@ export default function AdminDashboard() {
     setIsCreating(false);
   };
 
+  const handleRevokeLicense = (companyId: string, companyName: string) => {
+    if (!firestore) return;
+    
+    if (!confirm(`Revoke license for ${companyName}? This will permanently delete the partner dashboard and all associated login credentials.`)) {
+      return;
+    }
+
+    const companyRef = doc(firestore, 'companies', companyId);
+    const userRef = doc(firestore, 'company_users', companyId);
+
+    // Initiating non-blocking deletions with prescribed error handling
+    deleteDoc(companyRef).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: companyRef.path,
+        operation: 'delete'
+      }));
+    });
+
+    deleteDoc(userRef).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: userRef.path,
+        operation: 'delete'
+      }));
+    });
+
+    toast({ 
+      title: "License Revoked", 
+      description: `Dashboard for ${companyName} has been removed from the platform.` 
+    });
+  };
+
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -288,12 +321,13 @@ export default function AdminDashboard() {
                         </div>
 
                         <div className="pt-6 border-t flex justify-between items-center">
-                           <Button variant="ghost" className="text-destructive font-black text-xs uppercase" onClick={() => {
-                             if (confirm("Delete this partner?")) {
-                               deleteDoc(doc(firestore!, 'companies', company.id));
-                               deleteDoc(doc(firestore!, 'company_users', company.id));
-                             }
-                           }}><Trash2 className="w-4 h-4 mr-2" /> Revoke License</Button>
+                           <Button 
+                            variant="ghost" 
+                            className="text-destructive font-black text-xs uppercase" 
+                            onClick={() => handleRevokeLicense(company.id, company.name)}
+                           >
+                             <Trash2 className="w-4 h-4 mr-2" /> Revoke License
+                           </Button>
                            
                            <Dialog>
                               <DialogTrigger asChild>
