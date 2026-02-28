@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -296,7 +295,7 @@ export default function MartPage() {
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
               <DialogContent className="rounded-[40px] border-none shadow-2xl max-w-xl p-0 overflow-hidden bg-white">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
-                   <p className="text-xs font-black uppercase tracking-widest opacity-80">Remaining Settlement</p>
+                   <DialogTitle className="text-xs font-black uppercase tracking-widest opacity-80">Remaining Settlement</DialogTitle>
                    <h2 className="text-6xl font-black tracking-tighter">${settlementDue.toFixed(2)}</h2>
                    {voucherDiscount > 0 && (
                      <p className="text-sm font-bold opacity-70 mt-2">Voucher Coverage: -${voucherDiscount.toFixed(2)}</p>

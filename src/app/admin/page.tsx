@@ -403,7 +403,7 @@ export default function AdminDashboard() {
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
          <DialogContent className="rounded-[40px] max-w-2xl p-0 overflow-hidden bg-white border-none shadow-2xl">
             <div className="bg-primary p-12 text-primary-foreground text-center">
-               <p className="text-xs font-black uppercase opacity-80 mb-2">Checkout Verification</p>
+               <DialogTitle className="text-xs font-black uppercase opacity-80 mb-2">Checkout Verification</DialogTitle>
                <h2 className="text-7xl font-black tracking-tighter">${totalDue.toFixed(2)}</h2>
             </div>
             <div className="p-12 space-y-10">

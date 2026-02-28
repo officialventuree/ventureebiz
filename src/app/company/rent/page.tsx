@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -425,7 +424,7 @@ export default function RentPage() {
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
               <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
-                   <p className="text-xs font-black uppercase opacity-80 mb-2">Total Agreement Fee</p>
+                   <DialogTitle className="text-xs font-black uppercase opacity-80 mb-2">Total Agreement Fee</DialogTitle>
                    <h2 className="text-7xl font-black tracking-tighter">${calculatedAgreement.totalAmount.toFixed(2)}</h2>
                 </div>
                 <div className="p-12 space-y-10">

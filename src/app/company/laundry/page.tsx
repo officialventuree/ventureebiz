@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -422,7 +421,7 @@ export default function LaundryPage() {
               <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
                    <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">Student Top-Up</p>
-                   <h2 className="text-4xl font-black tracking-tighter">Account Settlement</h2>
+                   <DialogTitle className="text-4xl font-black tracking-tighter">Account Settlement</DialogTitle>
                 </div>
                 <div className="p-10 space-y-8">
                   <div className="space-y-2">
@@ -462,7 +461,7 @@ export default function LaundryPage() {
                       <RadioGroup value={topUpPaymentMethod} onValueChange={(v) => setTopUpPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
                         <PaymentOption value="cash" label="Cash" icon={Banknote} id="topup_cash" />
                         <PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" />
-                        <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="topup_qr" />
+                        <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
                       </RadioGroup>
                       {topUpPaymentMethod === 'cash' && (
                         <div className="p-6 bg-secondary/10 rounded-3xl space-y-4">
