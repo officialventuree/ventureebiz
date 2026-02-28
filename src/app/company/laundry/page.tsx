@@ -198,9 +198,6 @@ export default function LaundryPage() {
     return students?.find(s => s.matrixNumber === topUpMatrix);
   }, [students, topUpMatrix]);
 
-  const topUpChange = topUpPaymentMethod === 'cash' ? Math.max(0, (Number(amountReceived) || 0) - (Number(topUpAmount) || 0)) : 0;
-  const payableChange = payablePaymentMethod === 'cash' ? Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)) : 0;
-
   const handleRegisterStudent = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
@@ -509,8 +506,8 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Laundry Bank Original Amount</p>
-                          <p className="text-3xl font-black">${(foundTopUpStudent.balance ?? 0).toFixed(2)}</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Balance Need to Pay</p>
+                          <p className="text-3xl font-black text-destructive">${Math.max(0, (foundTopUpStudent.initialAmount ?? 0) - (foundTopUpStudent.balance ?? 0)).toFixed(2)}</p>
                         </div>
                       </div>
                       <div className="space-y-4">
@@ -716,7 +713,7 @@ export default function LaundryPage() {
                         {Number(payableCashReceived) >= Number(payableAmount) && Number(payableAmount) > 0 && (
                           <div className="flex justify-between items-center px-2">
                              <span className="text-xs font-black uppercase text-muted-foreground">Change Due:</span>
-                             <span className="text-3xl font-black text-foreground">${payableChange.toFixed(2)}</span>
+                             <span className="text-3xl font-black text-foreground">${Math.max(0, (Number(payableCashReceived) || 0) - (Number(payableAmount) || 0)).toFixed(2)}</span>
                           </div>
                         )}
                      </div>
