@@ -38,7 +38,8 @@ import {
   BarChart3,
   DollarSign,
   AlertTriangle,
-  Lock
+  Lock,
+  Edit2
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -72,10 +73,14 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const [activeTab, setActiveTab] = useState('pipeline');
 
   // Material Form State
+  const [editingMaterial, setEditingMaterial] = useState<Product | null>(null);
   const [matQuantity, setMatQuantity] = useState<string>('1');
   const [matMeasure, setMatMeasure] = useState<string>('');
   const [matUnit, setMatUnit] = useState<string>('pc');
   const [matCostPerItem, setMatCostPerItem] = useState<string>('');
+
+  // Bundle State
+  const [editingBundle, setEditingBundle] = useState<ServicePriceBundle | null>(null);
 
   // Start Service Workflow State
   const [isStartWorkOpen, setIsStartWorkOpen] = useState(false);
@@ -211,7 +216,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
-    const bundleId = crypto.randomUUID();
+    const bundleId = editingBundle?.id || crypto.randomUUID();
     const newBundle = { 
       id: bundleId, 
       serviceTypeId: serviceId, 
@@ -221,7 +226,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       estimatedProfit: Number(formData.get('profit')) 
     };
     await setDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', bundleId), newBundle);
-    toast({ title: "Package Added" });
+    toast({ title: editingBundle ? "Package Updated" : "Package Added" });
+    setEditingBundle(null);
     (e.target as HTMLFormElement).reset();
   };
 
@@ -229,34 +235,48 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
-    const id = crypto.randomUUID();
-    const qty = Number(matQuantity);
-    const measure = Number(matMeasure) || 1;
-    const costPerItem = Number(matCostPerItem);
-    const totalVolume = qty * measure;
-    const totalExpenditure = qty * costPerItem;
+    const id = editingMaterial?.id || crypto.randomUUID();
     
-    const material: Product = { 
-      id, 
-      companyId: user.companyId, 
-      serviceTypeId: serviceId, 
-      name: formData.get('name') as string, 
-      costPrice: totalExpenditure / totalVolume, 
-      sellingPrice: (totalExpenditure / totalVolume) * 1.5, 
-      stock: totalVolume, 
-      unit: matUnit 
-    };
+    let material: Product;
+    
+    if (editingMaterial) {
+      material = {
+        ...editingMaterial,
+        name: formData.get('name') as string,
+        costPrice: Number(matCostPerItem),
+        unit: matUnit,
+        stock: Number(matQuantity)
+      };
+    } else {
+      const qty = Number(matQuantity);
+      const measure = Number(matMeasure) || 1;
+      const costPerItem = Number(matCostPerItem);
+      const totalVolume = qty * measure;
+      const totalExpenditure = qty * costPerItem;
+      
+      material = { 
+        id, 
+        companyId: user.companyId, 
+        serviceTypeId: serviceId, 
+        name: formData.get('name') as string, 
+        costPrice: totalExpenditure / totalVolume, 
+        sellingPrice: (totalExpenditure / totalVolume) * 1.5, 
+        stock: totalVolume, 
+        unit: matUnit 
+      };
+
+      await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), { 
+        id: crypto.randomUUID(), 
+        companyId: user.companyId, 
+        amount: totalExpenditure, 
+        description: `Replenishment: ${material.name}`, 
+        timestamp: new Date().toISOString() 
+      });
+    }
 
     await setDoc(doc(firestore, 'companies', user.companyId, 'products', id), material);
-    await addDoc(collection(firestore, 'companies', user.companyId, 'purchases'), { 
-      id: crypto.randomUUID(), 
-      companyId: user.companyId, 
-      amount: totalExpenditure, 
-      description: `Replenishment: ${material.name}`, 
-      timestamp: new Date().toISOString() 
-    });
-    
-    toast({ title: "Inventory Updated" });
+    toast({ title: editingMaterial ? "Material Updated" : "Inventory Updated" });
+    setEditingMaterial(null);
     (e.target as HTMLFormElement).reset();
     setMatMeasure('');
     setMatCostPerItem('');
@@ -293,7 +313,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             </div>
           </div>
 
-          {!isBudgetActive && activeTab === 'inventory' && (
+          {!isBudgetActive && activeTab === 'inventory' && !editingMaterial && (
             <Alert variant="destructive" className="mb-6 rounded-2xl bg-destructive/10 border-destructive/20">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle className="font-black uppercase text-xs tracking-widest">Financial Guardrail Alert</AlertTitle>
@@ -322,21 +342,28 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             <TabsContent value="catalog" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                <div className="lg:col-span-1">
                   <Card className="border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8">
-                     <h3 className="text-xl font-black mb-6">Add Bundle</h3>
+                     <h3 className="text-xl font-black mb-6">{editingBundle ? 'Update Package' : 'Add Bundle'}</h3>
                      <form onSubmit={handleCreateBundle} className="space-y-4">
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Package Name</Label>
-                           <Input name="name" placeholder="Full Service" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                           <Input name="name" defaultValue={editingBundle?.name} placeholder="Full Service" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                         </div>
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Selling Price ({currencySymbol})</Label>
-                           <Input name="price" type="number" step="0.01" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                           <Input name="price" type="number" step="0.01" defaultValue={editingBundle?.price} required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                         </div>
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Target Profit ($)</Label>
-                           <Input name="profit" type="number" step="0.01" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold text-primary" />
+                           <Input name="profit" type="number" step="0.01" defaultValue={editingBundle?.estimatedProfit} required className="h-12 rounded-xl bg-secondary/10 border-none font-bold text-primary" />
                         </div>
-                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Save Package</Button>
+                        <div className="flex gap-2">
+                          {editingBundle && (
+                            <Button type="button" variant="outline" onClick={() => setEditingBundle(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
+                          )}
+                          <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg">
+                            {editingBundle ? "Update" : "Save Package"}
+                          </Button>
+                        </div>
                      </form>
                   </Card>
                </div>
@@ -358,7 +385,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                                 <td className="p-6 font-black text-foreground">{currencySymbol}{bundle.price.toFixed(2)}</td>
                                 <td className="p-6 font-black text-primary">{currencySymbol}{bundle.estimatedProfit.toFixed(2)}</td>
                                 <td className="p-6 text-center">
-                                   <Button variant="ghost" size="icon" className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id))}><Trash2 className="w-4 h-4" /></Button>
+                                   <div className="flex items-center justify-center gap-2">
+                                      <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10" onClick={() => setEditingBundle(bundle)}><Edit2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id))}><Trash2 className="w-4 h-4" /></Button>
+                                   </div>
                                 </td>
                              </tr>
                            ))}
@@ -373,20 +403,20 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                   <Card className={cn(
                     "border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8"
                   )}>
-                     <h3 className="text-xl font-black mb-6">Replenish Materials</h3>
+                     <h3 className="text-xl font-black mb-6">{editingMaterial ? 'Update Inventory' : 'Replenish Materials'}</h3>
                      <form onSubmit={handleAddMaterial} className="space-y-4">
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Material Name</Label>
-                           <Input name="name" placeholder="Thermal Paste" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                           <Input name="name" defaultValue={editingMaterial?.name} placeholder="Thermal Paste" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                            <div className="space-y-1.5">
-                              <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Qty Bought</Label>
+                              <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">{editingMaterial ? 'Stock Balance' : 'Qty Bought'}</Label>
                               <Input type="number" value={matQuantity} onChange={(e) => setMatQuantity(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                            <div className="space-y-1.5">
                               <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Measure/Item</Label>
-                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} placeholder="1.0" className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
+                              <Input type="number" value={matMeasure} onChange={(e) => setMatMeasure(e.target.value)} placeholder="1.0" disabled={!!editingMaterial} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -402,7 +432,14 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                               <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
-                        <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Log Material</Button>
+                        <div className="flex gap-2">
+                          {editingMaterial && (
+                            <Button type="button" variant="outline" onClick={() => setEditingMaterial(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
+                          )}
+                          <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={(!isBudgetActive && !editingMaterial)}>
+                            {editingMaterial ? "Update" : "Log Material"}
+                          </Button>
+                        </div>
                      </form>
                   </Card>
                </div>
@@ -424,7 +461,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                                 <td className="p-6"><Badge variant="secondary" className="font-bold">{mat.stock.toFixed(1)} {mat.unit}</Badge></td>
                                 <td className="p-6 font-black text-primary">{currencySymbol}{mat.costPrice.toFixed(4)}/{mat.unit}</td>
                                 <td className="p-6 text-center">
-                                   <Button variant="ghost" size="icon" className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', mat.id))}><Trash2 className="w-4 h-4" /></Button>
+                                   <div className="flex items-center justify-center gap-2">
+                                      <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10" onClick={() => { setEditingMaterial(mat); setMatQuantity(mat.stock.toString()); setMatUnit(mat.unit!); setMatCostPerItem(mat.costPrice.toString()); }}><Edit2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', mat.id))}><Trash2 className="w-4 h-4" /></Button>
+                                   </div>
                                 </td>
                              </tr>
                            ))}

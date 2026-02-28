@@ -87,6 +87,10 @@ export default function LaundryPage() {
   const [amountReceived, setAmountReceived] = useState<number | string>('');
   const [transactionNo, setTransactionNo] = useState('');
 
+  // Editing State
+  const [editingStudent, setEditingStudent] = useState<LaundryStudent | null>(null);
+  const [isEnrollDialogOpen, setIsEnrollDialogOpen] = useState(false);
+
   // Refill States
   const [refillCategory, setRefillCategory] = useState<'student' | 'payable'>('student');
   const [refillBottles, setRefillBottles] = useState<string>('');
@@ -189,11 +193,13 @@ export default function LaundryPage() {
   const handleRegisterStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
+    setIsProcessing(true);
     const formData = new FormData(e.currentTarget);
-    const studentId = crypto.randomUUID();
+    const studentId = editingStudent?.id || crypto.randomUUID();
     
     if (!selectedLevel || !selectedClass) {
       toast({ title: "Selection Required", description: "Please specify student Level and Class.", variant: "destructive" });
+      setIsProcessing(false);
       return;
     }
 
@@ -204,19 +210,22 @@ export default function LaundryPage() {
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: -amountToPay, // Amount need to pay is recorded as negative balance
+      balance: editingStudent ? editingStudent.balance : -amountToPay,
       level: Number(selectedLevel),
       class: selectedClass,
     };
 
     try {
       await setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student);
-      toast({ title: "Student Enrolled", description: `${student.name} is now registered.` });
-      (e.target as HTMLFormElement).reset();
+      toast({ title: editingStudent ? "Profile Updated" : "Student Enrolled" });
+      setIsEnrollDialogOpen(false);
+      setEditingStudent(null);
       setSelectedLevel('');
       setSelectedClass('');
     } catch (e: any) {
-      toast({ title: "Registration error", variant: "destructive" });
+      toast({ title: "Operation failed", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -713,10 +722,10 @@ export default function LaundryPage() {
                 <Card className={cn(
                   "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
                 )}>
-                   <h3 className="text-xl font-black mb-6">New Enrollment</h3>
+                   <h3 className="text-xl font-black mb-6">{editingStudent ? 'Update Account' : 'New Enrollment'}</h3>
                    <form onSubmit={handleRegisterStudent} className="space-y-5">
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Full Name</Label><Input name="name" defaultValue={editingStudent?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
+                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Matrix Number</Label><Input name="matrix" defaultValue={editingStudent?.matrixNumber} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div>
                       <div className="grid grid-cols-2 gap-3">
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Level</Label>
@@ -733,12 +742,21 @@ export default function LaundryPage() {
                             </Select>
                          </div>
                       </div>
-                      <div className="space-y-1.5">
-                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Amount Need to Pay ($)</Label>
-                         <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
-                         <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
+                      {!editingStudent && (
+                        <div className="space-y-1.5">
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Amount Need to Pay ($)</Label>
+                           <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
+                           <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        {editingStudent && (
+                          <Button type="button" variant="outline" onClick={() => { setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); }} className="flex-1 rounded-xl font-bold">Cancel</Button>
+                        )}
+                        <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={(!isBudgetActive && !editingStudent) || isProcessing}>
+                          {isProcessing ? "Saving..." : editingStudent ? "Update Account" : "Save Subscriber"}
+                        </Button>
                       </div>
-                      <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={!isBudgetActive || isProcessing}>Save Subscriber</Button>
                    </form>
                 </Card>
              </div>
@@ -772,9 +790,12 @@ export default function LaundryPage() {
                                  </p>
                               </td>
                               <td className="p-6 text-center">
-                                 <Button variant="ghost" size="icon" onClick={async () => {
-                                    if(confirm("Expel this subscriber?")) await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
-                                 }} className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4" /></Button>
+                                 <div className="flex items-center justify-center gap-2">
+                                    <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={async () => {
+                                       if(confirm("Expel this subscriber?")) await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
+                                    }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                                 </div>
                               </td>
                            </tr>
                          ))}
@@ -1100,7 +1121,7 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
                    <ListFilter className="w-6 h-6 text-primary" />
                    <CardTitle className="text-xl font-black">Scheduled Registry</CardTitle>
                 </div>
-                <Badge variant="outline" className="font-black text-[10px] uppercase">{schedules?.length || 0} Turn Records</Badge>
+                <Badge variant="outline" className="font-black text-[10px] px-2">{schedules?.length || 0} Turn Records</Badge>
              </div>
           </CardHeader>
           <div className="overflow-hidden">

@@ -439,6 +439,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [refillScan, setRefillScan] = useState('');
 
@@ -514,8 +515,9 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   const handleAddNew = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !companyId) return;
+    setIsProcessing(true);
     const formData = new FormData(e.currentTarget);
-    const id = crypto.randomUUID();
+    const id = editingProduct?.id || crypto.randomUUID();
     
     const cost = Number(formData.get('cost'));
     const stock = Number(formData.get('stock'));
@@ -536,8 +538,8 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     try {
       await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
       
-      // Log as Capital Purchase for startup stock
-      if (totalInitialCost > 0) {
+      // Log as Capital Purchase for startup stock ONLY if new
+      if (!editingProduct && totalInitialCost > 0) {
         await addDoc(collection(firestore, 'companies', companyId, 'purchases'), {
           id: crypto.randomUUID(),
           companyId,
@@ -547,11 +549,21 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
         });
       }
 
-      toast({ title: "Product Registered", description: `Registry and procurement log synchronized.` });
+      toast({ title: editingProduct ? "Product Updated" : "Product Registered" });
       setIsAddDialogOpen(false);
+      setEditingProduct(null);
     } catch (err: any) {
-      toast({ title: "Registration failed", variant: "destructive" });
+      toast({ title: "Operation failed", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
     }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!firestore || !companyId) return;
+    if (!confirm("Permanently remove this product registry?")) return;
+    await deleteDoc(doc(firestore, 'companies', companyId, 'products', id));
+    toast({ title: "Product Removed" });
   };
 
   return (
@@ -638,29 +650,54 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
       <div className="lg:col-span-3 space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-black">Stock Registry</h3>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if(!open) setEditingProduct(null); }}>
             <DialogTrigger asChild>
               <Button className="rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden">
-               <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-2xl font-black">New Registration</DialogTitle></div>
+               <div className="bg-primary p-8 text-primary-foreground">
+                 <DialogTitle className="text-2xl font-black">{editingProduct ? 'Edit Product' : 'New Registration'}</DialogTitle>
+               </div>
                <form onSubmit={handleAddNew} className="p-8 space-y-6">
-                 <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
-                 <div className="grid grid-cols-2 gap-4">
-                   <Input name="unit" placeholder="Unit (pc, kg)" required className="h-12 rounded-xl" />
-                   <Input name="barcode" placeholder="Barcode" className="h-12 rounded-xl" />
+                 <div className="space-y-1.5">
+                   <Label className="text-[10px] font-black uppercase">Item Name</Label>
+                   <Input name="name" defaultValue={editingProduct?.name} required className="h-12 rounded-xl" />
                  </div>
                  <div className="grid grid-cols-2 gap-4">
-                   <Input name="cost" type="number" step="0.01" placeholder="Unit Cost ($)" required className="h-12 rounded-xl" />
-                   <Input name="price" type="number" step="0.01" placeholder="Selling Price ($)" required className="h-12 rounded-xl" />
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Unit</Label>
+                     <Input name="unit" defaultValue={editingProduct?.unit} required className="h-12 rounded-xl" />
+                   </div>
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Barcode</Label>
+                     <Input name="barcode" defaultValue={editingProduct?.barcode} className="h-12 rounded-xl" />
+                   </div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
-                   <Input name="stock" type="number" placeholder="Initial Stock" required className="h-12 rounded-xl" />
-                   <Input name="ipu" type="number" placeholder="Qty/Box (Optional)" className="h-12 rounded-xl" />
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Unit Cost ($)</Label>
+                     <Input name="cost" type="number" step="0.01" defaultValue={editingProduct?.costPrice} required className="h-12 rounded-xl" />
+                   </div>
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Selling Price ($)</Label>
+                     <Input name="price" type="number" step="0.01" defaultValue={editingProduct?.sellingPrice} required className="h-12 rounded-xl" />
+                   </div>
                  </div>
-                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={!isBudgetActive || isProcessing}>Save Product</Button>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Active Stock</Label>
+                     <Input name="stock" type="number" defaultValue={editingProduct?.stock} required className="h-12 rounded-xl" />
+                   </div>
+                   <div className="space-y-1.5">
+                     <Label className="text-[10px] font-black uppercase">Qty/Unit</Label>
+                     <Input name="ipu" type="number" defaultValue={editingProduct?.itemsPerUnit} className="h-12 rounded-xl" />
+                   </div>
+                 </div>
+                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={(!isBudgetActive && !editingProduct) || isProcessing}>
+                   {isProcessing ? "Saving..." : editingProduct ? "Update Product" : "Save Product"}
+                 </Button>
                </form>
             </DialogContent>
           </Dialog>
@@ -678,10 +715,8 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                 <td className="p-6 text-right font-black text-primary text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
                 <td className="p-6 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedProduct(p)} className="text-primary hover:bg-primary/10"><RefreshCw className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={async () => {
-                      if (confirm("Delete product registry?")) deleteDoc(doc(firestore!, 'companies', companyId!, 'products', p.id));
-                    }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setIsAddDialogOpen(true); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(p.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </td>
               </tr>

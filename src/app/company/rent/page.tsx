@@ -567,7 +567,9 @@ export default function RentPage() {
                          {editingAsset && (
                            <Button type="button" variant="outline" onClick={() => setEditingAsset(null)} className="flex-1 rounded-xl font-black">Cancel</Button>
                          )}
-                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={!isBudgetActive}>Save Asset</Button>
+                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={!isBudgetActive && !editingAsset}>
+                           {editingAsset ? "Update Asset" : "Save Asset"}
+                         </Button>
                       </div>
                    </form>
                 </Card>
