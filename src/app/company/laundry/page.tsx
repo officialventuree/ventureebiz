@@ -59,7 +59,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import Link from 'next/link';
+import Link from 'link';
 import Image from 'next/image';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -86,6 +86,9 @@ export default function LaundryPage() {
   const [topUpPaymentMethod, setTopUpPaymentMethod] = useState<PaymentMethod>('cash');
   const [amountReceived, setAmountReceived] = useState<number | string>('');
   const [transactionNo, setTransactionNo] = useState('');
+
+  // Enrollment Dynamic State
+  const [enrollmentDebt, setEnrollmentDebt] = useState<number>(0);
 
   // Editing State
   const [editingStudent, setEditingStudent] = useState<LaundryStudent | null>(null);
@@ -177,6 +180,18 @@ export default function LaundryPage() {
     }
   }, [refillCategory, studentSoap, payableSoap]);
 
+  // Auto-fill Enrollment Debt based on Level Config
+  useEffect(() => {
+    if (selectedLevel && !editingStudent) {
+      const config = levelConfigs?.find(c => c.level === Number(selectedLevel));
+      if (config) {
+        setEnrollmentDebt(config.subscriptionFee);
+      } else {
+        setEnrollmentDebt(0);
+      }
+    }
+  }, [selectedLevel, levelConfigs, editingStudent]);
+
   const mlPerWash = 50;
   const defaultWashRate = 5.00;
 
@@ -214,7 +229,7 @@ export default function LaundryPage() {
       return;
     }
 
-    const amountToPay = Number(formData.get('amountDue')) || 0;
+    const amountToPay = editingStudent ? 0 : enrollmentDebt;
 
     const student: LaundryStudent = {
       id: studentId,
@@ -233,6 +248,7 @@ export default function LaundryPage() {
         setEditingStudent(null);
         setSelectedLevel('');
         setSelectedClass('');
+        setEnrollmentDebt(0);
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -797,7 +813,12 @@ export default function LaundryPage() {
                       {!editingStudent && (
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription / Debt ($)</Label>
-                           <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
+                           <Input 
+                            type="number" 
+                            value={enrollmentDebt} 
+                            onChange={(e) => setEnrollmentDebt(Number(e.target.value))} 
+                            className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" 
+                           />
                            <p className="text-[9px] font-bold text-muted-foreground italic">Balance will start negative until topped up.</p>
                         </div>
                       )}
