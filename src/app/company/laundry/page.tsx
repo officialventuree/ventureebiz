@@ -230,12 +230,17 @@ export default function LaundryPage() {
       class: selectedClass,
     };
     setDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId), student)
-      .then(() => { toast({ title: editingStudent ? "Profile Updated" : "Student Enrolled" }); setEditingStudent(null); setSelectedLevel(''); setSelectedClass(''); })
+      .then(() => { 
+        toast({ title: editingStudent ? "Profile Updated" : "Student Enrolled" }); 
+        setEditingStudent(null); 
+        setSelectedLevel(''); 
+        setSelectedClass(''); 
+      })
       .finally(() => setIsProcessing(false));
   };
 
   const handleDeleteStudent = (studentId: string) => {
-    if (!firestore || !user?.companyId || !confirm("Delete this subscriber?")) return;
+    if (!firestore || !user?.companyId || !confirm("Delete this subscriber permanently?")) return;
     deleteDocumentNonBlocking(doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId));
     toast({ title: "Subscriber Removed" });
   };
@@ -322,7 +327,7 @@ export default function LaundryPage() {
             </Card>
             <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
               <DialogTrigger asChild><Button className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2"><Wallet className="w-5 h-5" /> Account Deposit</Button></DialogTrigger>
-              <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
+              <DialogContent className="rounded-[40px] max-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center"><p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">Student Settlement</p><DialogTitle className="text-4xl font-black tracking-tighter">Deposit Registry</DialogTitle></div>
                 <div className="p-10 space-y-8">
                   <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Subscriber Matrix No</Label><Input placeholder="SCAN OR TYPE MATRIX..." className="h-14 rounded-2xl font-black text-xl bg-secondary/10 border-none px-6" value={topUpMatrix} onChange={(e) => setTopUpMatrix(e.target.value)}/></div>
@@ -420,7 +425,7 @@ export default function LaundryPage() {
           <TabsContent value="profits"><LaundryAnalytics transactions={laundryTransactions} currencySymbol={currencySymbol} /></TabsContent>
 
           <TabsContent value="billing">
-             <div className="max-w-xl auto py-12 text-center space-y-8"><Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8"><div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-10 h-10" /></div><h2 className="text-3xl font-black">Laundry Gateway</h2>{companyDoc?.duitNowQr ? (<div className="relative group w-fit mx-auto"><Image src={companyDoc.duitNowQr} alt="QR" width={200} height={200} className="rounded-3xl border-4" /><label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity"><Upload className="text-white w-8 h-8" /><input type="file" className="hidden" accept="image/*" onChange={async (e) => { const file = e.target.files?.[0]; if(!file || !firestore || !user?.companyId) return; const reader = new FileReader(); reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string }); reader.readAsDataURL(file); }} /></label></div>) : <label className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer flex flex-col items-center justify-center gap-4"><Plus className="w-12 h-12" /><input type="file" className="hidden" accept="image/*" /></label>}</Card></div>
+             <div className="max-w-xl mx-auto py-12 text-center space-y-8"><Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8"><div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto"><QrCode className="w-10 h-10" /></div><h2 className="text-3xl font-black">Laundry Gateway</h2>{companyDoc?.duitNowQr ? (<div className="relative group w-fit mx-auto"><Image src={companyDoc.duitNowQr} alt="QR" width={200} height={200} className="rounded-3xl border-4" /><label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity"><Upload className="text-white w-8 h-8" /><input type="file" className="hidden" accept="image/*" onChange={async (e) => { const file = e.target.files?.[0]; if(!file || !firestore || !user?.companyId) return; const reader = new FileReader(); reader.onloadend = () => updateDoc(doc(firestore, 'companies', user.companyId!), { duitNowQr: reader.result as string }); reader.readAsDataURL(file); }} /></label></div>) : <label className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer flex flex-col items-center justify-center gap-4"><Plus className="w-12 h-12" /><input type="file" className="hidden" accept="image/*" /></label>}</Card></div>
           </TabsContent>
         </Tabs>
       </main>
@@ -462,9 +467,93 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedLevels, setSelectedLevels] = useState<number[]>([]);
-  useEffect(() => { if (schedules) setSelectedLevels(schedules.filter(s => s.date === selectedDate).map(s => s.level)); }, [schedules, selectedDate]);
-  const toggleLevel = (lv: number) => { if (!firestore || !companyId) return; const existing = schedules?.find(s => s.date === selectedDate && s.level === lv); if (existing) deleteDocumentNonBlocking(doc(firestore, 'companies', companyId, 'laundrySchedules', existing.id)); else setDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', `${selectedDate}_LV${lv}`), { id: `${selectedDate}_LV${lv}`, companyId, date: selectedDate, level: lv }); };
-  return (<div className="space-y-8 max-w-4xl mx-auto"><Card className="border-none shadow-sm bg-white rounded-3xl p-10"><div className="flex justify-between items-center mb-10"><div><h3 className="text-2xl font-black">Turn Scheduler</h3></div><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-48 rounded-xl font-bold bg-secondary/10 border-none" /></div><div className="grid grid-cols-5 gap-4">{LEVELS.map(lv => (<button key={lv} onClick={() => toggleLevel(lv)} className={cn("h-32 rounded-[32px] border-4 flex flex-col items-center justify-center transition-all", selectedLevels.includes(lv) ? "bg-primary border-primary text-primary-foreground shadow-xl" : "bg-secondary/10 border-transparent opacity-50")}><p className="text-4xl font-black">{lv}</p>{selectedLevels.includes(lv) && <CheckCircle2 className="w-5 h-5 mt-2" />}</button>))}</div></Card></div>);
+
+  useEffect(() => { 
+    if (schedules) {
+      setSelectedLevels(schedules.filter(s => s.date === selectedDate).map(s => s.level)); 
+    }
+  }, [schedules, selectedDate]);
+
+  const toggleLevel = (lv: number) => { 
+    if (!firestore || !companyId) return; 
+    const existing = schedules?.find(s => s.date === selectedDate && s.level === lv); 
+    if (existing) {
+      deleteDocumentNonBlocking(doc(firestore, 'companies', companyId, 'laundrySchedules', existing.id)); 
+    } else {
+      const scheduleId = `${selectedDate}_LV${lv}`;
+      setDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', scheduleId), { 
+        id: scheduleId, 
+        companyId, 
+        date: selectedDate, 
+        level: lv 
+      }); 
+    }
+  };
+
+  return (
+    <div className="space-y-8 max-w-4xl mx-auto">
+      <Card className="border-none shadow-sm bg-white rounded-[40px] overflow-hidden">
+        <CardHeader className="bg-secondary/10 p-10 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-2xl font-black">Turn Authorization</CardTitle>
+            <CardDescription className="font-bold">Select student levels authorized for wash on this date</CardDescription>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border flex items-center gap-3">
+            <CalendarDays className="w-5 h-5 text-primary" />
+            <Input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)} 
+              className="w-40 border-none font-black text-sm p-0 h-auto focus-visible:ring-0" 
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="p-10">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+            {LEVELS.map(lv => {
+              const isActive = selectedLevels.includes(lv);
+              return (
+                <button 
+                  key={lv} 
+                  onClick={() => toggleLevel(lv)} 
+                  className={cn(
+                    "relative h-40 rounded-[32px] border-4 flex flex-col items-center justify-center transition-all duration-300 group overflow-hidden",
+                    isActive 
+                      ? "bg-primary border-primary text-primary-foreground shadow-2xl scale-105" 
+                      : "bg-secondary/10 border-transparent hover:bg-secondary/20 grayscale opacity-60"
+                  )}
+                >
+                  {isActive && (
+                    <div className="absolute top-4 right-4 bg-white text-primary rounded-full p-1 animate-in zoom-in">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                  )}
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-60">Level</p>
+                  <p className="text-6xl font-black tracking-tighter">{lv}</p>
+                  <div className={cn(
+                    "mt-4 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    isActive ? "bg-black/20" : "bg-secondary/30 text-muted-foreground"
+                  )}>
+                    {isActive ? "Authorized" : "Closed"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-12 p-8 bg-primary/5 rounded-[32px] border-2 border-dashed border-primary/20 flex items-center gap-6">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm text-primary">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+            <div>
+              <h4 className="font-black text-lg">Strategic Guardrail</h4>
+              <p className="text-sm font-medium text-muted-foreground">Authorized levels are dynamically validated at the POS terminal. Students outside these levels will be automatically blocked from washing today.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function InventoryGauge({ label, item, currencySymbol }: { label: string, item?: LaundryInventory, currencySymbol: string }) {
@@ -476,6 +565,7 @@ function LaundryAnalytics({ transactions, currencySymbol }: { transactions: Sale
   const payableWashes = transactions.filter(t => t.items[0].name === 'Payable Service Wash');
   
   const getChartData = (data: SaleTransaction[]) => { 
+    if (!data || data.length === 0) return [];
     const daily: Record<string, { date: string, revenue: number, profit: number }> = {}; 
     data.forEach(t => { 
       const day = new Date(t.timestamp).toLocaleDateString([], { weekday: 'short' }); 
@@ -548,7 +638,7 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div className="flex-1">
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-32 text-center">
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center">
         <Icon className="mb-2 h-7 w-7 text-primary" />
         <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
