@@ -29,14 +29,13 @@ import {
   Calculator,
   ListFilter,
   AlertTriangle,
-  Settings2,
-  FlaskConical,
   Scale,
   HandCoins,
   BarChart3,
   Lock,
   XCircle,
-  Landmark
+  Landmark,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -210,6 +209,24 @@ export default function LaundryPage() {
     return schedules?.some(s => s.date === todayDate && s.level === level);
   };
 
+  const handlePayableWash = () => {
+    if (!payableName || !payableAmount || !firestore || !user?.companyId || !payableSoap) return;
+    const amount = Number(payableAmount);
+    const mlRequired = globalConfig?.payableSoapMlPerWash || 50;
+    if (payableSoap.soapStockMl < mlRequired) { toast({ title: "Insufficient Soap Stock", variant: "destructive" }); return; }
+    setIsProcessing(true);
+    const soapCost = (mlRequired / 1000) * (payableSoap.soapCostPerLitre || 0);
+    const transId = crypto.randomUUID();
+    const transData: SaleTransaction = { id: transId, companyId: user.companyId, module: 'laundry', totalAmount: amount, profit: amount - soapCost, totalCost: soapCost, timestamp: new Date().toISOString(), customerName: payableName, paymentMethod: payablePaymentMethod, referenceNumber: payableRef || null, status: 'completed', items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }] };
+    setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transId), transData).then(() => {
+      updateDoc(doc(firestore, 'companies', user.companyId!, 'laundryInventory', 'payable_soap'), { soapStockMl: increment(-mlRequired) });
+      toast({ title: "Payable Wash Fulfilled" });
+      setPayableName('');
+      setPayableRef('');
+      setPayableCashReceived('');
+    }).finally(() => setIsProcessing(false));
+  };
+
   const foundTopUpStudent = useMemo(() => students?.find(s => s.matrixNumber === topUpMatrix), [students, topUpMatrix]);
 
   const handleRegisterStudent = (e: React.FormEvent<HTMLFormElement>) => {
@@ -278,24 +295,6 @@ export default function LaundryPage() {
     setSelectedStudent(null);
     setMatrixSearch('');
     setIsProcessing(false);
-  };
-
-  const handlePayableWash = () => {
-    if (!payableName || !payableAmount || !firestore || !user?.companyId || !payableSoap) return;
-    const amount = Number(payableAmount);
-    const mlRequired = globalConfig?.payableSoapMlPerWash || 50;
-    if (payableSoap.soapStockMl < mlRequired) { toast({ title: "Insufficient Soap Stock", variant: "destructive" }); return; }
-    setIsProcessing(true);
-    const soapCost = (mlRequired / 1000) * (payableSoap.soapCostPerLitre || 0);
-    const transId = crypto.randomUUID();
-    const transData: SaleTransaction = { id: transId, companyId: user.companyId, module: 'laundry', totalAmount: amount, profit: amount - soapCost, totalCost: soapCost, timestamp: new Date().toISOString(), customerName: payableName, paymentMethod: payablePaymentMethod, referenceNumber: payableRef || null, status: 'completed', items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }] };
-    setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transId), transData).then(() => {
-      updateDoc(doc(firestore, 'companies', user.companyId!, 'laundryInventory', 'payable_soap'), { soapStockMl: increment(-mlRequired) });
-      toast({ title: "Payable Wash Fulfilled" });
-      setPayableName('');
-      setPayableRef('');
-      setPayableCashReceived('');
-    }).finally(() => setIsProcessing(false));
   };
 
   const handleConfirmTopUp = () => {
@@ -490,8 +489,20 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
     }
   };
 
+  const groupedSchedules = useMemo(() => {
+    if (!schedules) return {};
+    const groups: Record<string, number[]> = {};
+    schedules.forEach(s => {
+      if (!groups[s.date]) groups[s.date] = [];
+      groups[s.date].push(s.level);
+    });
+    return Object.fromEntries(
+      Object.entries(groups).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+    );
+  }, [schedules]);
+
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-4xl mx-auto pb-24">
       <Card className="border-none shadow-sm bg-white rounded-[40px] overflow-hidden">
         <CardHeader className="bg-secondary/10 p-10 flex flex-row items-center justify-between">
           <div>
@@ -552,6 +563,55 @@ function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: s
           </div>
         </CardContent>
       </Card>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-black flex items-center gap-3 px-4">
+          <Calendar className="w-6 h-6 text-primary" /> Master Schedule Registry
+        </h3>
+        {Object.keys(groupedSchedules).length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-[40px] border-4 border-dashed border-secondary/30">
+            <Calendar className="w-16 h-16 mx-auto mb-4 opacity-10" />
+            <p className="font-black text-muted-foreground uppercase tracking-widest">No Turns Scheduled</p>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {Object.entries(groupedSchedules).map(([date, levels]) => (
+              <Card key={date} className="border-none shadow-sm bg-white rounded-[32px] overflow-hidden group hover:shadow-md transition-all">
+                <CardContent className="p-8 flex items-center justify-between">
+                  <div className="flex items-center gap-6">
+                    <div className="w-14 h-14 bg-secondary/50 rounded-2xl flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                      <CalendarDays className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <p className="font-black text-2xl tracking-tighter text-foreground">
+                        {new Date(date).toLocaleDateString([], { dateStyle: 'full' })}
+                      </p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Status: Active Turn Plan</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-muted-foreground mr-2">Authorized:</span>
+                    {levels.sort().map(lv => (
+                      <Badge key={lv} className="bg-primary text-primary-foreground font-black px-4 h-8 rounded-xl">Level {lv}</Badge>
+                    ))}
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => {
+                        setSelectedDate(date);
+                        toast({ title: "Date Selected", description: "You can now edit authorizations for this date above." });
+                      }}
+                      className="ml-4 text-primary hover:bg-primary/10"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
