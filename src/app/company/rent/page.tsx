@@ -34,7 +34,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -261,11 +261,9 @@ export default function RentPage() {
 
   const handleDeleteItem = (itemId: string) => {
     if (!firestore || !user?.companyId) return;
-    if (!confirm("Are you sure?")) return;
+    if (!confirm("Are you sure? This will permanently remove the asset from your registry.")) return;
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemId);
-    deleteDoc(itemRef).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
-    });
+    deleteDocumentNonBlocking(itemRef);
     toast({ title: "Asset Removed" });
   };
 

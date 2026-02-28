@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Wrench, Plus, Search, ArrowRight, Trash2, LayoutGrid, ClipboardList, Briefcase } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -60,15 +60,12 @@ export default function ServicesDirectoryPage() {
     }
   };
 
-  const handleDeleteService = async (serviceId: string) => {
+  const handleDeleteService = (serviceId: string) => {
     if (!firestore || !user?.companyId) return;
     if (!confirm("Are you sure? This will delete the entire service category and its settings.")) return;
-    try {
-      await deleteDoc(doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId));
-      toast({ title: "Category Removed" });
-    } catch (e) {
-      toast({ title: "Deletion failed", variant: "destructive" });
-    }
+    const docRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Category Removed" });
   };
 
   return (

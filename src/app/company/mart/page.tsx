@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Minus, Search, Package, Receipt, TrendingUp, DollarSign, Calendar, Ticket, Trophy, Truck, Trash2, CheckCircle2, CreditCard, QrCode, Image as ImageIcon, Wallet, Banknote, ArrowRight, UserPlus, Barcode, Scan, Settings2, Power, History, XCircle, MoreVertical, Star, RefreshCw, Edit2, ShieldCheck, ChevronRight, Upload, Info, Landmark, AlertTriangle, Lock } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, increment, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -225,6 +225,26 @@ export default function MartPage() {
 
   const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
 
+  const handleReverseTransaction = (t: SaleTransaction) => {
+    if (!firestore || !user?.companyId) return;
+    if (!confirm("Reverse this transaction? Inventory will be restored and the record will be removed.")) return;
+    
+    // 1. Restore Inventory
+    for (const item of t.items) {
+      if (item.productId) {
+        const productRef = doc(firestore, 'companies', user.companyId, 'products', item.productId);
+        updateDoc(productRef, { stock: increment(item.quantity) }).catch(async (err) => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({ path: productRef.path, operation: 'update' }));
+        });
+      }
+    }
+
+    // 2. Remove Transaction
+    const transRef = doc(firestore, 'companies', user.companyId, 'transactions', t.id);
+    deleteDocumentNonBlocking(transRef);
+    toast({ title: "Transaction Reversed" });
+  };
+
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -405,17 +425,7 @@ export default function MartPage() {
                         <td className="p-6 font-bold">{t.customerName}</td>
                         <td className="p-6 font-black text-primary text-lg">${t.totalAmount.toFixed(2)}</td>
                         <td className="p-6 text-center">
-                          <Button variant="ghost" size="icon" onClick={() => {
-                            if (confirm("Reverse this transaction? Inventory will be restored.")) {
-                              for (const item of t.items) {
-                                if (item.productId) {
-                                  updateDoc(doc(firestore!, 'companies', user!.companyId!, 'products', item.productId), { stock: increment(item.quantity) });
-                                }
-                              }
-                              deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'transactions', t.id));
-                              toast({ title: "Transaction Reversed" });
-                            }
-                          }}><XCircle className="w-4 h-4 text-destructive" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleReverseTransaction(t)}><XCircle className="w-4 h-4 text-destructive" /></Button>
                         </td>
                       </tr>
                     ))}
@@ -587,12 +597,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     if (!firestore || !companyId) return;
     if (!confirm("Permanently remove this product registry?")) return;
     const docRef = doc(firestore, 'companies', companyId, 'products', id);
-    deleteDoc(docRef).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'delete'
-      }));
-    });
+    deleteDocumentNonBlocking(docRef);
     toast({ title: "Product Removed" });
   };
 
@@ -869,6 +874,14 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     }
   };
 
+  const handleRevokeVoucher = (id: string) => {
+    if (!firestore || !companyId) return;
+    if (!confirm("Revoke this stored value card? This action is permanent.")) return;
+    const docRef = doc(firestore, 'companies', companyId, 'coupons', id);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Voucher Revoked" });
+  };
+
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1087,9 +1100,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                   <td className="p-6 font-black text-primary text-lg">${c.balance.toFixed(2)}</td>
                   <td className="p-6"><Badge variant={c.status === 'exhausted' ? "outline" : "secondary"} className="uppercase font-black text-[9px]">{c.status}</Badge></td>
                   <td className="p-6 text-center">
-                     <Button variant="ghost" size="icon" onClick={async () => {
-                        if (confirm("Revoke this stored value card?")) await deleteDoc(doc(firestore!, 'companies', companyId!, 'coupons', c.id));
-                     }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                     <Button variant="ghost" size="icon" onClick={() => handleRevokeVoucher(c.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
                   </td>
                 </tr>
               ))}</tbody>

@@ -44,7 +44,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, addDoc, updateDoc, increment, deleteDoc } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -233,6 +233,14 @@ export default function LaundryPage() {
       .finally(() => {
         setIsProcessing(false);
       });
+  };
+
+  const handleDeleteStudent = (studentId: string) => {
+    if (!firestore || !user?.companyId) return;
+    if (!confirm("Expel this subscriber? This will permanently remove their laundry account.")) return;
+    const docRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Subscriber Expelled" });
   };
 
   const handleRefillInventory = (e: React.FormEvent<HTMLFormElement>) => {
@@ -825,9 +833,7 @@ export default function LaundryPage() {
                               <td className="p-6 text-center">
                                  <div className="flex items-center justify-center gap-2">
                                     <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={() => {
-                                       if(confirm("Expel this subscriber?")) deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
-                                    }} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
                                  </div>
                               </td>
                            </tr>
@@ -1081,9 +1087,7 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
     const existing = schedules?.find(s => s.date === selectedDate && s.level === lv);
     if (existing) {
       const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', existing.id);
-      deleteDoc(docRef).catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'delete' }));
-      });
+      deleteDocumentNonBlocking(docRef);
     } else {
       const id = `${selectedDate}_LV${lv}`;
       const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', id);
@@ -1097,9 +1101,8 @@ function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: 
   const handleRemoveSchedule = (id: string) => {
     if (!firestore || !companyId) return;
     const docRef = doc(firestore, 'companies', companyId, 'laundrySchedules', id);
-    deleteDoc(docRef).then(() => toast({ title: "Turn Removed" })).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'delete' }));
-    });
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Turn Removed" });
   };
 
   return (

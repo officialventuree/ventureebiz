@@ -42,7 +42,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, setDoc, updateDoc, query, where, addDoc, increment, deleteDoc } from 'firebase/firestore';
 import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -205,8 +205,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
   const handleCancelOrder = (id: string) => {
     if (!firestore || !user?.companyId) return;
-    if (!confirm("Cancel this booking?")) return;
-    deleteDoc(doc(firestore, 'companies', user.companyId, 'transactions', id));
+    if (!confirm("Cancel this booking? The record will be permanently removed.")) return;
+    const docRef = doc(firestore, 'companies', user.companyId, 'transactions', id);
+    deleteDocumentNonBlocking(docRef);
     toast({ title: "Order Cancelled" });
   };
 
@@ -232,6 +233,14 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: bundleRef.path, operation: editingBundle ? 'update' : 'create', requestResourceData: newBundle }));
       });
+  };
+
+  const handleDeletePackage = (id: string) => {
+    if (!firestore || !user?.companyId) return;
+    if (!confirm("Delete this package?")) return;
+    const docRef = doc(firestore, 'companies', user.companyId, 'serviceTypes', serviceId, 'priceBundles', id);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Package Removed" });
   };
 
   const handleAddMaterial = (e: React.FormEvent<HTMLFormElement>) => {
@@ -288,6 +297,14 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({ path: materialRef.path, operation: editingMaterial ? 'update' : 'create', requestResourceData: material }));
       });
+  };
+
+  const handleDeleteMaterial = (id: string) => {
+    if (!firestore || !user?.companyId) return;
+    if (!confirm("Remove this material from inventory?")) return;
+    const docRef = doc(firestore, 'companies', user.companyId, 'products', id);
+    deleteDocumentNonBlocking(docRef);
+    toast({ title: "Material Removed" });
   };
 
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
@@ -395,7 +412,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                                 <td className="p-6 text-center">
                                    <div className="flex items-center justify-center gap-2">
                                       <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10" onClick={() => setEditingBundle(bundle)}><Edit2 className="w-4 h-4" /></Button>
-                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'serviceTypes', serviceId, 'priceBundles', bundle.id))}><Trash2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => handleDeletePackage(bundle.id)}><Trash2 className="w-4 h-4" /></Button>
                                    </div>
                                 </td>
                              </tr>
@@ -471,7 +488,7 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                                 <td className="p-6 text-center">
                                    <div className="flex items-center justify-center gap-2">
                                       <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/10" onClick={() => { setEditingMaterial(mat); setMatQuantity(mat.stock.toString()); setMatUnit(mat.unit!); setMatCostPerItem(mat.costPrice.toString()); }}><Edit2 className="w-4 h-4" /></Button>
-                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'products', mat.id))}><Trash2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => handleDeleteMaterial(mat.id)}><Trash2 className="w-4 h-4" /></Button>
                                    </div>
                                 </td>
                              </tr>
