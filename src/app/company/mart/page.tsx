@@ -670,13 +670,21 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     }));
   }, [coupons]);
 
-  // Real-time calculation of Coupon Bank statistics
+  // Real-time calculation of Coupon Bank statistics including liability breakdown
   const bankStats = useMemo(() => {
-    if (!coupons) return { totalLiability: 0, totalIssued: 0 };
-    return {
-      totalLiability: coupons.reduce((acc, c) => acc + (c.balance || 0), 0),
-      totalIssued: coupons.reduce((acc, c) => acc + (c.initialValue || 0), 0)
-    };
+    if (!coupons) return { totalLiability: 0, totalIssued: 0, cash: 0, card: 0, duitnow: 0 };
+    return coupons.reduce((acc, c) => {
+      const bal = c.balance || 0;
+      acc.totalLiability += bal;
+      acc.totalIssued += (c.initialValue || 0);
+      
+      // Breakdown based on original funding source
+      if (c.paymentMethod === 'cash') acc.cash += bal;
+      else if (c.paymentMethod === 'card') acc.card += bal;
+      else if (c.paymentMethod === 'duitnow') acc.duitnow += bal;
+      
+      return acc;
+    }, { totalLiability: 0, totalIssued: 0, cash: 0, card: 0, duitnow: 0 });
   }, [coupons]);
 
   const addToBatch = () => {
@@ -727,7 +735,8 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
             status: 'active',
             customerName,
             customerCompany: customerCompany || undefined,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            paymentMethod: purchaseMethod // Record funding source for liability breakdown
           };
           await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
         }
@@ -753,7 +762,22 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           <div className="space-y-1 relative z-10">
             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Coupon Bank: Stored-Value Liability</p>
             <h4 className="text-4xl font-black tracking-tighter text-primary">${bankStats.totalLiability.toFixed(2)}</h4>
-            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Total outstanding balance currently held across all active customer accounts.</p>
+            
+            <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-secondary/20">
+               <div>
+                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">Cash Vault</p>
+                  <p className="text-sm font-black text-foreground">${bankStats.cash.toFixed(2)}</p>
+               </div>
+               <div>
+                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">Bank (Card)</p>
+                  <p className="text-sm font-black text-foreground">${bankStats.card.toFixed(2)}</p>
+               </div>
+               <div>
+                  <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest mb-1">DuitNow Digital</p>
+                  <p className="text-sm font-black text-foreground">${bankStats.duitnow.toFixed(2)}</p>
+               </div>
+            </div>
+            <p className="text-[9px] font-bold text-muted-foreground opacity-60 mt-4 leading-tight">Total outstanding balance distributed by original funding gateway.</p>
           </div>
         </Card>
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">

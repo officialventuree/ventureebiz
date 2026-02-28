@@ -166,6 +166,7 @@ export interface Coupon {
   customerName: string;
   customerCompany?: string;
   createdAt: string;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface LuckyDrawEntry {
