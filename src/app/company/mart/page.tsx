@@ -130,14 +130,9 @@ export default function MartPage() {
 
   const subtotal = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
   
-  // Stored Value Logic: Aligning with deferred profit recognition
+  // Stored Value Logic
   const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
-  
-  // totalAmount reflects ACTUAL new money (cash/card) received now. 
-  // If paid by coupon, this is 0 to avoid double-counting revenue recorded at coupon issuance.
   const totalAmount = Math.max(0, subtotal - voucherDiscount);
-  
-  // totalProfit reflects actual realized margin from inventory reduction now.
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
@@ -154,8 +149,8 @@ export default function MartPage() {
       id: transactionId,
       companyId: user.companyId,
       module: 'mart',
-      totalAmount, // New Revenue recognized (Money-In)
-      profit: totalProfit, // Margin realized from inventory (Operating Profit)
+      totalAmount, 
+      profit: totalProfit, 
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || undefined,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
@@ -215,9 +210,7 @@ export default function MartPage() {
     setIsProcessing(false);
   };
 
-  // Analytics
   const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
-  const totalRevenue = martTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
 
   return (
     <div className="flex h-screen bg-background font-body">
@@ -675,6 +668,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     }));
   }, [coupons]);
 
+  // Real-time calculation of Coupon Bank statistics
   const bankStats = useMemo(() => {
     if (!coupons) return { totalLiability: 0, totalIssued: 0 };
     return {
@@ -713,15 +707,13 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     setIsProcessing(true);
 
     try {
-      // Record the cash inflow for vouchers
-      // Financial Logic: Record full revenue (cashflow) but 0 profit (deferred until redemption)
       const transactionId = crypto.randomUUID();
       await setDoc(doc(firestore, 'companies', companyId, 'transactions', transactionId), {
         id: transactionId,
         companyId,
         module: 'mart',
-        totalAmount: subtotal, // Full revenue recognized now (Cashflow)
-        profit: 0, // Profit deferred until inventory is exchanged for this credit
+        totalAmount: subtotal, 
+        profit: 0, 
         timestamp: new Date().toISOString(),
         customerName,
         customerCompany: customerCompany || undefined,
@@ -731,7 +723,6 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
         items: batch.map(item => ({ name: `Stored Value Issue: $${item.value} x${item.qty}`, price: item.value, quantity: item.qty }))
       });
 
-      // Generate individual voucher card records
       for (const item of batch) {
         for (let i = 0; i < item.qty; i++) {
           const id = crypto.randomUUID();
@@ -763,7 +754,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
   return (
     <div className="space-y-8">
-      {/* Coupon Bank Section */}
+      {/* Coupon Bank Section: Real-time Liability & Volume Tracking */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
@@ -772,7 +763,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           <div className="space-y-1 relative z-10">
             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Coupon Bank: Stored-Value Liability</p>
             <h4 className="text-4xl font-black tracking-tighter text-primary">${bankStats.totalLiability.toFixed(2)}</h4>
-            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Total outstanding balance across all active customer accounts.</p>
+            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Total outstanding balance currently held across all active customer accounts.</p>
           </div>
         </Card>
         <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 relative overflow-hidden group">
@@ -782,7 +773,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
           <div className="space-y-1 relative z-10">
             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none mb-1">Coupon Bank: Lifetime Value Issued</p>
             <h4 className="text-4xl font-black tracking-tighter text-foreground">${bankStats.totalIssued.toFixed(2)}</h4>
-            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Cumulative volume of initial balances ever generated by the business.</p>
+            <p className="text-[9px] font-bold text-muted-foreground opacity-60">Cumulative volume of initial credit ever generated by your business.</p>
           </div>
         </Card>
       </div>
