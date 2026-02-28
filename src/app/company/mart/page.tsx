@@ -84,6 +84,12 @@ export default function MartPage() {
   // Stored Value / Voucher State
   const [voucherSearch, setVoucherSearch] = useState('');
   const [selectedVoucher, setSelectedVoucher] = useState<Coupon | null>(null);
+
+  // Reversal Security State
+  const [isReverseDialogOpen, setIsReverseDialogOpen] = useState(false);
+  const [reverseKey, setReverseKey] = useState('');
+  const [pendingReverseTrans, setPendingReverseTrans] = useState<SaleTransaction | null>(null);
+  const [isReversing, setIsReversing] = useState(false);
   
   const scanInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,10 +128,10 @@ export default function MartPage() {
 
   // Auto-focus barcode scanner
   useEffect(() => {
-    if (scanInputRef.current && !showCheckoutDialog) {
+    if (scanInputRef.current && !showCheckoutDialog && !isReverseDialogOpen) {
       scanInputRef.current.focus();
     }
-  }, [showCheckoutDialog]);
+  }, [showCheckoutDialog, isReverseDialogOpen]);
 
   const filteredProducts = products?.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -261,11 +267,22 @@ export default function MartPage() {
 
   const martTransactions = transactions?.filter(t => t.module === 'mart') || [];
 
-  const handleReverseTransaction = (t: SaleTransaction) => {
-    if (!firestore || !user?.companyId) return;
-    if (!confirm("Reverse this transaction? Inventory will be restored and the record will be removed.")) return;
+  const handleInitiateReverse = (t: SaleTransaction) => {
+    setPendingReverseTrans(t);
+    setIsReverseDialogOpen(true);
+  };
+
+  const handleConfirmReverse = () => {
+    if (!firestore || !user?.companyId || !pendingReverseTrans || !companyDoc) return;
     
-    for (const item of t.items) {
+    if (reverseKey !== companyDoc.cancellationPassword) {
+      toast({ title: "Invalid Supervisor Key", description: "Authorization failed. Check your reset authority key.", variant: "destructive" });
+      return;
+    }
+
+    setIsReversing(true);
+    
+    for (const item of pendingReverseTrans.items) {
       if (item.productId) {
         const productRef = doc(firestore, 'companies', user.companyId, 'products', item.productId);
         updateDoc(productRef, { stock: increment(item.quantity) }).catch(async (err) => {
@@ -274,9 +291,14 @@ export default function MartPage() {
       }
     }
 
-    const transRef = doc(firestore, 'companies', user.companyId, 'transactions', t.id);
+    const transRef = doc(firestore, 'companies', user.companyId, 'transactions', pendingReverseTrans.id);
     deleteDocumentNonBlocking(transRef);
-    toast({ title: "Transaction Reversed" });
+    
+    toast({ title: "Transaction Reversed", description: "Inventory restored and ledger updated." });
+    setIsReverseDialogOpen(false);
+    setReverseKey('');
+    setPendingReverseTrans(null);
+    setIsReversing(false);
   };
 
   return (
@@ -496,7 +518,7 @@ export default function MartPage() {
                              <Button 
                                variant="ghost" 
                                size="icon" 
-                               onClick={() => handleReverseTransaction(t)}
+                               onClick={() => handleInitiateReverse(t)}
                                className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
                                title="Reverse Transaction"
                              >
@@ -533,6 +555,44 @@ export default function MartPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Supervisor Reversal Authorization Dialog */}
+      <Dialog open={isReverseDialogOpen} onOpenChange={setIsReverseDialogOpen}>
+        <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
+          <div className="bg-destructive p-10 text-destructive-foreground">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+              <Lock className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Reverse Authorization</DialogTitle>
+            <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
+              An 8-character Supervisor ID is required to reverse this transaction and restore inventory.
+            </DialogDescription>
+          </div>
+          <div className="p-8 space-y-6">
+            <div className="p-4 bg-secondary/10 rounded-2xl space-y-1">
+               <p className="text-[10px] font-black uppercase text-muted-foreground">Pending Reversal</p>
+               <p className="font-bold text-sm">Ref: #{pendingReverseTrans?.id.split('-')[0].toUpperCase()}</p>
+               <p className="font-black text-destructive">${pendingReverseTrans?.totalAmount.toFixed(2)}</p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Supervisor Authorization Key</Label>
+              <Input 
+                placeholder="ENTER 8-CHAR KEY" 
+                value={reverseKey}
+                onChange={(e) => setReverseKey(e.target.value.toUpperCase())}
+                className="h-14 rounded-2xl bg-secondary/10 border-none font-mono font-bold tracking-widest text-lg" 
+              />
+            </div>
+            <Button 
+              onClick={handleConfirmReverse} 
+              disabled={isReversing || reverseKey.length < 8}
+              className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
+            >
+              {isReversing ? "Authorizing..." : "Confirm & Reverse"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
