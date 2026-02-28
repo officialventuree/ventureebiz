@@ -5,14 +5,16 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, ShieldCheck, Settings2, Landmark } from 'lucide-react';
+import { Globe, ShieldCheck, Settings2, Landmark, Users, Plus, Trash2, LayoutGrid } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Company } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
 
 const WORLD_CURRENCIES = [
   { code: 'USD', symbol: '$', name: 'USD - US Dollar' },
@@ -43,6 +45,7 @@ export default function CompanySettingsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [newSquadron, setNewSquadron] = useState('');
 
   const companyRef = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
@@ -76,6 +79,38 @@ export default function CompanySettingsPage() {
       toast({ title: "Update Protocol Failed", description: e.message, variant: "destructive" });
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleAddSquadron = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firestore || !user?.companyId || !newSquadron.trim()) return;
+    setIsUpdating(true);
+
+    try {
+      const docRef = doc(firestore, 'companies', user.companyId);
+      await updateDoc(docRef, {
+        squadrons: arrayUnion(newSquadron.trim())
+      });
+      setNewSquadron('');
+      toast({ title: "Segment Registered", description: `${newSquadron} added to institution matrix.` });
+    } catch (e: any) {
+      toast({ title: "Registry Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRemoveSquadron = async (squadron: string) => {
+    if (!firestore || !user?.companyId) return;
+    try {
+      const docRef = doc(firestore, 'companies', user.companyId);
+      await updateDoc(docRef, {
+        squadrons: arrayRemove(squadron)
+      });
+      toast({ title: "Segment Decommissioned" });
+    } catch (e: any) {
+      toast({ title: "Removal Failed", variant: "destructive" });
     }
   };
 
@@ -121,21 +156,64 @@ export default function CompanySettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="p-6 bg-secondary/20 rounded-[24px] border border-secondary/30">
-                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-2">Architectural Note</p>
-                     <p className="text-sm font-bold text-muted-foreground italic leading-relaxed">
-                       Changing this value updates the currency symbol projection across Mart, Facility, Rent, and Service modules in real-time.
-                     </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-none shadow-2xl rounded-[56px] bg-white p-16 overflow-hidden relative border-4 border-primary/5">
+              <div className="absolute top-0 right-0 p-16 opacity-5 rotate-12">
+                <Users className="w-64 h-64" />
+              </div>
+              <div className="relative z-10 space-y-12">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-primary/10 rounded-[32px] flex items-center justify-center text-primary shadow-inner">
+                    <LayoutGrid className="w-10 h-10" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-black tracking-tighter">Institution Matrix</h2>
+                    <p className="text-muted-foreground font-bold text-lg">Manage Squadrons, Classes, or Operational Units</p>
                   </div>
                 </div>
 
-                <div className="bg-primary/5 p-8 rounded-[40px] border-4 border-dashed border-primary/20 flex items-center gap-8 max-w-xl">
-                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl text-primary shrink-0">
-                     <ShieldCheck className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase text-primary tracking-[0.3em]">Sync Protocol</p>
-                    <p className="text-sm font-bold text-muted-foreground mt-1 leading-relaxed">Regional settings are strictly enforced and synchronized across all provisioned access terminals for this business segment.</p>
+                <div className="space-y-8 pt-4">
+                  <form onSubmit={handleAddSquadron} className="flex gap-4 max-w-xl">
+                    <div className="flex-1 space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-muted-foreground px-2 tracking-[0.3em]">New Unit Identity</Label>
+                      <Input 
+                        placeholder="e.g. ALPHA SQUADRON" 
+                        value={newSquadron} 
+                        onChange={(e) => setNewSquadron(e.target.value.toUpperCase())}
+                        className="h-16 rounded-2xl bg-secondary/10 border-none font-black text-lg px-6 shadow-inner"
+                      />
+                    </div>
+                    <Button type="submit" disabled={isUpdating || !newSquadron.trim()} className="h-16 w-16 rounded-2xl self-end shadow-lg" size="icon">
+                      <Plus className="w-6 h-6" />
+                    </Button>
+                  </form>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {companyDoc?.squadrons?.map((squadron) => (
+                      <div key={squadron} className="bg-secondary/20 p-6 rounded-[24px] border border-secondary/30 flex justify-between items-center group hover:bg-secondary/30 transition-all">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-1">Operational Unit</p>
+                          <p className="font-black text-lg tracking-tight">{squadron}</p>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => handleRemoveSquadron(squadron)}
+                          className="h-10 w-10 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {(!companyDoc?.squadrons || companyDoc.squadrons.length === 0) && (
+                      <div className="col-span-full py-12 text-center border-4 border-dashed rounded-[40px] opacity-20">
+                        <Users className="w-12 h-12 mx-auto mb-4" />
+                        <p className="font-black uppercase text-xs tracking-widest">Registry Standby: No units defined</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -147,7 +225,7 @@ export default function CompanySettingsPage() {
                   <h3 className="font-black uppercase text-xs tracking-[0.4em] text-foreground">Strategic Compliance Protocol</h3>
                </div>
                <p className="text-sm font-bold text-muted-foreground leading-loose max-w-4xl">
-                 Venturee Studio provides currency-aware abstraction for localized business operations. While this adjustment updates the visual projection of financial data, operational accounting entries must remain consistent with the verified jurisdiction of your registered enterprise. Dynamic currency switching does not perform real-time FX conversion on historical data.
+                 Institution units defined here will propagate to all relevant business modules including Laundry Hub enrollment and Facility turn scheduling. Changing or removing a unit here will not affect historical records but will restrict future selections.
                </p>
             </Card>
           </div>

@@ -40,6 +40,7 @@ export interface Company {
   enabledModules?: ModuleType[];
   currencyCode?: string;
   currencySymbol?: string;
+  squadrons?: string[]; // Dynamic institution segments (Squadrons/Classes)
 }
 
 export interface PricingCycle {
