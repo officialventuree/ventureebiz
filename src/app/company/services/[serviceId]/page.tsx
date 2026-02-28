@@ -45,6 +45,17 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger 
+} from '@/components/ui/alert-dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -200,6 +211,18 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     toast({ title: "Pipeline Updated", description: `Service status is now ${newStatus}.` });
   };
 
+  const handleCancelOrder = (id: string) => {
+    if (!firestore || !user?.companyId) return;
+    const docRef = doc(firestore, 'companies', user.companyId, 'transactions', id);
+    deleteDoc(docRef).catch(async (err) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: docRef.path,
+        operation: 'delete'
+      }));
+    });
+    toast({ title: "Order Cancelled", description: "The booking has been removed from the pipeline." });
+  };
+
   const handleCreateBundle = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
@@ -338,9 +361,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             </TabsList>
 
             <TabsContent value="pipeline" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               <PipelineColumn title="Pending Queue" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleOpenStartWork(id)} actionLabel="Start Work" actionIcon={Play} />
-               <PipelineColumn title="Production" color="bg-primary" orders={pipeline.inProgress} onAction={(id) => handleUpdateStatus(id, 'completed')} actionLabel="Finish Service" actionIcon={CheckCircle2} />
-               <PipelineColumn title="Delivered" color="bg-green-600" orders={pipeline.completed} completed />
+               <PipelineColumn title="Pending Queue" color="bg-orange-500" orders={pipeline.pending} onAction={(id) => handleOpenStartWork(id)} actionLabel="Start Work" actionIcon={Play} onCancel={handleCancelOrder} />
+               <PipelineColumn title="Production" color="bg-primary" orders={pipeline.inProgress} onAction={(id) => handleUpdateStatus(id, 'completed')} actionLabel="Finish Service" actionIcon={CheckCircle2} onCancel={handleCancelOrder} />
+               <PipelineColumn title="Delivered" color="bg-green-600" orders={pipeline.completed} completed onCancel={handleCancelOrder} />
             </TabsContent>
 
             <TabsContent value="catalog" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -790,7 +813,7 @@ function SelectedConsumptionRow({ item, onUpdate, isMart }: { item: { product: P
   );
 }
 
-function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIcon: Icon, completed }: any) {
+function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIcon: Icon, completed, onCancel }: any) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between px-2">
@@ -802,13 +825,39 @@ function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIco
       <div className="space-y-4">
         {orders.map((order: any) => (
           <Card key={order.id} className={cn(
-            "border-none shadow-sm rounded-[28px] overflow-hidden group hover:shadow-md transition-all",
+            "border-none shadow-sm rounded-[28px] overflow-hidden group hover:shadow-md transition-all relative",
             completed ? "bg-green-50/30" : "bg-white"
           )}>
-            <CardContent className="p-6">
+            <div className="absolute top-4 right-4 z-10">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-[32px]">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="font-black">Cancel Service Booking?</AlertDialogTitle>
+                    <AlertDialogDescription className="font-medium">
+                      This will permanently remove the order for <strong>{order.customerName}</strong> from the pipeline. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-xl font-bold">Abort</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={() => onCancel(order.id)}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl font-black"
+                    >
+                      Confirm Cancellation
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+            <CardContent className="p-6 pt-10">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <p className="font-black text-foreground text-lg leading-tight">{order.items[0].name}</p>
+                  <p className="font-black text-foreground text-lg leading-tight pr-8">{order.items[0].name}</p>
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
                     {order.customerName} {order.customerCompany ? `(${order.customerCompany})` : ''}
                   </p>
@@ -844,5 +893,4 @@ function ReportStat({ label, value, color = "text-foreground" }: any) {
        <p className="text-[9px] font-black uppercase text-muted-foreground mb-1 tracking-widest leading-none">{label}</p>
        <h4 className={cn("text-xl font-black tracking-tighter", color)}>{value}</h4>
     </Card>
-  );
 }
