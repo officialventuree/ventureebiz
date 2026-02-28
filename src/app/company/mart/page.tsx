@@ -130,11 +130,14 @@ export default function MartPage() {
 
   const subtotal = cart.reduce((acc, item) => acc + item.product.sellingPrice * item.quantity, 0);
   
-  // Stored Value Logic
+  // Stored Value Logic: Aligning with deferred profit recognition
   const voucherDiscount = selectedVoucher ? Math.min(selectedVoucher.balance, subtotal) : 0;
-  // totalAmount reflects the ACTUAL cash/card received now (Revenue recognized now)
+  
+  // totalAmount reflects ACTUAL new money (cash/card) received now. 
+  // If paid by coupon, this is 0 to avoid double-counting revenue recorded at coupon issuance.
   const totalAmount = Math.max(0, subtotal - voucherDiscount);
-  // Net Profit realized now from inventory sold, regardless of payment source (Issuance deferred profit)
+  
+  // totalProfit reflects actual realized margin from inventory reduction now.
   const totalProfit = cart.reduce((acc, item) => acc + (item.product.sellingPrice - item.product.costPrice) * item.quantity, 0);
 
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalAmount) : 0;
@@ -151,8 +154,8 @@ export default function MartPage() {
       id: transactionId,
       companyId: user.companyId,
       module: 'mart',
-      totalAmount, // Recognized revenue (new money)
-      profit: totalProfit, // Realized margin
+      totalAmount, // New Revenue recognized (Money-In)
+      profit: totalProfit, // Margin realized from inventory (Operating Profit)
       discountApplied: voucherDiscount,
       couponCode: selectedVoucher?.code || undefined,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
@@ -566,11 +569,11 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
                 </div>
 
                 <div className="bg-secondary/10 p-4 rounded-2xl space-y-2">
-                   <div className="flex justify-between text-[10px] font-black uppercase">
+                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
                       <span>Stock Addition</span>
                       <span className="text-foreground">{(Number(unitsBought) * Number(itemsPerUnit))} {selectedProduct.unit}</span>
                    </div>
-                   <div className="flex justify-between text-[10px] font-black uppercase">
+                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
                       <span>Total Purchase</span>
                       <span className="text-primary">${(Number(unitsBought) * Number(costPerUnit)).toFixed(2)}</span>
                    </div>
@@ -703,13 +706,14 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
     try {
       // Record the cash inflow for vouchers
+      // Financial Logic: Record full revenue (cashflow) but 0 profit (deferred until redemption)
       const transactionId = crypto.randomUUID();
       await setDoc(doc(firestore, 'companies', companyId, 'transactions', transactionId), {
         id: transactionId,
         companyId,
         module: 'mart',
-        totalAmount: subtotal, // Full revenue recognized now
-        profit: 0, // 0 profit recognized at issuance; realized only upon redemption of inventory
+        totalAmount: subtotal, // Full revenue recognized now (Cashflow)
+        profit: 0, // Profit deferred until inventory is exchanged for this credit
         timestamp: new Date().toISOString(),
         customerName,
         customerCompany: customerCompany || undefined,

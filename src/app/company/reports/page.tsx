@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -85,7 +86,7 @@ export default function ReportsPage() {
           <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Strategic Intelligence</h1>
-              <p className="text-muted-foreground font-medium">Full Ecosystem Auditing & Performance Tracking</p>
+              <p className="text-muted-foreground font-medium">Standard Accounting Audit & Yield Tracking</p>
             </div>
             <div className="flex items-center gap-2">
                <Button onClick={handleExportCSV} className="rounded-xl font-black h-11 px-6 shadow-lg bg-primary">
@@ -103,8 +104,8 @@ export default function ReportsPage() {
 
              <TabsContent value="analysis" className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <SummaryCard label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} />
-                  <SummaryCard label="Operating Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
+                  <SummaryCard label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} tooltip="Total new cash inflow from all sources." />
+                  <SummaryCard label="Operating Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" tooltip="Realized margin after COGS/Inventory deduction." />
                   <SummaryCard label="Active Modules" value={moduleStats.length.toString()} icon={BarChart3} />
                   <SummaryCard label="Event Entries" value={luckyDraws?.length.toString() || '0'} icon={Trophy} />
                 </div>
@@ -112,7 +113,8 @@ export default function ReportsPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-3xl p-8">
                      <CardHeader className="px-0 pt-0">
-                        <CardTitle className="text-lg font-black">Module Performance</CardTitle>
+                        <CardTitle className="text-lg font-black">Cashflow Contribution</CardTitle>
+                        <CardDescription className="font-medium">Revenue recognized by department (Cash Inflow)</CardDescription>
                      </CardHeader>
                      <div className="h-[350px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -191,7 +193,12 @@ export default function ReportsPage() {
                                  )}
                                </div>
                             </td>
-                            <td className="p-4 font-black text-foreground">${t.totalAmount.toFixed(2)}</td>
+                            <td className="p-4">
+                               <p className="font-black text-foreground">${t.totalAmount.toFixed(2)}</p>
+                               {t.totalAmount === 0 && (
+                                 <p className="text-[9px] font-bold text-primary uppercase">Deferred Revenue</p>
+                               )}
+                            </td>
                             <td className="p-4">
                                <Badge className={cn(
                                  "font-black uppercase text-[9px] tracking-widest",
@@ -244,7 +251,7 @@ export default function ReportsPage() {
   );
 }
 
-function SummaryCard({ label, value, icon: Icon, color }: any) {
+function SummaryCard({ label, value, icon: Icon, color, tooltip }: any) {
   return (
     <Card className="border-none shadow-sm bg-white rounded-2xl group overflow-hidden hover:shadow-md transition-all">
        <CardContent className="p-6">
@@ -257,6 +264,7 @@ function SummaryCard({ label, value, icon: Icon, color }: any) {
                 <h4 className={cn("text-2xl font-black", color)}>{value}</h4>
              </div>
           </div>
+          {tooltip && <p className="text-[9px] font-bold text-muted-foreground opacity-60 leading-tight">{tooltip}</p>}
        </CardContent>
     </Card>
   );

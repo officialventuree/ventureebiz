@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -284,12 +285,15 @@ export default function LaundryPage() {
       const soapCost = (mlPerWash / 1000) * studentSoap.soapCostPerLitre;
       const profit = washRate - soapCost;
 
+      // Accounting Logic: Revenue was already recognized at Top-up/Subscription. 
+      // Set totalAmount to 0 to avoid double counting cashflow. 
+      // Profit is realized now through chemical consumption.
       await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
         id: crypto.randomUUID(),
         companyId: user.companyId,
         module: 'laundry',
-        totalAmount: washRate,
-        profit: profit,
+        totalAmount: 0, // Revenue recognized at issuance/top-up
+        profit: profit, // Realized margin
         timestamp: new Date().toISOString(),
         customerName: selectedStudent.name,
         status: 'completed',
@@ -327,12 +331,13 @@ export default function LaundryPage() {
       const soapCost = (mlPerWash / 1000) * payableSoap.soapCostPerLitre;
       const profit = amount - soapCost;
 
+      // New money wash: Record both revenue and profit immediately.
       await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
         id: crypto.randomUUID(),
         companyId: user.companyId,
         module: 'laundry',
-        totalAmount: amount,
-        profit: profit,
+        totalAmount: amount, // Money-in
+        profit: profit, // Immediate yield
         timestamp: new Date().toISOString(),
         customerName: payableName,
         paymentMethod: payablePaymentMethod,
@@ -361,12 +366,13 @@ export default function LaundryPage() {
       const amount = Number(topUpAmount);
       await updateDoc(doc(firestore, 'companies', user.companyId, 'laundryStudents', foundTopUpStudent.id), { balance: increment(amount) });
 
+      // Accounting Logic: Record cashflow (Revenue) but defer Profit (set to 0).
       await addDoc(collection(firestore, 'companies', user.companyId, 'transactions'), {
         id: crypto.randomUUID(),
         companyId: user.companyId,
         module: 'laundry',
-        totalAmount: amount,
-        profit: amount,
+        totalAmount: amount, // Cashflow recorded
+        profit: 0, // Profit deferred until service consumption
         timestamp: new Date().toISOString(),
         customerName: foundTopUpStudent.name,
         paymentMethod: topUpPaymentMethod,
@@ -878,7 +884,7 @@ export default function LaundryPage() {
                    <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
                       <DialogTrigger asChild>
                          <Button className="rounded-xl font-black shadow-lg gap-2 h-12 px-6">
-                            <Plus className="w-4 h-4" /> Add Assigned Date
+                            <Plus className="w-4 h-4 mr-2" /> Add Assigned Date
                          </Button>
                       </DialogTrigger>
                       <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden bg-white border-none shadow-2xl">
