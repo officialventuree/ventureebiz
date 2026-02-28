@@ -1,18 +1,19 @@
 
-export type Role = 'admin' | 'company' | 'viewer';
+export type Role = 'PlatformAdmin' | 'CompanyOwner' | 'CompanyViewer';
 export type CapitalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type ModuleType = 'mart' | 'laundry' | 'rent' | 'services';
 export type TransactionStatus = 'completed' | 'pending' | 'in-progress' | 'cancelled';
 export type RentalStatus = 'available' | 'rented' | 'maintenance';
 export type CouponStatus = 'active' | 'exhausted';
 export type PaymentMethod = 'cash' | 'card' | 'duitnow' | 'coupon';
+export type CompanyStatus = 'Active' | 'Expired' | 'Suspended' | 'Pending';
 
 export interface User {
-  id: string;
+  id: string; // Matches Firebase Auth UID
   name: string;
   username?: string;
   email: string;
-  password?: string;
+  password?: string; // For manual login reference in prototype
   role: Role;
   companyId?: string;
   enabledModules?: ModuleType[];
@@ -25,14 +26,83 @@ export interface Company {
   password?: string;
   cancellationPassword: string;
   createdAt: string;
+  registrationDate: string;
+  expiryDate?: string;
+  status: CompanyStatus;
+  currentSubscriptionId?: string;
   capitalLimit?: number;
-  injectedCapital?: number; // Extra funds added during the active cycle
+  injectedCapital?: number;
   capitalPeriod?: CapitalPeriod;
   capitalStartDate?: string;
   capitalEndDate?: string;
   duitNowQr?: string;
-  nextCapitalAmount?: number; // Accumulated pool from claimed capital
+  nextCapitalAmount?: number;
   enabledModules?: ModuleType[];
+}
+
+export interface Module {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface PricingCycle {
+  id: string;
+  name: string;
+  durationInDays: number;
+}
+
+export interface ModulePricing {
+  id: string;
+  moduleId: string;
+  pricingCycleId: string;
+  price: number;
+  currencyId: string;
+}
+
+export interface CompanySubscription {
+  id: string;
+  companyId: string;
+  pricingCycleId: string;
+  startDate: string;
+  endDate: string;
+  totalAmount: number;
+  status: string;
+  selectedModuleIds: string[];
+  paymentTransactionId: string;
+  isRenewal: boolean;
+  createdAt: string;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  companyId?: string;
+  companySubscriptionId?: string;
+  amount: number;
+  currencyId: string;
+  paymentMethod: PaymentMethod;
+  referenceCode?: string;
+  transactionDate: string;
+  status: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface PlatformProfitEntry {
+  id: string;
+  paymentTransactionId: string;
+  companyId: string;
+  amount: number;
+  currencyId: string;
+  entryDate: string;
+  type: 'InitialSubscription' | 'Renewal' | 'Refund';
+}
+
+export interface Currency {
+  id: string;
+  code: string;
+  symbol: string;
+  isPlatformOperatingCurrency: boolean;
 }
 
 export interface SaleItem {
@@ -45,32 +115,22 @@ export interface SaleItem {
   startDate?: string;
   endDate?: string;
   unit?: string;
-  soapUsedMl?: number;
 }
 
 export interface SaleTransaction {
   id: string;
   companyId: string;
   module: ModuleType;
-  serviceTypeId?: string;
-  totalAmount: number; // Revenue
+  totalAmount: number;
   profit: number;
-  totalCost?: number; // Actual expenditure for capital recovery
-  isCapitalClaimed?: boolean; // Tracking if capital portion has been recovered
+  totalCost?: number;
+  isCapitalClaimed?: boolean;
   timestamp: string;
   items: SaleItem[];
   status?: TransactionStatus;
   customerName?: string;
-  customerCompany?: string;
-  couponCode?: string;
-  discountApplied?: number;
   paymentMethod?: PaymentMethod;
   referenceNumber?: string;
-  luckyDrawEventId?: string;
-  // Advanced Service Fields
-  serviceRevenue?: number;
-  martRevenue?: number;
-  materialCost?: number;
 }
 
 export interface Product {
@@ -81,10 +141,8 @@ export interface Product {
   costPrice: number;
   sellingPrice: number;
   stock: number;
-  sku?: string;
   barcode?: string;
   unit?: string;
-  itemsPerUnit?: number;
 }
 
 export interface RentalItem {
@@ -132,10 +190,7 @@ export interface LaundryInventory {
   companyId: string;
   soapStockMl: number;
   soapCostPerLitre: number;
-  capacityMl: number;
   category: 'student' | 'payable';
-  lastBottleCost?: number;
-  lastBottleVolume?: number;
 }
 
 export interface LaundryLevelConfig {
@@ -170,26 +225,6 @@ export interface Coupon {
   expiryDate: string;
   status: CouponStatus;
   customerName: string;
-  customerCompany?: string;
   createdAt: string;
   paymentMethod?: PaymentMethod;
-}
-
-export interface LuckyDrawEntry {
-  id: string;
-  companyId: string;
-  customerName: string;
-  transactionId: string;
-  timestamp: string;
-  amount: number;
-  eventId: string;
-}
-
-export interface LuckyDrawEvent {
-  id: string;
-  companyId: string;
-  name: string;
-  minSpend: number;
-  isActive: boolean;
-  createdAt: string;
 }
