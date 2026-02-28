@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key, Plus } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key, Plus, Sparkles } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, doc, updateDoc, increment } from 'firebase/firestore';
@@ -104,12 +104,21 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || isLocked) return;
     setIsUpdating(true);
     
-    const updateData = {
+    // Determine if we need to subtract from nextCapitalAmount if they used prepopulate
+    const claimedPool = companyDoc?.nextCapitalAmount || 0;
+    // We don't automatically subtract, the logic is that formLimit is the total.
+    // If we want to truly "consume" the pool upon locking, we should clear it.
+    const updateData: any = {
       capitalLimit: formLimit,
       capitalPeriod: formPeriod,
       capitalStartDate: formStartDate,
-      capitalEndDate: calculatedEndDate
+      capitalEndDate: calculatedEndDate,
     };
+
+    // If the user prepopulated or used recovered funds, we clear the pool to avoid double-dipping
+    if (formLimit >= claimedPool && claimedPool > 0) {
+      updateData.nextCapitalAmount = 0;
+    }
 
     const docRef = doc(firestore, 'companies', user.companyId);
     
@@ -230,7 +239,7 @@ export default function CapitalControlPage() {
                        </div>
                        <DialogTitle className="text-2xl font-black">Capital Injection</DialogTitle>
                        <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
-                          Expand your active spending limit without resetting the current cycle period.
+                          Expand your active spending limit using recovered operational funds or manual cash.
                        </DialogDescription>
                     </div>
                     <div className="p-8 space-y-6">
@@ -405,12 +414,23 @@ export default function CapitalControlPage() {
                     <Settings className="w-6 h-6 text-primary" />
                     Setup Limit
                   </CardTitle>
-                  <CardDescription className="font-bold text-muted-foreground">Automatic end-date detection & lock-in</CardDescription>
+                  <CardDescription className="font-bold text-muted-foreground">Define your period and prepopulate from recovered funds.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Maximum Budget Limit ($)</label>
+                      <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Maximum Budget Limit ($)</label>
+                        {!isLocked && (companyDoc?.nextCapitalAmount || 0) > 0 && (
+                          <button 
+                            type="button"
+                            onClick={() => setFormLimit(companyDoc?.nextCapitalAmount || 0)}
+                            className="flex items-center gap-1 text-[9px] font-black text-primary uppercase hover:bg-primary/10 px-2 py-1 rounded-md transition-colors animate-pulse"
+                          >
+                            <Sparkles className="w-2.5 h-2.5" /> Use Recovered: ${(companyDoc?.nextCapitalAmount || 0).toFixed(2)}
+                          </button>
+                        )}
+                      </div>
                       <Input 
                         type="number" 
                         value={formLimit} 
