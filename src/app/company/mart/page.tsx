@@ -242,7 +242,7 @@ export default function MartPage() {
   };
 
   return (
-    <div className="flex h-screen bg-background font-body">
+    <div className="flex h-screen bg-background font-body overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-auto p-8 flex flex-col">
         <div className="mb-6 flex justify-between items-end">
@@ -263,8 +263,8 @@ export default function MartPage() {
           </Alert>
         )}
 
-        <Tabs defaultValue="pos" className="flex-1 flex flex-col">
-          <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm">
+        <Tabs defaultValue="pos" className="flex-1 flex flex-col overflow-auto">
+          <TabsList className="mb-4 bg-white/50 border self-start p-1 rounded-2xl shadow-sm shrink-0">
             <TabsTrigger value="pos" className="gap-2 rounded-xl px-6">POS Terminal</TabsTrigger>
             <TabsTrigger value="history" className="gap-2 rounded-xl px-6">History</TabsTrigger>
             <TabsTrigger value="inventory" className="gap-2 rounded-xl px-6">Inventory</TabsTrigger>
@@ -273,7 +273,7 @@ export default function MartPage() {
             <TabsTrigger value="billing" className="gap-2 rounded-xl px-6">Billing</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="pos" className="flex-1 overflow-hidden h-[calc(100vh-250px)]">
+          <TabsContent value="pos" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full overflow-hidden">
               <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
                 <div className="relative">
@@ -604,7 +604,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-8">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-12">
       <div className="lg:col-span-1">
         <Card className={cn(
           "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0"
@@ -926,7 +926,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-1">
-          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col sticky top-0 max-h-[calc(100vh-100px)]">
+          <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden flex flex-col sticky top-0 max-height-[calc(100vh-100px)]">
             <div className="p-8 pb-4">
               <h3 className="text-xl font-black">Batch Issue Stored Value</h3>
             </div>
@@ -1017,7 +1017,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
                   </div>
                 )}
 
-                {(purchaseMethod === 'card' || paymentMethod === 'duitnow') && (
+                {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
                   <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
                      {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
                        <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
