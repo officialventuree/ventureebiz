@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { 
   CalendarDays, 
   Plus, 
@@ -280,6 +281,17 @@ export default function RentPage() {
     reader.readAsDataURL(file);
   };
 
+  const sliderMax = useMemo(() => {
+    switch (selectedBillingPeriod) {
+      case 'hour': return 48;
+      case 'day': return 31;
+      case 'week': return 12;
+      case 'month': return 12;
+      case 'year': return 5;
+      default: return 30;
+    }
+  }, [selectedBillingPeriod]);
+
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -415,11 +427,11 @@ export default function RentPage() {
                           <p className="text-xl font-black text-foreground">{selectedAssetForAgreement.name}</p>
                         </div>
                         <div className="space-y-4">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Customer Full Name</Label>
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Full Name</Label>
                            <Input placeholder="Alice Smith" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
                         </div>
                         <div className="space-y-4">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Select Billing Period</Label>
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Select Billing Period</Label>
                            <Select value={selectedBillingPeriod} onValueChange={(v) => setSelectedBillingPeriod(v as any)}>
                               <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none"><SelectValue /></SelectTrigger>
                               <SelectContent className="rounded-xl font-bold">
@@ -431,12 +443,33 @@ export default function RentPage() {
                               </SelectContent>
                            </Select>
                         </div>
-                        <div className="space-y-1.5">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Rental Duration ({selectedBillingPeriod}s)</Label>
-                           <Input type="number" min="1" value={duration} onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
-                        </div>
+                        
                         <div className="space-y-4">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payment Method</Label>
+                           <div className="flex justify-between items-center px-1">
+                              <Label className="text-[10px] font-black uppercase text-muted-foreground">Rental Duration</Label>
+                              <Badge variant="secondary" className="font-black text-[10px] uppercase">{duration} {selectedBillingPeriod}{duration > 1 ? 's' : ''}</Badge>
+                           </div>
+                           <div className="flex items-center gap-4">
+                              <Input 
+                                type="number" 
+                                min="1" 
+                                value={duration} 
+                                onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))} 
+                                className="w-20 h-12 rounded-xl font-bold bg-secondary/10 border-none text-center" 
+                              />
+                              <Slider 
+                                value={[duration]} 
+                                min={1} 
+                                max={sliderMax} 
+                                step={1} 
+                                onValueChange={(v) => setDuration(v[0])}
+                                className="flex-1"
+                              />
+                           </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Payment Method</Label>
                           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
                             <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash_main" />
                             <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card_main" />
@@ -516,11 +549,11 @@ export default function RentPage() {
                    </div>
                    <form onSubmit={handleSaveAsset} className="space-y-5">
                       <div className="space-y-1.5">
-                        <Label className="text-[10px] font-black uppercase text-muted-foreground">Asset Name</Label>
+                        <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Asset Name</Label>
                         <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
                       </div>
                       <Separator />
-                      <p className="text-[10px] font-black uppercase text-primary tracking-widest">Rate Configuration</p>
+                      <p className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Rate Configuration</p>
                       <div className="space-y-4">
                          <RateInput id="hourly" label="Hourly" enabled={!!editingAsset?.hourlyRate} defaultValue={editingAsset?.hourlyRate} currencySymbol={currencySymbol} />
                          <RateInput id="daily" label="Daily" enabled={!!editingAsset?.dailyRate || !editingAsset} defaultValue={editingAsset?.dailyRate} currencySymbol={currencySymbol} />
