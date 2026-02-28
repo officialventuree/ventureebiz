@@ -12,11 +12,13 @@
         "password": { "type": "string" },
         "cancellationPassword": { "type": "string", "description": "8-character alphanumeric ID for resetting locked configurations." },
         "createdAt": { "type": "string", "format": "date-time" },
-        "capitalLimit": { "type": "number" },
+        "capitalLimit": { "type": "number", "description": "The base budget limit set at the start of the cycle." },
+        "injectedCapital": { "type": "number", "description": "Extra funds added to the spending capacity mid-cycle." },
         "capitalPeriod": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
         "capitalStartDate": { "type": "string", "format": "date" },
         "capitalEndDate": { "type": "string", "format": "date" },
-        "duitNowQr": { "type": "string" }
+        "duitNowQr": { "type": "string" },
+        "nextCapitalAmount": { "type": "number", "description": "The reinvestment pool balance available for allocation or injection." }
       },
       "required": ["id", "name", "email", "createdAt", "cancellationPassword"]
     },

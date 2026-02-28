@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -66,8 +67,12 @@ export default function CompanyDashboard() {
   }, [purchases, companyDoc]);
 
   const inventoryValue = products?.reduce((acc, p) => acc + (p.stock * p.costPrice), 0) || 0;
-  const capitalLimit = companyDoc?.capitalLimit || 10000;
-  const remainingCapital = Math.max(0, capitalLimit - totalCapitalUsed);
+  
+  const baseLimit = companyDoc?.capitalLimit || 0;
+  const injectedFunds = companyDoc?.injectedCapital || 0;
+  const totalCapacity = baseLimit + injectedFunds;
+  
+  const remainingCapital = Math.max(0, totalCapacity - totalCapitalUsed);
 
   // Module Stats
   const modules = ['mart', 'laundry', 'rent', 'services'];
@@ -111,13 +116,11 @@ export default function CompanyDashboard() {
         return;
       }
 
-      // 1. Move claimed portion to nextCapitalAmount pool in Company doc
       const companyRef = doc(firestore, 'companies', user.companyId);
       await updateDoc(companyRef, {
         nextCapitalAmount: increment(aggregateCapitalToClaim)
       });
 
-      // 2. Mark transactions as claimed (Non-blocking updates)
       for (const t of unclaimed) {
         const tRef = doc(firestore, 'companies', user.companyId, 'transactions', t.id);
         updateDoc(tRef, { isCapitalClaimed: true });
@@ -161,7 +164,13 @@ export default function CompanyDashboard() {
             <StatsCard icon={DollarSign} label="Gross Revenue" value={`$${totalRevenue.toFixed(2)}`} trend="Total" />
             <StatsCard icon={TrendingUp} label="Net Profit" value={`$${totalProfit.toFixed(2)}`} trend="Calculated" color="text-primary" />
             <StatsCard icon={Package} label="Inventory Value" value={`$${inventoryValue.toFixed(2)}`} trend="On Hand" color="text-foreground" />
-            <StatsCard icon={Wallet} label="Capital Balance" value={`$${remainingCapital.toFixed(2)}`} trend={`Limit: $${capitalLimit/1000}k`} color="text-foreground" />
+            <StatsCard 
+              icon={Wallet} 
+              label="Capital Balance" 
+              value={`$${remainingCapital.toFixed(2)}`} 
+              trend={`Cap: $${totalCapacity/1000}k`} 
+              color="text-foreground" 
+            />
           </div>
 
           {/* Cash Flow & Capital Claim Section */}
@@ -175,7 +184,7 @@ export default function CompanyDashboard() {
                   disabled={isClaiming || aggregateCapitalToClaim <= 0}
                   className="rounded-xl font-black h-12 px-8 shadow-xl gap-2 transition-all hover:scale-105 active:scale-95"
                 >
-                   {isClaiming ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                   {isClaiming ? <Zap className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                    Claim All Capital (${aggregateCapitalToClaim.toFixed(2)})
                 </Button>
              </div>
@@ -254,7 +263,7 @@ export default function CompanyDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <AlertItem label="Low Stock Warning" value={`${products?.filter(p => p.stock < 10).length || 0} items below threshold`} />
-                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / (capitalLimit || 1)) * 100).toFixed(1)}% utilized`} />
+                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / (totalCapacity || 1)) * 100).toFixed(1)}% utilized`} />
                   <AlertItem label="Pending Recoveries" value={`$${aggregateCapitalToClaim.toFixed(2)} to claim`} />
                 </CardContent>
               </Card>
@@ -318,27 +327,5 @@ function AlertItem({ label, value }: { label: string, value: string }) {
       <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1 tracking-widest">{label}</p>
       <p className="font-black text-sm">{value}</p>
     </div>
-  );
-}
-
-function RefreshCw(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
   );
 }

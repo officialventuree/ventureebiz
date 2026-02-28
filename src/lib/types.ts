@@ -25,6 +25,7 @@ export interface Company {
   cancellationPassword: string;
   createdAt: string;
   capitalLimit?: number;
+  injectedCapital?: number; // Extra funds added during the active cycle
   capitalPeriod?: CapitalPeriod;
   capitalStartDate?: string;
   capitalEndDate?: string;

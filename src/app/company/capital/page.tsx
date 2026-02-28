@@ -14,10 +14,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { CapitalPurchase, Company, CapitalPeriod } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { Progress } from '@/components/ui/progress';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
 export default function CapitalControlPage() {
@@ -31,7 +30,7 @@ export default function CapitalControlPage() {
   const [isTopUpPoolOpen, setIsTopUpPoolOpen] = useState(false);
   const [resetKey, setResetKey] = useState('');
   
-  // Injection State (From Pool to Limit)
+  // Injection State (From Pool to Injected Bucket)
   const [injectAmount, setInjectAmount] = useState<number | string>('');
   const [isInjecting, setIsInjecting] = useState(false);
 
@@ -80,9 +79,12 @@ export default function CapitalControlPage() {
   }, [purchases, companyDoc]);
 
   const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
-  const limit = companyDoc?.capitalLimit || 0;
-  const remaining = Math.max(0, limit - totalSpent);
-  const utilization = limit > 0 ? (totalSpent / limit) * 100 : 0;
+  const baseLimit = companyDoc?.capitalLimit || 0;
+  const injectedFunds = companyDoc?.injectedCapital || 0;
+  const totalCapacity = baseLimit + injectedFunds;
+  
+  const remaining = Math.max(0, totalCapacity - totalSpent);
+  const utilization = totalCapacity > 0 ? (totalSpent / totalCapacity) * 100 : 0;
   const currentPool = companyDoc?.nextCapitalAmount || 0;
 
   const calculatedEndDate = useMemo(() => {
@@ -109,11 +111,10 @@ export default function CapitalControlPage() {
     e.preventDefault();
     if (!firestore || !user?.companyId || isLocked) return;
 
-    // STRICT VALIDATION: Initial limit must exist in the pool
     if (formLimit > currentPool) {
       toast({ 
         title: "Insufficient Pool Funds", 
-        description: `Your initial limit ($${formLimit}) exceeds the verified pool balance ($${currentPool.toFixed(2)}). Please top-up the pool first.`,
+        description: `Your initial limit exceeds the verified pool balance ($${currentPool.toFixed(2)}).`,
         variant: "destructive" 
       });
       return;
@@ -122,17 +123,18 @@ export default function CapitalControlPage() {
     setIsUpdating(true);
     const updateData: any = {
       capitalLimit: formLimit,
+      injectedCapital: 0, // Reset injections for new cycle
       capitalPeriod: formPeriod,
       capitalStartDate: formStartDate,
       capitalEndDate: calculatedEndDate,
-      nextCapitalAmount: increment(-formLimit) // Strictly deduct from pool
+      nextCapitalAmount: increment(-formLimit)
     };
 
     const docRef = doc(firestore, 'companies', user.companyId);
     
     updateDoc(docRef, updateData)
       .then(() => {
-        toast({ title: "Configuration Locked", description: `Budget cycle active until ${calculatedEndDate}. Funds allocated from pool.` });
+        toast({ title: "Configuration Locked", description: `Budget cycle active until ${calculatedEndDate}.` });
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -164,10 +166,7 @@ export default function CapitalControlPage() {
 
     updateDoc(docRef, updateData)
       .then(() => {
-        toast({ 
-          title: "Reinvestment Pool Expanded", 
-          description: `$${amount.toFixed(2)} added to your available capital pool.` 
-        });
+        toast({ title: "Pool Expanded", description: `$${amount.toFixed(2)} added to reinvestment pool.` });
         setIsTopUpPoolOpen(false);
         setPoolTopUpAmount('');
       })
@@ -195,29 +194,21 @@ export default function CapitalControlPage() {
       return;
     }
 
-    // STRICT VALIDATION: Injection must exist in the pool
     if (amount > currentPool) {
-      toast({ 
-        title: "Insufficient Pool Balance", 
-        description: `You only have $${currentPool.toFixed(2)} verified in your reinvestment pool.`,
-        variant: "destructive" 
-      });
+      toast({ title: "Insufficient Pool Balance", variant: "destructive" });
       setIsInjecting(false);
       return;
     }
 
     const docRef = doc(firestore, 'companies', user.companyId);
     const updateData = {
-      capitalLimit: increment(amount),
-      nextCapitalAmount: increment(-amount) // Subtract from pool
+      injectedCapital: increment(amount), // Increment separate bucket
+      nextCapitalAmount: increment(-amount)
     };
 
     updateDoc(docRef, updateData)
       .then(() => {
-        toast({ 
-          title: "Capital Injected", 
-          description: `Active limit expanded by $${amount.toFixed(2)} using reinvestment pool.` 
-        });
+        toast({ title: "Capital Injected", description: `Spending capacity expanded by $${amount.toFixed(2)}.` });
         setIsInjectDialogOpen(false);
         setInjectAmount('');
       })
@@ -237,7 +228,7 @@ export default function CapitalControlPage() {
     if (!firestore || !user?.companyId || !companyDoc) return;
     
     if (resetKey !== companyDoc.cancellationPassword) {
-      toast({ title: "Invalid Authorization", description: "The Reset Key provided is incorrect.", variant: "destructive" });
+      toast({ title: "Invalid Authorization", variant: "destructive" });
       return;
     }
 
@@ -245,6 +236,7 @@ export default function CapitalControlPage() {
     const docRef = doc(firestore, 'companies', user.companyId);
     const resetData = {
       capitalLimit: 0,
+      injectedCapital: 0,
       capitalPeriod: null,
       capitalStartDate: null,
       capitalEndDate: null
@@ -252,7 +244,7 @@ export default function CapitalControlPage() {
 
     updateDoc(docRef, resetData)
       .then(() => {
-        toast({ title: "Cycle Unlocked", description: "Capital configuration reset. Funds remain in next budget cycle or pool." });
+        toast({ title: "Cycle Unlocked", description: "Capital configuration reset." });
         setIsResetDialogOpen(false);
         setResetKey('');
       })
@@ -276,144 +268,24 @@ export default function CapitalControlPage() {
           <div className="mb-8 flex justify-between items-end">
             <div>
               <h1 className="text-3xl font-black font-headline tracking-tight">Capital Control</h1>
-              <p className="text-muted-foreground font-medium">Strategic Spending Limits & Procurement Guardrails</p>
+              <p className="text-muted-foreground font-medium">Precision Spending Limits & Procurement Guardrails</p>
             </div>
             <div className="flex gap-4">
-              <Dialog open={isTopUpPoolOpen} onOpenChange={setIsTopUpPoolOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm">
-                    <Plus className="w-4 h-4" /> Top-up Pool
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
-                  <div className="bg-primary p-10 text-primary-foreground">
-                     <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                        <Landmark className="w-6 h-6" />
-                     </div>
-                     <DialogTitle className="text-2xl font-black">External Pool Inflow</DialogTitle>
-                     <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
-                        Add external business injections into your Reinvestment Pool.
-                     </DialogDescription>
-                  </div>
-                  <div className="p-8 space-y-6">
-                     <div className="space-y-2">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Verification: Inflow Amount ($)</Label>
-                        <Input 
-                          type="number" 
-                          placeholder="0.00" 
-                          className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
-                          value={poolTopUpAmount}
-                          onChange={(e) => setPoolTopUpAmount(e.target.value)}
-                        />
-                     </div>
-                     <Button 
-                      onClick={handleTopUpPool} 
-                      disabled={isToppingUpPool || !poolTopUpAmount}
-                      className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
-                     >
-                        {isToppingUpPool ? "Authorizing..." : `Deposit $${Number(poolTopUpAmount || 0).toFixed(2)} to Pool`}
-                     </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={() => setIsTopUpPoolOpen(true)} variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm">
+                <Plus className="w-4 h-4" /> Top-up Pool
+              </Button>
 
               {isLocked && (
-                <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="rounded-2xl h-12 px-6 font-black gap-2 shadow-xl bg-primary" disabled={currentPool <= 0}>
-                      <Zap className="w-4 h-4" /> Inject from Pool
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
-                    <div className="bg-primary p-10 text-primary-foreground">
-                       <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                          <ArrowDownLeft className="w-6 h-6" />
-                       </div>
-                       <DialogTitle className="text-2xl font-black">Capital Injection</DialogTitle>
-                       <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
-                          Withdraw funds from your verified Reinvestment Pool into the active spending limit.
-                       </DialogDescription>
-                    </div>
-                    <div className="p-8 space-y-6">
-                       <div className="p-6 bg-secondary/10 rounded-2xl space-y-2 border-2 border-dashed border-primary/20">
-                          <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none">Available Pool Balance</p>
-                          <p className="text-3xl font-black text-primary">${currentPool.toFixed(2)}</p>
-                          <p className="text-[9px] font-bold text-muted-foreground opacity-60">Verified capital ready for allocation</p>
-                       </div>
-
-                       <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Withdraw & Inject Amount ($)</Label>
-                          <Input 
-                            type="number" 
-                            placeholder="0.00" 
-                            max={currentPool}
-                            className={cn(
-                              "h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl",
-                              Number(injectAmount) > currentPool && "text-destructive"
-                            )}
-                            value={injectAmount}
-                            onChange={(e) => setInjectAmount(e.target.value)}
-                          />
-                          {Number(injectAmount) > currentPool && (
-                            <p className="text-[10px] font-black text-destructive uppercase px-1 flex items-center gap-1 mt-1">
-                              <AlertCircle className="w-3 h-3" /> Exceeds available pool balance
-                            </p>
-                          )}
-                       </div>
-
-                       <Button 
-                        onClick={handleInjectFunds} 
-                        disabled={isInjecting || Number(injectAmount) > currentPool || !injectAmount}
-                        className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
-                       >
-                          {isInjecting ? "Processing..." : `Confirm Injection`}
-                       </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <Button onClick={() => setIsInjectDialogOpen(true)} className="rounded-2xl h-12 px-6 font-black gap-2 shadow-xl bg-primary" disabled={currentPool <= 0}>
+                  <Zap className="w-4 h-4" /> Inject from Pool
+                </Button>
               )}
 
-              {isLocked ? (
-                <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm transition-all">
-                      <RefreshCw className="w-4 h-4" /> Reset Configuration
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
-                    <div className="bg-destructive p-10 text-destructive-foreground">
-                      <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                        <Lock className="w-6 h-6" />
-                      </div>
-                      <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Emergency Unlock</DialogTitle>
-                      <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
-                        An 8-character Reset Key (provided by your Admin) is required to override this locked budget cycle.
-                      </DialogDescription>
-                    </div>
-                    <div className="p-8 space-y-6">
-                      <div className="space-y-2">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorization Reset Key</Label>
-                        <div className="relative">
-                          <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                          <Input 
-                            placeholder="ENTER 8-CHAR KEY" 
-                            value={resetKey}
-                            onChange={(e) => setResetKey(e.target.value.toUpperCase())}
-                            className="h-14 rounded-2xl bg-secondary/10 border-none pl-12 font-mono font-bold tracking-widest text-lg" 
-                          />
-                        </div>
-                      </div>
-                      <Button 
-                        onClick={handleResetCycle} 
-                        disabled={isResetting || resetKey.length < 8}
-                        className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
-                      >
-                        {isResetting ? "Authorizing..." : "Confirm & Unlock Configuration"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              ) : null}
+              {isLocked && (
+                <Button onClick={() => setIsResetDialogOpen(true)} variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm">
+                  <RefreshCw className="w-4 h-4" /> Reset Configuration
+                </Button>
+              )}
             </div>
           </div>
 
@@ -427,7 +299,7 @@ export default function CapitalControlPage() {
                   <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">Live Capital Utilization</p>
                   <CardTitle className="text-6xl font-black tracking-tighter">${totalSpent.toFixed(2)}</CardTitle>
                   <CardDescription className="font-bold text-lg mt-2">
-                    Cycle: {companyDoc?.capitalStartDate || "Pending"} → {companyDoc?.capitalEndDate || "Pending"}
+                    Total Capacity: ${totalCapacity.toLocaleString()} (Base: ${baseLimit} + Injected: ${injectedFunds})
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
@@ -436,7 +308,7 @@ export default function CapitalControlPage() {
                       <span className={cn(utilization > 80 ? "text-destructive" : "text-primary")}>
                         {utilization.toFixed(1)}% Consumed
                       </span>
-                      <span className="text-muted-foreground">Limit: ${limit.toLocaleString()}</span>
+                      <span className="text-muted-foreground">Period: {companyDoc?.capitalStartDate || "Pending"} → {companyDoc?.capitalEndDate || "Pending"}</span>
                     </div>
                     <div className="relative h-6 w-full bg-secondary/50 rounded-2xl overflow-hidden">
                        <div 
@@ -478,7 +350,7 @@ export default function CapitalControlPage() {
                  <CardHeader className="bg-secondary/10 p-8">
                     <CardTitle className="flex items-center gap-3 text-xl font-black">
                       <History className="w-6 h-6 text-primary" />
-                      Procurement Intelligence Log (Active Cycle)
+                      Procurement Log (Active Cycle)
                     </CardTitle>
                  </CardHeader>
                  <CardContent className="p-0">
@@ -488,7 +360,7 @@ export default function CapitalControlPage() {
                             <div>
                                <p className="font-black text-foreground text-lg">{p.description}</p>
                                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mt-1">
-                                 {new Date(p.timestamp).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                 {new Date(p.timestamp).toLocaleDateString()} at {new Date(p.timestamp).toLocaleTimeString()}
                                </p>
                             </div>
                             <p className="text-2xl font-black text-destructive tracking-tighter">-${p.amount.toFixed(2)}</p>
@@ -513,15 +385,15 @@ export default function CapitalControlPage() {
                 <CardHeader className="bg-primary/10 p-10">
                   <CardTitle className="flex items-center gap-3 text-xl font-black">
                     <Settings className="w-6 h-6 text-primary" />
-                    Setup Limit
+                    Setup Base Limit
                   </CardTitle>
-                  <CardDescription className="font-bold text-muted-foreground">Allocate capital from your verified reinvestment pool.</CardDescription>
+                  <CardDescription className="font-bold text-muted-foreground">Allocate initial capital from verified pool.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-10">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     <div className="space-y-2">
                       <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Initial Budget Limit ($)</label>
+                        <label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Base Budget Limit ($)</label>
                         {!isLocked && currentPool > 0 && (
                           <button 
                             type="button"
@@ -543,11 +415,6 @@ export default function CapitalControlPage() {
                         )} 
                         required 
                       />
-                      {!isLocked && formLimit > currentPool && (
-                        <p className="text-[10px] font-black text-destructive uppercase px-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> Exceeds available pool funds
-                        </p>
-                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -609,25 +476,6 @@ export default function CapitalControlPage() {
                 </CardContent>
               </Card>
 
-              {isLocked && utilization > 75 && (
-                <Card className="bg-destructive border-none text-destructive-foreground shadow-2xl rounded-[32px] animate-pulse">
-                   <CardHeader className="p-8 pb-4">
-                      <CardTitle className="flex items-center gap-3 text-sm font-black uppercase tracking-widest">
-                        <AlertCircle className="w-6 h-6" />
-                        Proximity Warning
-                      </CardTitle>
-                   </CardHeader>
-                   <CardContent className="p-8 pt-0 space-y-6">
-                      <p className="text-sm font-bold leading-relaxed opacity-90">
-                        Consumption has reached {utilization.toFixed(0)}%. Procurement protocol will block all transactions exceeding the remaining ${remaining.toFixed(2)} balance.
-                      </p>
-                      <div className="h-2 w-full bg-black/20 rounded-full overflow-hidden">
-                         <div className="h-full bg-white" style={{ width: `${Math.min(utilization, 100)}%` }} />
-                      </div>
-                   </CardContent>
-                </Card>
-              )}
-
               <Card className="border-none shadow-sm bg-secondary/10 rounded-[32px] p-8">
                  <CardHeader className="p-0 mb-4">
                     <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest flex items-center gap-2">
@@ -636,7 +484,7 @@ export default function CapitalControlPage() {
                  </CardHeader>
                  <CardContent className="p-0">
                     <p className="text-xs font-bold leading-relaxed text-muted-foreground italic">
-                      "By enforcing strict pool validation, we ensure that spending limits are always backed by verified funds recovered from business operations or manual injections."
+                      "Injected funds allow mid-cycle scaling without disrupting original strategic dates. Total capacity is the sum of base and extra funding."
                     </p>
                  </CardContent>
               </Card>
@@ -644,18 +492,112 @@ export default function CapitalControlPage() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
 
-function PaymentOption({ value, label, icon: Icon, id }: any) {
-  return (
-    <div className="flex-1">
-      <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center">
-        <Icon className="mb-2 h-7 w-7 text-primary" />
-        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
-      </Label>
+      {/* Dialogs */}
+      <Dialog open={isTopUpPoolOpen} onOpenChange={setIsTopUpPoolOpen}>
+        <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
+          <div className="bg-primary p-10 text-primary-foreground">
+             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                <Landmark className="w-6 h-6" />
+             </div>
+             <DialogTitle className="text-2xl font-black">External Pool Inflow</DialogTitle>
+             <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
+                Add external business injections into your Reinvestment Pool.
+             </DialogDescription>
+          </div>
+          <div className="p-8 space-y-6">
+             <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Amount ($)</Label>
+                <Input 
+                  type="number" 
+                  placeholder="0.00" 
+                  className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
+                  value={poolTopUpAmount}
+                  onChange={(e) => setPoolTopUpAmount(e.target.value)}
+                />
+             </div>
+             <Button 
+              onClick={handleTopUpPool} 
+              disabled={isToppingUpPool || !poolTopUpAmount}
+              className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
+             >
+                {isToppingUpPool ? "Authorizing..." : `Deposit to Pool`}
+             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isInjectDialogOpen} onOpenChange={setIsInjectDialogOpen}>
+        <DialogContent className="rounded-[32px] max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl">
+          <div className="bg-primary p-10 text-primary-foreground">
+             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                <ArrowDownLeft className="w-6 h-6" />
+             </div>
+             <DialogTitle className="text-2xl font-black">Strategic Injection</DialogTitle>
+             <DialogDescription className="text-primary-foreground/80 font-bold mt-2">
+                Withdraw funds from pool into active spending capacity.
+             </DialogDescription>
+          </div>
+          <div className="p-8 space-y-6">
+             <div className="p-6 bg-secondary/10 rounded-2xl space-y-2 border-2 border-dashed border-primary/20">
+                <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest leading-none">Available Pool Balance</p>
+                <p className="text-3xl font-black text-primary">${currentPool.toFixed(2)}</p>
+             </div>
+
+             <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Injection Amount ($)</Label>
+                <Input 
+                  type="number" 
+                  placeholder="0.00" 
+                  max={currentPool}
+                  className="h-14 rounded-2xl bg-secondary/10 border-none font-black text-xl"
+                  value={injectAmount}
+                  onChange={(e) => setInjectAmount(e.target.value)}
+                />
+             </div>
+
+             <Button 
+              onClick={handleInjectFunds} 
+              disabled={isInjecting || Number(injectAmount) > currentPool || !injectAmount}
+              className="w-full h-16 rounded-[24px] font-black text-lg shadow-xl"
+             >
+                {isInjecting ? "Processing..." : `Confirm Injection`}
+             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
+          <div className="bg-destructive p-10 text-destructive-foreground">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+              <Lock className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Emergency Unlock</DialogTitle>
+            <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
+              An 8-character Reset Key is required to override this locked budget cycle.
+            </DialogDescription>
+          </div>
+          <div className="p-8 space-y-6">
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Authorization Reset Key</Label>
+              <Input 
+                placeholder="ENTER 8-CHAR KEY" 
+                value={resetKey}
+                onChange={(e) => setResetKey(e.target.value.toUpperCase())}
+                className="h-14 rounded-2xl bg-secondary/10 border-none font-mono font-bold tracking-widest text-lg" 
+              />
+            </div>
+            <Button 
+              onClick={handleResetCycle} 
+              disabled={isResetting || resetKey.length < 8}
+              className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
+            >
+              {isResetting ? "Authorizing..." : "Confirm & Unlock"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
