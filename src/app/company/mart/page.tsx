@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -50,7 +51,7 @@ import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNon
 import { collection, doc, setDoc, updateDoc, increment, query, where, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Product, SaleTransaction, Coupon, Company, PaymentMethod } from '@/lib/types';
+import { Product, SaleTransaction, Coupon, Company, PaymentMethod, CapitalPurchase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
@@ -113,10 +114,32 @@ export default function MartPage() {
     return query(collection(firestore, 'companies', user.companyId, 'coupons'), where('status', '==', 'active'));
   }, [firestore, user?.companyId]);
 
+  const purchasesQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'purchases');
+  }, [firestore, user?.companyId]);
+
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: products } = useCollection<Product>(productsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: vouchers } = useCollection<Coupon>(vouchersQuery);
+  const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return purchases.filter(p => {
+      const pDate = new Date(p.timestamp);
+      return pDate >= start && pDate <= end;
+    });
+  }, [purchases, companyDoc]);
+
+  const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
+  const totalCapacity = (companyDoc?.capitalLimit || 0) + (companyDoc?.injectedCapital || 0);
+  const remainingBudget = Math.max(0, totalCapacity - totalSpent);
 
   const isBudgetActive = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
@@ -125,6 +148,8 @@ export default function MartPage() {
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
+
+  const canProcure = isBudgetActive && remainingBudget > 0;
 
   // Auto-focus barcode scanner
   useEffect(() => {
@@ -310,6 +335,15 @@ export default function MartPage() {
             <h1 className="text-3xl font-black font-headline text-foreground tracking-tight">Mart Control</h1>
             <p className="text-muted-foreground font-bold text-sm">Retail Logistics & Analytics</p>
           </div>
+          <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
+            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBudget > 0 ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive")}>
+               <Wallet className="w-5 h-5" />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p>
+               <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>${remainingBudget.toFixed(2)}</p>
+            </div>
+          </Card>
         </div>
 
         {!isBudgetActive && (
@@ -542,7 +576,7 @@ export default function MartPage() {
           </TabsContent>
 
           <TabsContent value="inventory" className="flex-1 overflow-auto">
-            <InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} />
+            <InventoryManager companyId={user?.companyId} products={products} isBudgetActive={isBudgetActive} remainingBudget={remainingBudget} />
           </TabsContent>
           <TabsContent value="coupons" className="flex-1 overflow-auto">
             <CouponManager companyId={user?.companyId} companyDoc={companyDoc} />
@@ -597,7 +631,7 @@ export default function MartPage() {
   );
 }
 
-function InventoryManager({ companyId, products, isBudgetActive }: { companyId?: string, products: Product[] | null, isBudgetActive: boolean }) {
+function InventoryManager({ companyId, products, isBudgetActive, remainingBudget }: { companyId?: string, products: Product[] | null, isBudgetActive: boolean, remainingBudget: number }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -633,9 +667,19 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     }
   };
 
+  const refillYield = (Number(unitsBought) * Number(itemsPerUnit));
+  const totalRefillCost = (Number(unitsBought) * Number(costPerUnit));
+  const profitPerIndividualItem = Number(retailPrice) - (Number(costPerUnit) / (Number(itemsPerUnit) || 1));
+
   const handleConfirmRefill = (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !companyId || !selectedProduct) return;
+
+    if (totalRefillCost > remainingBudget) {
+      toast({ title: "Insufficient Budget", description: "This refill exceeds your remaining cycle budget.", variant: "destructive" });
+      return;
+    }
+
     setIsProcessing(true);
 
     const units = Number(unitsBought);
@@ -690,28 +734,34 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   const handleAddNew = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !companyId) return;
-    setIsProcessing(true);
     const formData = new FormData(e.currentTarget);
+    
+    const cost = Number(formData.get('cost'));
+    const stock = Number(formData.get('stock'));
+    const totalInitialCost = cost * stock;
+
+    if (!editingProduct && totalInitialCost > remainingBudget) {
+      toast({ title: "Insufficient Budget", description: "Initial stock registry exceeds budget.", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessing(true);
     const id = editingProduct?.id || crypto.randomUUID();
     
     // When editing, preserve locked fields
-    const cost = editingProduct ? editingProduct.costPrice : Number(formData.get('cost'));
-    const stock = editingProduct ? editingProduct.stock : Number(formData.get('stock'));
     const unit = editingProduct ? editingProduct.unit : formData.get('unit') as string;
     const price = editingProduct ? editingProduct.sellingPrice : Number(formData.get('price'));
     const ipu = editingProduct ? editingProduct.itemsPerUnit : Number(formData.get('ipu') || 1);
     
-    const totalInitialCost = cost * stock;
-
     const productData: Product = {
       id,
       companyId,
       name: formData.get('name') as string,
       unit,
       barcode: formData.get('barcode') as string,
-      costPrice: cost,
+      costPrice: editingProduct ? editingProduct.costPrice : cost,
       sellingPrice: price,
-      stock: stock,
+      stock: editingProduct ? editingProduct.stock : stock,
       itemsPerUnit: ipu
     };
 
@@ -759,21 +809,20 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     toast({ title: "Product Removed" });
   };
 
-  const refillYield = (Number(unitsBought) * Number(itemsPerUnit));
-  const totalRefillCost = (Number(unitsBought) * Number(costPerUnit));
-  const profitPerIndividualItem = Number(retailPrice) - (Number(costPerUnit) / (Number(itemsPerUnit) || 1));
+  const canProcure = isBudgetActive && remainingBudget > 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 pb-12">
       <div className="lg:col-span-1">
         <Card className={cn(
-          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0"
+          "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-0",
+          !canProcure && "grayscale opacity-80"
         )}>
           <div className="flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-              <RefreshCw className="w-5 h-5" />
+            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
+              {canProcure ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
             </div>
-            <h3 className="text-xl font-black">Stock Refill</h3>
+            <h3 className="text-xl font-black">{canProcure ? 'Stock Refill' : 'Refill Locked'}</h3>
           </div>
 
           <div className="space-y-6">
@@ -783,6 +832,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                   <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
                     placeholder="SCAN BARCODE..." 
+                    disabled={!canProcure}
                     className="pl-10 h-12 rounded-xl bg-secondary/10 border-none font-black"
                     value={refillScan}
                     onChange={(e) => setRefillScan(e.target.value)}
@@ -793,6 +843,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
                     placeholder="SEARCH ASSET..." 
+                    disabled={!canProcure}
                     className="pl-10 h-10 rounded-xl bg-secondary/5 border-none text-xs font-bold"
                     value={refillSearch}
                     onChange={(e) => setRefillSearch(e.target.value)}
@@ -803,8 +854,11 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                       {products?.filter(p => p.name.toLowerCase().includes(refillSearch.toLowerCase())).map(p => (
                         <div 
                           key={p.id} 
-                          onClick={() => setSelectedProduct(p)}
-                          className="p-2 rounded-lg hover:bg-white cursor-pointer transition-all border border-transparent hover:border-primary/20 group"
+                          onClick={() => canProcure && setSelectedProduct(p)}
+                          className={cn(
+                            "p-2 rounded-lg cursor-pointer transition-all border border-transparent",
+                            canProcure ? "hover:bg-white hover:border-primary/20 group" : "opacity-50"
+                          )}
                         >
                            <p className="text-[11px] font-black group-hover:text-primary transition-colors">{p.name}</p>
                            <p className="text-[9px] font-bold text-muted-foreground uppercase">{p.barcode || 'Manual Entry'}</p>
@@ -828,22 +882,9 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                   >
                     <XCircle className="w-4 h-4" />
                   </Button>
-                  
-                  <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-primary/10">
-                     <div>
-                        <p className="text-[8px] font-black uppercase text-muted-foreground">Current Cost</p>
-                        <p className="text-xs font-black">${selectedProduct.costPrice.toFixed(2)}</p>
-                     </div>
-                     <div>
-                        <p className="text-[8px] font-black uppercase text-muted-foreground">Retail Price</p>
-                        <p className="text-xs font-black">${selectedProduct.sellingPrice.toFixed(2)}</p>
-                     </div>
-                  </div>
                 </div>
 
                 <div className="space-y-4">
-                  <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest border-b pb-1">Economic Adjustment</p>
-                  
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[10px] font-black uppercase tracking-tighter">Units Purchased</Label>
@@ -867,36 +908,28 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                 </div>
 
                 <div className="bg-secondary/10 p-4 rounded-2xl space-y-2 border-2 border-transparent">
-                   <div className="flex items-center gap-2 text-[9px] font-black text-primary uppercase tracking-widest mb-1">
-                      <Info className="w-3 h-3" /> Batch Preview
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span className="text-muted-foreground">Net Stock Yield</span>
-                      <span className="text-foreground">{refillYield} {selectedProduct.unit}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                      <span className="text-muted-foreground">Individual Yield Margin</span>
-                      <span className={cn(profitPerIndividualItem > 0 ? "text-green-600" : "text-destructive")}>
-                        ${profitPerIndividualItem.toFixed(2)}
-                      </span>
-                   </div>
                    <div className="flex justify-between items-center text-[10px] font-black uppercase border-t pt-2 mt-2">
                       <span className="text-muted-foreground">Aggregate Liability</span>
-                      <span className="text-primary font-black text-lg">${totalRefillCost.toFixed(2)}</span>
+                      <span className={cn("font-black text-lg", totalRefillCost > remainingBudget ? "text-destructive" : "text-primary")}>
+                        ${totalRefillCost.toFixed(2)}
+                      </span>
                    </div>
+                   {totalRefillCost > remainingBudget && (
+                     <p className="text-[9px] font-black text-destructive uppercase">Exceeds Budget Balance</p>
+                   )}
                 </div>
 
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setSelectedProduct(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
-                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !unitsBought || !costPerUnit}>
+                  <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure || !unitsBought || !costPerUnit || totalRefillCost > remainingBudget}>
                     {isProcessing ? "Processing..." : "Commit Refill"}
                   </Button>
                 </div>
               </form>
-            ) : (
-              <div className="py-20 text-center border-2 border-dashed rounded-[32px] opacity-30">
-                <Truck className="w-12 h-12 mx-auto mb-2" />
-                <p className="text-[10px] font-black uppercase tracking-widest">Select item to start replenishment</p>
+            ) : !canProcure && (
+              <div className="p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
+                 <p className="text-[10px] font-black text-destructive uppercase tracking-widest">Budget Exhausted</p>
+                 <p className="text-xs font-bold text-muted-foreground mt-1">Inject funds from Capital Control to resume restocking.</p>
               </div>
             )}
           </div>
@@ -908,7 +941,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if(!open) setEditingProduct(null); }}>
             <DialogTrigger asChild>
-              <Button className="rounded-xl font-black shadow-lg" disabled={!isBudgetActive} onClick={() => setEditingProduct(null)}>
+              <Button className="rounded-xl font-black shadow-lg" disabled={!canProcure && !editingProduct} onClick={() => setEditingProduct(null)}>
                 <Plus className="w-4 h-4 mr-2" /> New Product
               </Button>
             </DialogTrigger>
@@ -941,27 +974,13 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                      <Input name="price" type="number" step="0.01" defaultValue={editingProduct?.sellingPrice} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                  </div>
-                 <div className="grid grid-cols-2 gap-4">
+                 {!editingProduct && (
                    <div className="space-y-1.5">
-                     <Label className="text-[10px] font-black uppercase">Active Stock</Label>
-                     <Input name="stock" type="number" defaultValue={editingProduct?.stock} required disabled={!!editingProduct} className="h-12 rounded-xl" />
-                   </div>
-                   <div className="space-y-1.5">
-                     <Label className="text-[10px] font-black uppercase">Qty/Unit</Label>
-                     <Input name="ipu" type="number" defaultValue={editingProduct?.itemsPerUnit} disabled={!!editingProduct} className="h-12 rounded-xl" />
-                   </div>
-                 </div>
-                 
-                 {editingProduct && (
-                   <div className="p-4 bg-secondary/10 rounded-2xl flex items-start gap-3">
-                      <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <p className="text-[10px] font-bold text-muted-foreground leading-tight">
-                        Note: Cost, Price, and Stock levels are locked during metadata edits. Use the <strong>Stock Refill</strong> panel to adjust inventory or economic values.
-                      </p>
+                     <Label className="text-[10px] font-black uppercase">Initial Opening Stock</Label>
+                     <Input name="stock" type="number" placeholder="0" required className="h-12 rounded-xl" />
                    </div>
                  )}
-
-                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={(!isBudgetActive && !editingProduct) || isProcessing}>
+                 <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={isProcessing}>
                    {isProcessing ? "Saving..." : editingProduct ? "Update Metadata" : "Save Product"}
                  </Button>
                </form>

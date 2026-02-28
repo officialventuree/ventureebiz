@@ -43,7 +43,7 @@ import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc, increment } from
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RentalItem, SaleTransaction, Company, PaymentMethod } from '@/lib/types';
+import { RentalItem, SaleTransaction, Company, PaymentMethod, CapitalPurchase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
@@ -101,6 +101,11 @@ export default function RentPage() {
     return collection(firestore, 'companies', user.companyId, 'transactions');
   }, [firestore, user?.companyId]);
 
+  const purchasesQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'purchases');
+  }, [firestore, user?.companyId]);
+
   const configRef = useMemoFirebase(() => (!firestore ? null : doc(firestore, 'platform_config', 'localization')), [firestore]);
   const { data: platformConfig } = useDoc<any>(configRef);
   const currencySymbol = platformConfig?.currencySymbol || '$';
@@ -108,6 +113,23 @@ export default function RentPage() {
   const { data: companyDoc } = useDoc<Company>(companyRef);
   const { data: rentalItems } = useCollection<RentalItem>(rentalItemsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
+  const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return purchases.filter(p => {
+      const pDate = new Date(p.timestamp);
+      return pDate >= start && pDate <= end;
+    });
+  }, [purchases, companyDoc]);
+
+  const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
+  const totalCapacity = (companyDoc?.capitalLimit || 0) + (companyDoc?.injectedCapital || 0);
+  const remainingBudget = Math.max(0, totalCapacity - totalSpent);
 
   const isBudgetActive = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
@@ -116,6 +138,8 @@ export default function RentPage() {
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
+
+  const canProcure = isBudgetActive && remainingBudget > 0;
 
   const filteredItems = rentalItems?.filter(item => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -285,6 +309,12 @@ export default function RentPage() {
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
     const itemId = editingAsset?.id || crypto.randomUUID();
+    const costPrice = Number(formData.get('costPrice')) || 0;
+
+    if (!editingAsset && costPrice > remainingBudget) {
+      toast({ title: "Insufficient Budget", description: "Asset acquisition cost exceeds remaining budget.", variant: "destructive" });
+      return;
+    }
     
     const newItem: RentalItem = {
       id: itemId,
@@ -297,18 +327,30 @@ export default function RentPage() {
       monthlyRate: formData.get('monthlyEnabled') === 'on' ? Number(formData.get('monthlyRate')) : null,
       yearlyRate: formData.get('yearlyEnabled') === 'on' ? Number(formData.get('yearlyRate')) : null,
       status: editingAsset?.status || 'available',
-      costPrice: Number(formData.get('costPrice')) || 0,
+      costPrice: costPrice,
       accumulatedRevenue: editingAsset?.accumulatedRevenue || 0
     };
 
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemId);
-    setDoc(itemRef, newItem).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: editingAsset ? 'update' : 'create', requestResourceData: newItem }));
-    });
-
-    toast({ title: editingAsset ? "Asset Updated" : "Asset Registered" });
-    setIsAddDialogOpen(false);
-    setEditingAsset(null);
+    setDoc(itemRef, newItem)
+      .then(() => {
+        if (!editingAsset && costPrice > 0) {
+          const purchaseRef = collection(firestore, 'companies', user.companyId!, 'purchases');
+          addDoc(purchaseRef, {
+            id: crypto.randomUUID(),
+            companyId: user.companyId,
+            amount: costPrice,
+            description: `Asset Registry: ${newItem.name}`,
+            timestamp: new Date().toISOString()
+          });
+        }
+        toast({ title: editingAsset ? "Asset Updated" : "Asset Registered" });
+        setIsAddDialogOpen(false);
+        setEditingAsset(null);
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: editingAsset ? 'update' : 'create', requestResourceData: newItem }));
+      });
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -354,6 +396,15 @@ export default function RentPage() {
             <p className="text-muted-foreground font-bold text-sm">Precision Time-Aware Billing Control</p>
           </div>
           <div className="flex gap-4">
+             <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl mr-4">
+                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBudget > 0 ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive")}>
+                   <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                   <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p>
+                   <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>${remainingBudget.toFixed(2)}</p>
+                </div>
+             </Card>
              <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl">
                 <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center text-primary">
                    <Clock className="w-5 h-5" />
@@ -605,13 +656,14 @@ export default function RentPage() {
           <TabsContent value="registry" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
              <div className="lg:col-span-1">
                 <Card className={cn(
-                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8"
+                  "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                  !canProcure && !editingAsset && "grayscale opacity-80"
                 )}>
                    <div className="flex items-center gap-2 mb-6">
-                      <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                        <Plus className="w-5 h-5" />
+                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure || editingAsset ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
+                        {canProcure || editingAsset ? <Plus className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
                       </div>
-                      <h3 className="text-xl font-black">{editingAsset ? 'Edit Asset' : 'New Registry'}</h3>
+                      <h3 className="text-xl font-black">{editingAsset ? 'Edit Asset' : canProcure ? 'New Registry' : 'Registry Locked'}</h3>
                    </div>
                    <form onSubmit={handleSaveAsset} className="space-y-5">
                       <div className="space-y-1.5">
@@ -620,7 +672,7 @@ export default function RentPage() {
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">One-time Cost Price ($)</Label>
-                        <Input name="costPrice" type="number" step="0.01" defaultValue={editingAsset?.costPrice} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold px-4 text-primary" />
+                        <Input name="costPrice" type="number" step="0.01" defaultValue={editingAsset?.costPrice} required disabled={!!editingAsset} className="h-11 rounded-xl bg-secondary/10 border-none font-bold px-4 text-primary" />
                         <p className="text-[9px] font-bold text-muted-foreground italic px-1 mt-1">Acquisition cost for ROI calculation.</p>
                       </div>
                       <Separator />
@@ -636,11 +688,17 @@ export default function RentPage() {
                          {editingAsset && (
                            <Button type="button" variant="outline" onClick={() => setEditingAsset(null)} className="flex-1 rounded-xl font-black">Cancel</Button>
                          )}
-                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={!isBudgetActive && !editingAsset}>
+                         <Button type="submit" className="flex-1 rounded-xl font-black shadow-lg" disabled={(!canProcure && !editingAsset)}>
                            {editingAsset ? "Update Asset" : "Save Asset"}
                          </Button>
                       </div>
                    </form>
+                   {!canProcure && !editingAsset && (
+                     <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
+                        <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
+                        <p className="text-[10px] font-bold text-muted-foreground mt-1">Acquisition disabled until capacity is expanded.</p>
+                     </div>
+                   )}
                 </Card>
              </div>
              <div className="lg:col-span-3">

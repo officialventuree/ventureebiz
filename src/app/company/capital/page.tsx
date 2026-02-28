@@ -111,6 +111,11 @@ export default function CapitalControlPage() {
     e.preventDefault();
     if (!firestore || !user?.companyId || isLocked) return;
 
+    if (formLimit <= 0) {
+      toast({ title: "Invalid Limit", description: "Base budget limit must be more than 0.", variant: "destructive" });
+      return;
+    }
+
     if (formLimit > currentPool) {
       toast({ 
         title: "Insufficient Pool Funds", 
@@ -409,6 +414,8 @@ export default function CapitalControlPage() {
                         value={formLimit} 
                         onChange={(e) => setFormLimit(Number(e.target.value))}
                         disabled={isLocked}
+                        min="0.01"
+                        step="0.01"
                         className={cn(
                           "h-16 rounded-2xl bg-secondary/10 border-none text-2xl font-black px-6",
                           !isLocked && formLimit > currentPool && "text-destructive ring-2 ring-destructive"
@@ -464,7 +471,7 @@ export default function CapitalControlPage() {
                     <Button 
                       type="submit" 
                       className="w-full h-20 rounded-[32px] font-black text-xl shadow-xl transition-all" 
-                      disabled={isUpdating || isLocked || (!isLocked && formLimit > currentPool)}
+                      disabled={isUpdating || isLocked || (!isLocked && formLimit > currentPool) || formLimit <= 0}
                     >
                       {isLocked ? (
                         <span className="flex items-center gap-3">

@@ -39,7 +39,8 @@ import {
   DollarSign,
   AlertTriangle,
   Lock,
-  Edit2
+  Edit2,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -47,7 +48,7 @@ import { collection, doc, setDoc, updateDoc, query, where, addDoc, increment, de
 import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMethod, Company } from '@/lib/types';
+import { ServiceType, ServicePriceBundle, SaleTransaction, Product, PaymentMethod, Company, CapitalPurchase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
@@ -120,6 +121,11 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     return collection(firestore, 'companies', user.companyId, 'products');
   }, [firestore, user?.companyId]);
 
+  const purchasesQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'purchases');
+  }, [firestore, user?.companyId]);
+
   const configRef = useMemoFirebase(() => (!firestore ? null : doc(firestore, 'platform_config', 'localization')), [firestore]);
   const { data: platformConfig } = useDoc<any>(configRef);
   const currencySymbol = platformConfig?.currencySymbol || '$';
@@ -129,6 +135,23 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const { data: bundles } = useCollection<ServicePriceBundle>(bundlesQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: allProducts } = useCollection<Product>(allProductsQuery);
+  const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return purchases.filter(p => {
+      const pDate = new Date(p.timestamp);
+      return pDate >= start && pDate <= end;
+    });
+  }, [purchases, companyDoc]);
+
+  const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
+  const totalCapacity = (companyDoc?.capitalLimit || 0) + (companyDoc?.injectedCapital || 0);
+  const remainingBudget = Math.max(0, totalCapacity - totalSpent);
 
   const isBudgetActive = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
@@ -137,6 +160,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
+
+  const canProcure = isBudgetActive && remainingBudget > 0;
 
   const materials = allProducts?.filter(p => p.serviceTypeId === serviceId) || [];
   const martProducts = allProducts?.filter(p => !p.serviceTypeId) || [];
@@ -247,6 +272,16 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
     const formData = new FormData(e.currentTarget);
+    
+    const qty = Number(matQuantity);
+    const costPerItem = Number(matCostPerItem);
+    const totalExpenditure = qty * costPerItem;
+
+    if (!editingMaterial && totalExpenditure > remainingBudget) {
+      toast({ title: "Insufficient Budget", description: "This replenishment exceeds remaining budget.", variant: "destructive" });
+      return;
+    }
+
     const id = editingMaterial?.id || crypto.randomUUID();
     const materialRef = doc(firestore, 'companies', user.companyId, 'products', id);
     
@@ -261,11 +296,8 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
         stock: Number(matQuantity)
       };
     } else {
-      const qty = Number(matQuantity);
       const measure = Number(matMeasure) || 1;
-      const costPerItem = Number(matCostPerItem);
       const totalVolume = qty * measure;
-      const totalExpenditure = qty * costPerItem;
       
       material = { 
         id, 
@@ -307,9 +339,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     toast({ title: "Material Removed" });
   };
 
-  const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
-  const totalProfit = transactions?.reduce((acc, t) => acc + t.profit, 0) || 0;
-
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -330,8 +359,16 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
               <p className="text-muted-foreground font-medium">{serviceType?.description || "Specialized Command Center active."}</p>
             </div>
             <div className="flex gap-4">
+               <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl mr-4">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBudget > 0 ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive")}>
+                     <Wallet className="w-5 h-5" />
+                  </div>
+                  <div>
+                     <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p>
+                     <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>${remainingBudget.toFixed(2)}</p>
+                  </div>
+               </Card>
                <ReportStat label="Segment Revenue" value={`${currencySymbol}${totalRevenue.toFixed(2)}`} />
-               <ReportStat label="Net Yield" value={`${currencySymbol}${totalProfit.toFixed(2)}`} color="text-primary" />
                <Button asChild className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2 bg-primary">
                  <Link href={`/company/services/${serviceId}/book`}><Plus className="w-5 h-5" /> New Booking</Link>
                </Button>
@@ -426,9 +463,15 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             <TabsContent value="inventory" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                <div className="lg:col-span-1">
                   <Card className={cn(
-                    "border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8"
+                    "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                    !canProcure && !editingMaterial && "grayscale opacity-80"
                   )}>
-                     <h3 className="text-xl font-black mb-6">{editingMaterial ? 'Update Inventory' : 'Replenish Materials'}</h3>
+                     <div className="flex items-center gap-2 mb-6">
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure || editingMaterial ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
+                          {canProcure || editingMaterial ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                        </div>
+                        <h3 className="text-xl font-black">{editingMaterial ? 'Update Material' : canProcure ? 'Replenish Stock' : 'Registry Locked'}</h3>
+                     </div>
                      <form onSubmit={handleAddMaterial} className="space-y-4">
                         <div className="space-y-1.5">
                            <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Material Name</Label>
@@ -457,15 +500,26 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                               <Input type="number" step="0.01" value={matCostPerItem} onChange={(e) => setMatCostPerItem(e.target.value)} className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
                            </div>
                         </div>
+                        
+                        {(Number(matQuantity) * Number(matCostPerItem) > remainingBudget) && !editingMaterial && (
+                          <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Budget Balance (${remainingBudget.toFixed(2)})</p>
+                        )}
+
                         <div className="flex gap-2">
                           {editingMaterial && (
                             <Button type="button" variant="outline" onClick={() => setEditingMaterial(null)} className="flex-1 rounded-xl font-bold">Cancel</Button>
                           )}
-                          <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={(!isBudgetActive && !editingMaterial)}>
-                            {editingMaterial ? "Update" : "Log Material"}
+                          <Button type="submit" className="flex-1 h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || (!canProcure && !editingMaterial) || (!editingMaterial && Number(matQuantity) * Number(matCostPerItem) > remainingBudget)}>
+                            {isProcessing ? "Processing..." : editingMaterial ? "Update" : "Log Material"}
                           </Button>
                         </div>
                      </form>
+                     {!canProcure && !editingMaterial && (
+                        <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
+                           <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
+                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until capacity is expanded.</p>
+                        </div>
+                      )}
                   </Card>
                </div>
                <div className="lg:col-span-3">

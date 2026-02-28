@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -36,7 +37,8 @@ import {
   Scale,
   HandCoins,
   BarChart3,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -44,7 +46,7 @@ import { collection, doc, setDoc, addDoc, updateDoc, increment } from 'firebase/
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod, LaundrySchedule } from '@/lib/types';
+import { LaundryStudent, SaleTransaction, LaundryInventory, Company, PaymentMethod, LaundrySchedule, CapitalPurchase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -135,12 +137,34 @@ export default function LaundryPage() {
     return doc(firestore, 'companies', user.companyId);
   }, [firestore, user?.companyId]);
 
+  const purchasesQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.companyId) return null;
+    return collection(firestore, 'companies', user.companyId, 'purchases');
+  }, [firestore, user?.companyId]);
+
   const { data: students } = useCollection<LaundryStudent>(studentsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: inventoryItems } = useCollection<LaundryInventory>(inventoryQuery);
   const { data: schedules } = useCollection<LaundrySchedule>(scheduleQuery);
   const { data: globalConfig } = useDoc<any>(globalConfigRef);
   const { data: companyDoc } = useDoc<Company>(companyRef);
+  const { data: purchases } = useCollection<CapitalPurchase>(purchasesQuery);
+
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+    return purchases.filter(p => {
+      const pDate = new Date(p.timestamp);
+      return pDate >= start && pDate <= end;
+    });
+  }, [purchases, companyDoc]);
+
+  const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
+  const totalCapacity = (companyDoc?.capitalLimit || 0) + (companyDoc?.injectedCapital || 0);
+  const remainingBudget = Math.max(0, totalCapacity - totalSpent);
 
   const isBudgetActive = useMemo(() => {
     if (!companyDoc?.capitalEndDate) return false;
@@ -149,6 +173,8 @@ export default function LaundryPage() {
     end.setHours(23, 59, 59, 999);
     return now < end;
   }, [companyDoc]);
+
+  const canProcure = isBudgetActive && remainingBudget > 0;
 
   const benchmarkSubscription = globalConfig?.fixedSubscription || 0;
   const soapMlPerWash = globalConfig?.soapMlPerWash || 50;
@@ -266,15 +292,20 @@ export default function LaundryPage() {
   const handleRefillInventory = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.companyId) return;
-    setIsProcessing(true);
 
     const units = Number(refillBottles) || 0;
     const volPerUnitMl = Number(refillVolPerBottle);
     const pricePerUnit = Number(refillCostPerBottle);
+    const newTotalCost = units * pricePerUnit;
+
+    if (units > 0 && newTotalCost > remainingBudget) {
+      toast({ title: "Insufficient Budget", description: "This refill exceeds your remaining cycle budget.", variant: "destructive" });
+      return;
+    }
+
+    setIsProcessing(true);
     
     const newAmountMl = units * volPerUnitMl;
-    const newTotalCost = units * pricePerUnit;
-    
     const docId = `${refillCategory}_soap`;
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', docId);
     const existing = inventoryItems?.find(i => i.id === docId);
@@ -506,6 +537,15 @@ export default function LaundryPage() {
             <p className="text-muted-foreground font-medium">Smart Scheduling & Quota Billing</p>
           </div>
           <div className="flex gap-4">
+            <Card className="p-3 border-none shadow-sm bg-white/50 flex items-center gap-3 rounded-2xl mr-4">
+              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", remainingBudget > 0 ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive")}>
+                 <Wallet className="w-5 h-5" />
+              </div>
+              <div>
+                 <p className="text-[10px] font-black uppercase text-muted-foreground leading-tight">Cycle Budget</p>
+                 <p className={cn("text-lg font-black", remainingBudget <= 0 && "text-destructive")}>${remainingBudget.toFixed(2)}</p>
+              </div>
+            </Card>
             <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
               <DialogTrigger asChild>
                 <Button className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2">
@@ -927,17 +967,20 @@ export default function LaundryPage() {
           <TabsContent value="consumables">
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1">
-                   <Card className="border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8">
+                   <Card className={cn(
+                     "border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8",
+                     !canProcure && "grayscale opacity-80"
+                   )}>
                       <div className="flex items-center gap-2 mb-6">
-                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                          <RefreshCw className="w-5 h-5" />
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
+                          {canProcure ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
                         </div>
-                        <h3 className="text-xl font-black">Stock Replenish</h3>
+                        <h3 className="text-xl font-black">{canProcure ? 'Stock Replenish' : 'Refill Locked'}</h3>
                       </div>
                       <form onSubmit={handleRefillInventory} className="space-y-5">
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Inventory Pool</Label>
-                            <Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)}>
+                            <Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!canProcure}>
                                <SelectTrigger className="rounded-xl h-11 font-bold bg-secondary/10 border-none"><SelectValue /></SelectTrigger>
                                <SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent>
                             </Select>
@@ -951,21 +994,32 @@ export default function LaundryPage() {
                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                                <Label className="text-[10px] font-black uppercase text-muted-foreground">Units (Bottles)</Label>
-                               <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
+                               <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" disabled={!canProcure} className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
                             </div>
                             <div className="space-y-1.5">
                                <Label className="text-[10px] font-black uppercase text-muted-foreground">Volume per Unit (ml)</Label>
-                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="5000" />
+                               <Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" disabled={!canProcure} className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="5000" />
                             </div>
                          </div>
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Price per Unit ($)</Label>
-                            <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
+                            <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" disabled={!canProcure} className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
-                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !isBudgetActive || !refillVolPerBottle || !refillCostPerBottle}>
+                         
+                         {(Number(refillBottles) > 0 && (Number(refillBottles) * Number(refillCostPerBottle) > remainingBudget)) && (
+                           <p className="text-[9px] font-black text-destructive uppercase text-center">Exceeds Budget Balance (${remainingBudget.toFixed(2)})</p>
+                         )}
+
+                         <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure || !refillVolPerBottle || !refillCostPerBottle || (Number(refillBottles) > 0 && (Number(refillBottles) * Number(refillCostPerBottle) > remainingBudget))}>
                             {isProcessing ? "Processing..." : (Number(refillBottles) > 0 ? "Confirm Stock Refill" : "Update Information")}
                          </Button>
                       </form>
+                      {!canProcure && (
+                        <div className="mt-4 p-4 bg-destructive/10 rounded-2xl border border-destructive/20 text-center">
+                           <p className="text-[10px] font-black text-destructive uppercase tracking-widest leading-tight">Budget Exhausted</p>
+                           <p className="text-[10px] font-bold text-muted-foreground mt-1">Refills disabled until capacity is expanded.</p>
+                        </div>
+                      )}
                    </Card>
                 </div>
                 <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1095,7 +1149,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
@@ -1457,7 +1511,7 @@ function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] })
                       </AreaChart>
                    </ResponsiveContainer>
                 </div>
-             </Card>
+             </AreaChart>
           </div>
 
           <div className="space-y-6">
