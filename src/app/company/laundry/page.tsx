@@ -37,7 +37,8 @@ import {
   ChevronRight,
   DollarSign,
   Calculator,
-  ListFilter
+  ListFilter,
+  Info
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -137,8 +138,17 @@ export default function LaundryPage() {
   const { data: schedules } = useCollection<LaundrySchedule>(scheduleQuery);
   const { data: companyDoc } = useDoc<Company>(companyRef);
 
-  const studentSoap = inventoryItems?.find(i => i.id === 'student_soap');
-  const payableSoap = inventoryItems?.find(i => i.id === 'payable_soap');
+  const studentSoap = inventoryItems?.find(i => i.category === 'student');
+  const payableSoap = inventoryItems?.find(i => i.category === 'payable');
+
+  // Set default refill values based on selection
+  useEffect(() => {
+    const item = refillCategory === 'student' ? studentSoap : payableSoap;
+    if (item) {
+      setRefillVolPerBottle(item.lastBottleVolume?.toString() || '');
+      setRefillCostPerBottle(item.lastBottleCost?.toString() || '');
+    }
+  }, [refillCategory, studentSoap, payableSoap]);
 
   const mlPerWash = 50;
   const defaultWashRate = 5.00;
@@ -174,14 +184,14 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialDebt = Number(formData.get('amountDue')) || 0;
+    const amountToPay = Number(formData.get('amountDue')) || 0;
 
     const student: LaundryStudent = {
       id: studentId,
       companyId: user.companyId,
       name: formData.get('name') as string,
       matrixNumber: formData.get('matrix') as string,
-      balance: -initialDebt, 
+      balance: -amountToPay, // Amount need to pay is recorded as negative balance
       level: Number(selectedLevel),
       class: selectedClass,
     };
@@ -252,8 +262,6 @@ export default function LaundryPage() {
 
       toast({ title: "Inventory Replenished", description: `Added ${(newAmountMl/1000).toFixed(1)}L to the ${refillCategory} pool.` });
       setRefillBottles('');
-      setRefillVolPerBottle('');
-      setRefillCostPerBottle('');
     } catch (err) {
       toast({ title: "Refill failed", variant: "destructive" });
     } finally {
@@ -393,6 +401,10 @@ export default function LaundryPage() {
   const laundryTransactions = transactions?.filter(t => t.module === 'laundry') || [];
   const totalRevenue = laundryTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
   const totalProfit = laundryTransactions.reduce((acc, t) => acc + t.profit, 0);
+  
+  const studentUsageRevenue = laundryTransactions.filter(t => !t.items[0].name.includes('Payable') && !t.items[0].name.includes('Deposit')).reduce((acc, t) => acc + t.totalAmount, 0);
+  const payableUsageRevenue = laundryTransactions.filter(t => t.items[0].name.includes('Payable')).reduce((acc, t) => acc + t.totalAmount, 0);
+
   const todayWashes = laundryTransactions.filter(t => {
     const d = new Date(t.timestamp);
     const now = new Date();
@@ -442,7 +454,7 @@ export default function LaundryPage() {
                           <p className="text-xs font-bold text-muted-foreground">Lv {foundTopUpStudent.level} • {foundTopUpStudent.class}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Balance</p>
                           <p className={cn("text-3xl font-black", foundTopUpStudent.balance < 0 ? "text-destructive" : "text-foreground")}>
                             ${foundTopUpStudent.balance.toFixed(2)}
                           </p>
@@ -496,8 +508,16 @@ export default function LaundryPage() {
             <div className="lg:col-span-2 space-y-6">
               <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
                 <CardHeader className="bg-secondary/10 p-8">
-                  <CardTitle className="text-xl font-black">Washing Terminal</CardTitle>
-                  <CardDescription className="font-bold">Authorized student usage verification</CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-xl font-black">Washing Terminal</CardTitle>
+                      <CardDescription className="font-bold">Authorized student usage verification</CardDescription>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Live Date</p>
+                       <p className="font-black text-primary">{todayDate ? new Date(todayDate).toLocaleDateString([], { dateStyle: 'long' }) : "---"}</p>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
                   <div className="flex gap-2">
@@ -543,14 +563,18 @@ export default function LaundryPage() {
                                 <CheckCircle2 className="w-4 h-4" /> Turn Authorized
                               </Badge>
                             ) : (
-                              <Badge variant="destructive" className="h-8 px-4 font-black text-sm flex items-center gap-2 rounded-full">
-                                <AlertCircle className="w-4 h-4" /> Unauthorized Turn
-                              </Badge>
+                              <div className="bg-destructive/10 border-2 border-destructive p-4 rounded-2xl flex items-start gap-3">
+                                 <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                                 <div>
+                                    <p className="font-black text-destructive text-sm uppercase">Unauthorized Access</p>
+                                    <p className="text-xs font-bold text-destructive/80 mt-1">This student cannot use laundry today because it is not his/her level turn today.</p>
+                                 </div>
+                              </div>
                             )}
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Balance</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Net Balance</p>
                           <p className={cn(
                             "text-5xl font-black tracking-tighter",
                             selectedStudent.balance < 0 ? "text-destructive" : "text-primary"
@@ -598,7 +622,7 @@ export default function LaundryPage() {
                       )}>
                         <p className="font-black text-lg">Level {lv}</p>
                         {isAllowed ? (
-                          <Badge className="bg-white text-primary font-black">Authorized</Badge>
+                          <Badge className="bg-white text-primary font-black">Authorized Today</Badge>
                         ) : (
                           <Badge variant="outline" className="text-white/40 font-bold">Closed</Badge>
                         )}
@@ -687,7 +711,11 @@ export default function LaundryPage() {
                             </Select>
                          </div>
                       </div>
-                      <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-muted-foreground">Prepaid Subscription ($)</Label><Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-primary" /></div>
+                      <div className="space-y-1.5">
+                         <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Amount Need to Pay ($)</Label>
+                         <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
+                         <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
+                      </div>
                       <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg">Save Subscriber</Button>
                    </form>
                 </Card>
@@ -699,8 +727,8 @@ export default function LaundryPage() {
                          <tr>
                            <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
                            <th className="p-6 font-black uppercase text-[10px]">Level</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Service Fee</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Balance</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Per Service Fee</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Amount Need to Pay / Balance</th>
                            <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                          </tr>
                       </thead>
@@ -713,7 +741,14 @@ export default function LaundryPage() {
                               </td>
                               <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
                               <td className="p-6 font-bold text-muted-foreground">${getWashRateForLevel(s.level).toFixed(2)}</td>
-                              <td className="p-6 font-black text-lg" style={{ color: s.balance < 0 ? 'red' : 'green' }}>${s.balance.toFixed(2)}</td>
+                              <td className="p-6">
+                                 <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-green-600")}>
+                                    ${Math.abs(s.balance).toFixed(2)}
+                                    <span className="text-[10px] ml-2 uppercase opacity-60">
+                                       {s.balance < 0 ? "(OWED)" : "(CREDIT)"}
+                                    </span>
+                                 </p>
+                              </td>
                               <td className="p-6 text-center">
                                  <Button variant="ghost" size="icon" onClick={async () => {
                                     if(confirm("Expel this subscriber?")) await deleteDoc(doc(firestore!, 'companies', user!.companyId!, 'laundryStudents', s.id));
@@ -755,7 +790,7 @@ export default function LaundryPage() {
                          </div>
                          <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Bottles</Label>
+                               <Label className="text-[10px] font-black uppercase text-muted-foreground">Amount of Bottles</Label>
                                <Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0" />
                             </div>
                             <div className="space-y-1.5">
@@ -764,43 +799,50 @@ export default function LaundryPage() {
                             </div>
                          </div>
                          <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Unit Price ($/Bottle)</Label>
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground">Price/Bottle ($)</Label>
                             <Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" className="rounded-xl h-11 font-bold bg-secondary/10 border-none" placeholder="0.00" />
                          </div>
 
                          {Number(refillBottles) > 0 && (
                            <div className="bg-primary/5 p-4 rounded-2xl border-2 border-primary/10 space-y-2 animate-in fade-in zoom-in-95">
-                              <p className="text-[9px] font-black text-primary uppercase tracking-widest mb-1">Batch Summary</p>
+                              <div className="flex items-center gap-2 text-[9px] font-black text-primary uppercase tracking-widest mb-1">
+                                 <Info className="w-3 h-3" /> Batch Calculation
+                              </div>
                               <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                                 <span className="text-muted-foreground">Total ML</span>
+                                 <span className="text-muted-foreground">Total Vol.</span>
                                  <span className="text-foreground">{refillPreviewMl.toLocaleString()} ml</span>
                               </div>
                               <div className="flex justify-between items-center text-[10px] font-black uppercase">
-                                 <span className="text-muted-foreground">Total Cost</span>
-                                 <span className="text-primary">${refillPreviewCost.toFixed(2)}</span>
+                                 <span className="text-muted-foreground">Cost/ML</span>
+                                 <span className="text-primary">${(Number(refillCostPerBottle) / (Number(refillVolPerBottle) * 1000 || 1)).toFixed(4)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase border-t pt-2 mt-2">
+                                 <span className="text-muted-foreground">Aggregate Cost</span>
+                                 <span className="text-primary font-black">${refillPreviewCost.toFixed(2)}</span>
                               </div>
                            </div>
                          )}
 
                          <Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !refillBottles || !refillVolPerBottle || !refillCostPerBottle}>
-                            {isProcessing ? "Processing..." : "Log Stock Registry"}
+                            {isProcessing ? "Processing..." : "Confirm Stock Refill"}
                          </Button>
                       </form>
                    </Card>
                 </div>
                 <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
-                   <InventoryGauge label="Student Consumables" item={studentSoap} />
-                   <InventoryGauge label="Payable Consumables" item={payableSoap} />
+                   <InventoryGauge label="Student Usage Consumables" item={studentSoap} />
+                   <InventoryGauge label="Payable Laundry Consumables" item={payableSoap} />
                 </div>
              </div>
           </TabsContent>
 
           <TabsContent value="profits">
              <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                    <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={DollarSign} />
                    <ReportStat label="Realized Margin" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
-                   <ReportStat label="Service Volume" value={laundryTransactions.length.toString()} icon={Waves} />
+                   <ReportStat label="Student Usage Rev." value={`$${studentUsageRevenue.toFixed(2)}`} icon={User} />
+                   <ReportStat label="Payable Laundry Rev." value={`$${payableUsageRevenue.toFixed(2)}`} icon={ShoppingBag} />
                 </div>
                 <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
                    <h3 className="text-xl font-black mb-6">Today's Service Feed</h3>
