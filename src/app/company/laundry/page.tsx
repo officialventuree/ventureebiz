@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -35,7 +34,8 @@ import {
   ShoppingBag,
   RefreshCw,
   XCircle,
-  ChevronRight
+  ChevronRight,
+  DollarSign
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -652,7 +652,7 @@ export default function LaundryPage() {
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Level</Label>
                             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
                                <SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger>
-                               <SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={lv} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent>
+                               <SelectContent className="rounded-xl font-bold">{LEVELS.map(l => <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>)}</SelectContent>
                             </Select>
                          </div>
                          <div className="space-y-1.5">
