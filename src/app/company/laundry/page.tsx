@@ -277,38 +277,15 @@ export default function LaundryPage() {
 
   const handlePayableWash = () => {
     if (!payableName || !payableAmount || !firestore || !user?.companyId || !payableSoap) return;
-    
     const amount = Number(payableAmount);
     const mlRequired = globalConfig?.payableSoapMlPerWash || 50;
-    
-    if (payableSoap.soapStockMl < mlRequired) {
-      toast({ title: "Insufficient Soap Stock", variant: "destructive" });
-      return;
-    }
-
+    if (payableSoap.soapStockMl < mlRequired) { toast({ title: "Insufficient Soap Stock", variant: "destructive" }); return; }
     setIsProcessing(true);
-    
     const soapCost = (mlRequired / 1000) * (payableSoap.soapCostPerLitre || 0);
     const transId = crypto.randomUUID();
-    const transData: SaleTransaction = {
-      id: transId,
-      companyId: user.companyId,
-      module: 'laundry',
-      totalAmount: amount,
-      profit: amount - soapCost,
-      totalCost: soapCost,
-      timestamp: new Date().toISOString(),
-      customerName: payableName,
-      paymentMethod: payablePaymentMethod,
-      referenceNumber: payableRef || null,
-      status: 'completed',
-      items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
-    };
-
+    const transData: SaleTransaction = { id: transId, companyId: user.companyId, module: 'laundry', totalAmount: amount, profit: amount - soapCost, totalCost: soapCost, timestamp: new Date().toISOString(), customerName: payableName, paymentMethod: payablePaymentMethod, referenceNumber: payableRef || null, status: 'completed', items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }] };
     setDoc(doc(firestore, 'companies', user.companyId, 'transactions', transId), transData).then(() => {
-      updateDoc(doc(firestore, 'companies', user.companyId!, 'laundryInventory', 'payable_soap'), {
-        soapStockMl: increment(-mlRequired)
-      });
+      updateDoc(doc(firestore, 'companies', user.companyId!, 'laundryInventory', 'payable_soap'), { soapStockMl: increment(-mlRequired) });
       toast({ title: "Payable Wash Fulfilled" });
       setPayableName('');
       setPayableRef('');
@@ -435,7 +412,7 @@ export default function LaundryPage() {
 
           <TabsContent value="consumables">
              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <div className="lg:col-span-1"><Card className={cn("border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8", !canProcure && !editingMaterial && "grayscale opacity-80")}><div className="flex items-center gap-2 mb-6"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{canProcure ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}</div><h3 className="text-xl font-black">{canProcure ? 'Stock Replenish' : 'Locked'}</h3></div><form onSubmit={handleRefillInventory} className="space-y-5"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Pool</Label><Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!canProcure}><SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger><SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Bottles</Label><Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">ml/Bottle</Label><Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Price/Bottle ({currencySymbol})</Label><Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure}>Confirm Stock Refill</Button></form></Card></div>
+                <div className="lg:col-span-1"><Card className={cn("border-none shadow-sm rounded-3xl bg-white p-8 sticky top-8", !canProcure && "grayscale opacity-80")}><div className="flex items-center gap-2 mb-6"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", canProcure ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{canProcure ? <RefreshCw className="w-5 h-5" /> : <Lock className="w-5 h-5" />}</div><h3 className="text-xl font-black">{canProcure ? 'Stock Replenish' : 'Locked'}</h3></div><form onSubmit={handleRefillInventory} className="space-y-5"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Pool</Label><Select value={refillCategory} onValueChange={(v: any) => setRefillCategory(v)} disabled={!canProcure}><SelectTrigger className="h-11 rounded-xl bg-secondary/10 border-none font-bold"><SelectValue /></SelectTrigger><SelectContent className="rounded-xl font-bold"><SelectItem value="student">Student Pool</SelectItem><SelectItem value="payable">Payable Pool</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Bottles</Label><Input value={refillBottles} onChange={(e) => setRefillBottles(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">ml/Bottle</Label><Input value={refillVolPerBottle} onChange={(e) => setRefillVolPerBottle(e.target.value)} type="number" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div></div><div className="space-y-1.5"><Label className="text-[10px] font-black uppercase">Price/Bottle ({currencySymbol})</Label><Input value={refillCostPerBottle} onChange={(e) => setRefillCostPerBottle(e.target.value)} type="number" step="0.01" disabled={!canProcure} className="h-11 rounded-xl bg-secondary/10 border-none font-bold" /></div><Button type="submit" className="w-full h-12 rounded-xl font-black shadow-lg" disabled={isProcessing || !canProcure}>Confirm Stock Refill</Button></form></Card></div>
                 <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8"><InventoryGauge label="Student Consumables" item={studentSoap} currencySymbol={currencySymbol}/><InventoryGauge label="Payable Consumables" item={payableSoap} currencySymbol={currencySymbol}/></div>
              </div>
           </TabsContent>
