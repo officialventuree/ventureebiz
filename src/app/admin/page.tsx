@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -11,10 +12,11 @@ import {
   ShieldAlert, Layers, TrendingUp, 
   CreditCard, Banknote, QrCode, 
   Calendar, CheckCircle2, 
-  ArrowRight, Landmark, Settings2, Briefcase, Globe
+  ArrowRight, Landmark, Settings2, Briefcase, Globe,
+  ShieldCheck, Upload
 } from 'lucide-react';
 import { createCompanyAction, renewCompanyAction } from '@/app/actions';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Company, User, ModuleType, 
   PlatformProfitEntry, 
@@ -76,6 +78,7 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   
   // Platform Config
   const configRef = useMemoFirebase(() => (!firestore ? null : doc(firestore, 'platform_config', 'localization')), [firestore]);
@@ -117,12 +120,12 @@ export default function AdminDashboard() {
   const durationDays = DEFAULT_CYCLES.find(c => c.id === selectedCycle)?.durationInDays || 30;
   const changeDue = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - totalDue) : 0;
 
-  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!firestore) return;
+  const handleRegister = async () => {
+    if (!firestore || !formRef.current) return;
     setIsCreating(true);
     
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(formRef.current);
+    // Ensure modules are appended correctly for the action
     selectedModules.forEach(mod => formData.append('modules', mod));
     formData.append('periodId', selectedCycle);
     formData.append('totalAmount', totalDue.toString());
@@ -130,11 +133,14 @@ export default function AdminDashboard() {
     formData.append('paymentMethod', paymentMethod);
     formData.append('referenceCode', referenceCode);
     
-    const result = await createCompanyAction(formData);
-    
-    if (result.success && result.company && result.subscription && result.transaction) {
-      try {
+    try {
+      const result = await createCompanyAction(formData);
+      
+      if (result.success && result.company && result.subscription && result.transaction) {
+        // 1. Save Company Core
         await setDoc(doc(firestore, 'companies', result.company.id), result.company);
+        
+        // 2. Save Owner Account (Linked by Email/Password for Manual Auth)
         await setDoc(doc(firestore, 'company_users', result.company.id), {
           id: result.company.id,
           name: result.company.name,
@@ -145,6 +151,7 @@ export default function AdminDashboard() {
           enabledModules: selectedModules
         });
         
+        // 3. Log Profit Entry
         await addDoc(collection(firestore, 'platform_profit_entries'), {
           id: crypto.randomUUID(),
           paymentTransactionId: result.transaction.id,
@@ -155,14 +162,22 @@ export default function AdminDashboard() {
           type: 'InitialSubscription'
         });
 
-        toast({ title: "Partner Provisioned", description: `${result.company.name} is now active.` });
+        toast({ 
+          title: "Partner Provisioned", 
+          description: `${result.company.name} is now active. Login ID: ${result.company.email}` 
+        });
+        
         setIsCheckoutOpen(false);
         setSelectedModules(['mart', 'laundry', 'rent', 'services']);
-      } catch (e: any) {
-        toast({ title: "Provisioning Error", description: e.message, variant: "destructive" });
+        formRef.current.reset();
+      } else {
+        toast({ title: "Action Failed", description: result.error || "Unknown error", variant: "destructive" });
       }
+    } catch (e: any) {
+      toast({ title: "Provisioning Error", description: e.message, variant: "destructive" });
+    } finally {
+      setIsCreating(false);
     }
-    setIsCreating(false);
   };
 
   const handleRenew = async (company: Company) => {
@@ -219,7 +234,6 @@ export default function AdminDashboard() {
     const companyRef = doc(firestore, 'companies', companyId);
     const userRef = doc(firestore, 'company_users', companyId);
 
-    // Initiating non-blocking deletions with prescribed error handling
     deleteDoc(companyRef).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: companyRef.path,
@@ -262,7 +276,11 @@ export default function AdminDashboard() {
               <div className="lg:col-span-1">
                 <Card className="border-none shadow-sm rounded-[32px] bg-white p-8 sticky top-8">
                   <h3 className="text-xl font-black mb-6">New Partnership</h3>
-                  <form onSubmit={(e) => { e.preventDefault(); setIsCheckoutOpen(true); }} className="space-y-6">
+                  <form 
+                    ref={formRef}
+                    onSubmit={(e) => { e.preventDefault(); setIsCheckoutOpen(true); }} 
+                    className="space-y-6"
+                  >
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-black uppercase text-muted-foreground">Legal Name</Label>
                       <Input name="name" placeholder="Acme Corp" required className="h-12 rounded-xl bg-secondary/10 border-none font-bold" />
@@ -339,7 +357,7 @@ export default function AdminDashboard() {
                                "font-black text-[10px] uppercase h-6 px-3",
                                company.status === 'Active' ? "bg-green-600" : "bg-destructive"
                              )}>{company.status}</Badge>
-                             <p className="text-[9px] font-black text-muted-foreground uppercase">Expires: {new Date(company.expiryDate!).toLocaleDateString()}</p>
+                             <p className="text-[9px] font-black text-muted-foreground uppercase">Expires: {company.expiryDate ? new Date(company.expiryDate).toLocaleDateString() : 'N/A'}</p>
                           </div>
                         </div>
                         
@@ -467,7 +485,11 @@ export default function AdminDashboard() {
                  </div>
                )}
 
-               <Button className="w-full h-20 rounded-[32px] font-black text-2xl shadow-2xl" disabled={isCreating || (paymentMethod === 'cash' && Number(cashReceived) < totalDue)} onClick={() => (document.querySelector('form') as any)?.requestSubmit()}>
+               <Button 
+                className="w-full h-20 rounded-[32px] font-black text-2xl shadow-2xl" 
+                disabled={isCreating || (paymentMethod === 'cash' && Number(cashReceived) < totalDue)} 
+                onClick={handleRegister}
+               >
                   {isCreating ? "Authorizing..." : "Complete Provisioning"}
                </Button>
             </div>
