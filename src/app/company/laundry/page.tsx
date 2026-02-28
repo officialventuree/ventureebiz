@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -37,7 +36,8 @@ import {
   XCircle,
   ChevronRight,
   DollarSign,
-  Calculator
+  Calculator,
+  ListFilter
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
@@ -728,7 +728,7 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="schedule">
-             <LaundryScheduler companyId={user?.companyId} schedules={schedules} />
+             <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelConfigs={levelConfigs} />
           </TabsContent>
 
           <TabsContent value="config">
@@ -943,7 +943,7 @@ function LaundryConfigurator({ companyId, levelConfigs }: { companyId?: string, 
   );
 }
 
-function LaundryScheduler({ companyId, schedules }: { companyId?: string, schedules: LaundrySchedule[] | null }) {
+function LaundryScheduler({ companyId, schedules, levelConfigs }: { companyId?: string, schedules: LaundrySchedule[] | null, levelConfigs: LaundryLevelConfig[] | null }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -969,34 +969,117 @@ function LaundryScheduler({ companyId, schedules }: { companyId?: string, schedu
     }
   };
 
+  const handleRemoveSchedule = async (id: string) => {
+    if (!firestore || !companyId) return;
+    await deleteDoc(doc(firestore, 'companies', companyId, 'laundrySchedules', id));
+    toast({ title: "Turn Removed" });
+  };
+
   return (
-    <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-3xl mx-auto">
-       <div className="flex justify-between items-center mb-10">
-          <div><h3 className="text-2xl font-black">Turn Scheduler</h3><p className="text-sm font-bold text-muted-foreground">Manage authorized wash days</p></div>
-          <div className="flex items-center gap-3">
-             <CalendarDays className="w-5 h-5 text-primary" />
-             <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-48 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+    <div className="space-y-8 max-w-4xl mx-auto">
+       {/* Strategic Quota Section */}
+       <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+          <CardHeader className="bg-primary/10 p-8 border-b">
+             <div className="flex items-center gap-3">
+                <Calculator className="w-6 h-6 text-primary" />
+                <div>
+                   <CardTitle className="text-xl font-black">Strategic Quota Overview</CardTitle>
+                   <CardDescription className="font-bold">Total authorized washes per student level</CardDescription>
+                </div>
+             </div>
+          </CardHeader>
+          <CardContent className="p-8">
+             <div className="grid grid-cols-5 gap-4">
+                {LEVELS.map(lv => {
+                  const config = levelConfigs?.find(c => c.level === lv);
+                  return (
+                    <div key={lv} className="p-4 bg-secondary/10 rounded-2xl text-center border-2 border-transparent">
+                       <p className="text-[10px] font-black uppercase text-muted-foreground mb-1 tracking-widest leading-none">Level {lv}</p>
+                       <p className="text-2xl font-black text-foreground">{config?.totalWashesAllowed || 0}</p>
+                       <p className="text-[8px] font-bold text-muted-foreground uppercase">Washes Allowed</p>
+                    </div>
+                  );
+                })}
+             </div>
+          </CardContent>
+       </Card>
+
+       <Card className="border-none shadow-sm bg-white rounded-3xl p-10">
+          <div className="flex justify-between items-center mb-10">
+             <div><h3 className="text-2xl font-black">Turn Scheduler</h3><p className="text-sm font-bold text-muted-foreground">Manage authorized wash days</p></div>
+             <div className="flex items-center gap-3">
+                <CalendarDays className="w-5 h-5 text-primary" />
+                <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-48 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+             </div>
           </div>
-       </div>
-       <div className="grid grid-cols-5 gap-4">
-          {LEVELS.map(lv => (
-            <button key={lv} onClick={() => toggleLevel(lv)} className={cn(
-              "h-32 rounded-[32px] border-4 flex flex-col items-center justify-center transition-all",
-              selectedLevels.includes(lv) ? "bg-primary border-primary text-primary-foreground shadow-xl scale-105" : "bg-secondary/10 border-transparent text-muted-foreground opacity-50"
-            )}>
-               <p className="text-[10px] font-black uppercase mb-1">Level</p>
-               <p className="text-4xl font-black">{lv}</p>
-               {selectedLevels.includes(lv) && <CheckCircle2 className="w-5 h-5 mt-2" />}
-            </button>
-          ))}
-       </div>
-       <div className="mt-10 p-6 bg-primary/5 rounded-2xl border-2 border-dashed border-primary/20 flex items-center gap-4">
-          <Calculator className="w-8 h-8 text-primary" />
-          <p className="text-xs font-bold leading-relaxed text-muted-foreground italic">
-            "Assigning a level to a specific date ensures students only access the laundry on their designated turn day, maintaining operational discipline across high-occupancy tiers."
-          </p>
-       </div>
-    </Card>
+          <div className="grid grid-cols-5 gap-4">
+             {LEVELS.map(lv => (
+               <button key={lv} onClick={() => toggleLevel(lv)} className={cn(
+                 "h-32 rounded-[32px] border-4 flex flex-col items-center justify-center transition-all",
+                 selectedLevels.includes(lv) ? "bg-primary border-primary text-primary-foreground shadow-xl scale-105" : "bg-secondary/10 border-transparent text-muted-foreground opacity-50"
+               )}>
+                  <p className="text-[10px] font-black uppercase mb-1">Level</p>
+                  <p className="text-4xl font-black">{lv}</p>
+                  {selectedLevels.includes(lv) && <CheckCircle2 className="w-5 h-5 mt-2" />}
+               </button>
+             ))}
+          </div>
+       </Card>
+
+       {/* Scheduled Registry Table */}
+       <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+          <CardHeader className="bg-secondary/10 p-8">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                   <ListFilter className="w-6 h-6 text-primary" />
+                   <CardTitle className="text-xl font-black">Scheduled Registry</CardTitle>
+                </div>
+                <Badge variant="outline" className="font-black text-[10px] uppercase">{schedules?.length || 0} Turn Records</Badge>
+             </div>
+          </CardHeader>
+          <div className="overflow-hidden">
+             <table className="w-full text-sm text-left">
+                <thead className="bg-secondary/5">
+                   <tr>
+                      <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Date of Turn</th>
+                      <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground">Authorized Level</th>
+                      <th className="p-6 font-black uppercase text-[10px] tracking-widest text-muted-foreground text-center">Action</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y">
+                   {schedules?.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(s => (
+                     <tr key={s.id} className="hover:bg-secondary/5 group">
+                        <td className="p-6 font-black text-foreground">
+                           {new Date(s.date).toLocaleDateString([], { dateStyle: 'full' })}
+                        </td>
+                        <td className="p-6">
+                           <Badge className="bg-primary h-7 px-4 font-black uppercase text-[10px]">Level {s.level}</Badge>
+                        </td>
+                        <td className="p-6 text-center">
+                           <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleRemoveSchedule(s.id)}
+                            className="text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                           >
+                              <Trash2 className="w-4 h-4" />
+                           </Button>
+                        </td>
+                     </tr>
+                   ))}
+                   {(!schedules || schedules.length === 0) && (
+                     <tr>
+                        <td colSpan={3} className="py-24 text-center opacity-30">
+                           <CalendarDays className="w-16 h-16 mx-auto mb-4" />
+                           <p className="font-black uppercase tracking-widest">No Turn records found</p>
+                        </td>
+                     </tr>
+                   )}
+                </tbody>
+             </table>
+          </div>
+       </Card>
+    </div>
   );
 }
 
