@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -14,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
 
 export default function CompanyDashboard() {
   const { user } = useAuth();
