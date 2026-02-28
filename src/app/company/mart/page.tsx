@@ -42,7 +42,7 @@ import { Product, SaleTransaction, Coupon, Company, PaymentMethod, CapitalPurcha
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
@@ -579,7 +579,7 @@ export default function MartPage() {
       </main>
 
       <Dialog open={isReverseDialogOpen} onOpenChange={setIsReverseDialogOpen}>
-        <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
+        <DialogContent className="rounded-[32px] border-none shadow-2xl max-md p-0 overflow-hidden bg-white">
           <div className="bg-destructive p-10 text-destructive-foreground">
             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
               <Lock className="w-6 h-6" />
