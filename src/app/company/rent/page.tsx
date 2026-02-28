@@ -196,18 +196,24 @@ export default function RentPage() {
     const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', selectedAssetForAgreement.id);
 
-    setDoc(transactionRef, transactionData).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transactionRef.path, operation: 'create', requestResourceData: transactionData }));
-    });
-    updateDoc(itemRef, { status: 'rented' }).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { status: 'rented' } }));
-    });
-
-    toast({ title: "Agreement Launched" });
-    setSelectedAssetForAgreement(null);
-    setCustomerName('');
-    setShowCheckoutDialog(false);
-    setIsProcessing(false);
+    setDoc(transactionRef, transactionData)
+      .then(() => {
+        updateDoc(itemRef, { status: 'rented' }).catch(async (err) => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { status: 'rented' } }));
+        });
+        toast({ title: "Agreement Launched" });
+        setSelectedAssetForAgreement(null);
+        setCustomerName('');
+        setCashReceived('');
+        setReferenceNumber('');
+        setShowCheckoutDialog(false);
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transactionRef.path, operation: 'create', requestResourceData: transactionData }));
+      })
+      .finally(() => {
+        setIsProcessing(false);
+      });
   };
 
   const handleCheckIn = (transactionId: string) => {
@@ -473,7 +479,11 @@ export default function RentPage() {
 
                         <div className="space-y-4">
                           <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Method</Label>
-                          <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
+                          <RadioGroup value={paymentMethod} onValueChange={(v) => {
+                            setPaymentMethod(v as PaymentMethod);
+                            setCashReceived('');
+                            setReferenceNumber('');
+                          }} className="grid grid-cols-3 gap-3">
                             <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash_main" />
                             <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card_main" />
                             <PaymentOption value="duitnow" label="Digital" icon={QrCode} id="rent_qr_main" />
@@ -511,11 +521,13 @@ export default function RentPage() {
                 <div className="p-12 space-y-10">
                   {paymentMethod === 'cash' && (
                     <div className="space-y-6">
-                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Received Amount ({currencySymbol})</Label>
-                      <Input type="number" className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none text-center" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest px-1">Amount Paid ({currencySymbol})</Label>
+                        <Input type="number" className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none text-center" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
+                      </div>
                       {Number(cashReceived) >= calculatedAgreement.totalAmount && (
-                        <div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center">
-                           <span className="text-[10px] font-black uppercase text-primary">Balance to Return</span>
+                        <div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center animate-in fade-in zoom-in-95">
+                           <span className="text-[10px] font-black uppercase text-primary">Balance (Change)</span>
                            <span className="text-5xl font-black">{currencySymbol}{changeAmount.toFixed(2)}</span>
                         </div>
                       )}
@@ -530,7 +542,7 @@ export default function RentPage() {
                          </div>
                        )}
                        <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction Ref / Trace ID</Label>
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction No / Reference</Label>
                           <Input placeholder="Enter reference..." className="h-16 rounded-[24px] font-black text-xl bg-secondary/20 border-none px-8" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
                        </div>
                     </div>
