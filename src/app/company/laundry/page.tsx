@@ -186,7 +186,7 @@ export default function LaundryPage() {
 
   const getWashRateForLevel = (level: number) => {
     const config = levelConfigs?.find(c => c.level === level);
-    return config?.serviceRate || 5.00;
+    return config?.serviceRate || 0;
   };
 
   const isLevelAllowedToday = (level: number) => {
@@ -421,6 +421,19 @@ export default function LaundryPage() {
 
   const handleConfirmTopUp = () => {
     if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
+    
+    // Validate cash received
+    if (topUpPaymentMethod === 'cash' && (Number(amountReceived) || 0) < Number(topUpAmount)) {
+      toast({ title: "Insufficient Cash Received", variant: "destructive" });
+      return;
+    }
+
+    // Validate reference for digital
+    if ((topUpPaymentMethod === 'card' || topUpPaymentMethod === 'duitnow') && !transactionNo) {
+      toast({ title: "Transaction Reference Required", variant: "destructive" });
+      return;
+    }
+
     setIsProcessing(true);
 
     const amount = Number(topUpAmount);
@@ -453,6 +466,8 @@ export default function LaundryPage() {
     setIsTopUpOpen(false);
     setTopUpAmount('');
     setTopUpMatrix('');
+    setAmountReceived('');
+    setTransactionNo('');
     setIsProcessing(false);
   };
 
@@ -520,13 +535,63 @@ export default function LaundryPage() {
                           onChange={(e) => setTopUpAmount(e.target.value)}
                         />
                       </div>
-                      <RadioGroup value={topUpPaymentMethod} onValueChange={(v) => setTopUpPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
-                        <PaymentOption value="cash" label="Cash" icon={Banknote} id="topup_cash" />
-                        <PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" />
-                        <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
-                      </RadioGroup>
-                      <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" onClick={handleConfirmTopUp} disabled={isProcessing || !topUpAmount}>
-                        Confirm & Record Deposit
+                      
+                      <div className="space-y-4">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Method</Label>
+                        <RadioGroup value={topUpPaymentMethod} onValueChange={(v) => {
+                          setTopUpPaymentMethod(v as PaymentMethod);
+                          setAmountReceived('');
+                          setTransactionNo('');
+                        }} className="grid grid-cols-3 gap-3">
+                          <PaymentOption value="cash" label="Cash" icon={Banknote} id="topup_cash" />
+                          <PaymentOption value="card" label="Card" icon={CreditCard} id="topup_card" />
+                          <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="duitnow_final" />
+                        </RadioGroup>
+                      </div>
+
+                      {/* Verification Section */}
+                      {topUpPaymentMethod === 'cash' ? (
+                        <div className="space-y-4 p-6 bg-secondary/10 rounded-3xl border-2 border-dashed border-primary/20 animate-in fade-in slide-in-from-top-2">
+                          <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-primary px-1">Cash Received ($)</Label>
+                            <Input 
+                              type="number" 
+                              placeholder="0.00" 
+                              className="h-14 rounded-2xl font-black text-2xl bg-white border-none text-center"
+                              value={amountReceived}
+                              onChange={(e) => setAmountReceived(e.target.value)}
+                            />
+                          </div>
+                          {Number(amountReceived) >= Number(topUpAmount) && Number(topUpAmount) > 0 && (
+                            <div className="flex justify-between items-center px-2 py-2 border-t border-primary/10">
+                              <span className="text-xs font-black uppercase text-muted-foreground">Change Due:</span>
+                              <span className="text-3xl font-black text-foreground">${(Number(amountReceived) - Number(topUpAmount)).toFixed(2)}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2 p-6 bg-secondary/10 rounded-3xl border-2 border-dashed border-primary/20 animate-in fade-in slide-in-from-top-2">
+                          <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Transaction Ref / Trace ID</Label>
+                          <Input 
+                            placeholder="ENTER REFERENCE NO..." 
+                            className="h-14 rounded-2xl font-black text-lg bg-white border-none px-6"
+                            value={transactionNo}
+                            onChange={(e) => setTransactionNo(e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      <Button 
+                        className="w-full h-18 rounded-[28px] font-black text-xl shadow-2xl" 
+                        onClick={handleConfirmTopUp} 
+                        disabled={
+                          isProcessing || 
+                          !topUpAmount || 
+                          (topUpPaymentMethod === 'cash' && Number(amountReceived) < Number(topUpAmount)) ||
+                          ((topUpPaymentMethod === 'card' || topUpPaymentMethod === 'duitnow') && !transactionNo)
+                        }
+                      >
+                        {isProcessing ? "Processing..." : "Confirm & Record Deposit"}
                       </Button>
                     </div>
                   )}
