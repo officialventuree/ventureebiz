@@ -90,7 +90,7 @@ export default function LaundryPage() {
 
   // Refill States
   const [refillCategory, setRefillCategory] = useState<'student' | 'payable'>('student');
-  const [refillBottles, setRefillBottles] = useState<string>('');
+  const [refillBottles, setRefillBottles] = useState<string>('0');
   const [refillVolPerBottle, setRefillVolPerBottle] = useState<string>('');
   const [refillCostPerBottle, setRefillCostPerBottle] = useState<string>('');
 
@@ -279,7 +279,6 @@ export default function LaundryPage() {
   const handleDeleteStudent = (studentId: string) => {
     if (!firestore || !user?.companyId) return;
     
-    // Explicit confirmation dialog added here
     if (!confirm("Are you sure you want to delete this subscriber information? This action is permanent and will remove all associated bank records.")) {
       return;
     }
@@ -356,7 +355,7 @@ export default function LaundryPage() {
     }
 
     toast({ title: units > 0 ? "Inventory Replenished" : "Information Updated" });
-    setRefillBottles('');
+    setRefillBottles('0');
     setIsProcessing(false);
   };
 
@@ -1054,7 +1053,7 @@ export default function LaundryPage() {
                         </label>
                      </div>
                    ) : (
-                     <div className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer hover:bg-secondary/20 transition-all flex flex-col items-center justify-center gap-4">
+                     <div className="py-20 border-4 border-dashed rounded-[40px] opacity-30 cursor-pointer hover:bg-secondary/20 transition-all flex flex-col items-center justify-center gap-4 border-secondary">
                         <Plus className="w-12 h-12" />
                         <p className="text-xs font-black uppercase">Upload QR Code</p>
                         <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
@@ -1149,7 +1148,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
                 <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
-                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
@@ -1511,7 +1510,7 @@ function LaundryAnalytics({ transactions }: { transactions: SaleTransaction[] })
                       </AreaChart>
                    </ResponsiveContainer>
                 </div>
-             </AreaChart>
+             </Card>
           </div>
 
           <div className="space-y-6">
