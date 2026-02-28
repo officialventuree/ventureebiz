@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   Settings2,
   FlaskConical,
-  Scale
+  Scale,
+  HandCoins
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -148,6 +149,8 @@ export default function LaundryPage() {
 
   const benchmarkSubscription = globalConfig?.fixedSubscription || 0;
   const soapMlPerWash = globalConfig?.soapMlPerWash || 50;
+  const payableServiceRate = globalConfig?.payableServiceRate || 0;
+  const payableSoapMlPerWash = globalConfig?.payableSoapMlPerWash || 50;
 
   // Automated Quota Logic
   const levelQuotas = useMemo(() => {
@@ -170,6 +173,13 @@ export default function LaundryPage() {
       setRefillCostPerBottle(item.lastBottleCost?.toString() || '');
     }
   }, [refillCategory, studentSoap, payableSoap]);
+
+  // Sync payable rate when loading
+  useEffect(() => {
+    if (globalConfig?.payableServiceRate) {
+      setPayableAmount(globalConfig.payableServiceRate.toString());
+    }
+  }, [globalConfig]);
 
   const getWashRateForLevel = (level: number) => {
     const quota = levelQuotas[level] || 0;
@@ -209,7 +219,7 @@ export default function LaundryPage() {
       matrixNumber: formData.get('matrix') as string,
       balance: currentBal, 
       totalSpent: currentSpent,
-      initialAmount: benchmarkSubscription,
+      initialAmount: benchmarkSubscription || 0,
       level: Number(selectedLevel),
       class: selectedClass,
     };
@@ -365,7 +375,7 @@ export default function LaundryPage() {
   const handlePayableWash = () => {
     if (!firestore || !user?.companyId || !payableName || !payableAmount) return;
     
-    if (!payableSoap || payableSoap.soapStockMl < soapMlPerWash) {
+    if (!payableSoap || payableSoap.soapStockMl < payableSoapMlPerWash) {
       toast({ title: "Soap Stock Error", variant: "destructive" });
       return;
     }
@@ -380,7 +390,7 @@ export default function LaundryPage() {
     const invRef = doc(firestore, 'companies', user.companyId, 'laundryInventory', 'payable_soap');
     const transRef = collection(firestore, 'companies', user.companyId, 'transactions');
 
-    const soapCost = (soapMlPerWash / 1000) * (payableSoap.soapCostPerLitre || 0);
+    const soapCost = (payableSoapMlPerWash / 1000) * (payableSoap.soapCostPerLitre || 0);
     const profit = amount - soapCost;
 
     const transData: SaleTransaction = {
@@ -398,12 +408,11 @@ export default function LaundryPage() {
       items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
     };
 
-    updateDoc(invRef, { soapStockMl: increment(-soapMlPerWash) });
+    updateDoc(invRef, { soapStockMl: increment(-payableSoapMlPerWash) });
     addDoc(transRef, transData);
 
     toast({ title: "Service Complete" });
     setPayableName('');
-    setPayableAmount('');
     setPayableCashReceived('');
     setPayableRef('');
     setIsProcessing(false);
@@ -892,6 +901,9 @@ export default function LaundryPage() {
               benchmarkSubscription={benchmarkSubscription} 
               studentSoap={studentSoap} 
               soapMlPerWash={soapMlPerWash} 
+              payableSoap={payableSoap}
+              payableServiceRate={payableServiceRate}
+              payableSoapMlPerWash={payableSoapMlPerWash}
              />
           </TabsContent>
 
@@ -943,7 +955,7 @@ export default function LaundryPage() {
           <TabsContent value="profits">
              <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={ShoppingBag} />
+                   <ReportStat label="Aggregate Revenue" value={`$${totalRevenue.toFixed(2)}`} icon={HandCoins} />
                    <ReportStat label="Realized Profit" value={`$${totalProfit.toFixed(2)}`} icon={TrendingUp} color="text-primary" />
                 </div>
                 <div className="bg-white rounded-[40px] border shadow-sm overflow-hidden p-10">
@@ -1024,11 +1036,15 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
   const { toast } = useToast();
   const [subVal, setSubVal] = useState('');
   const [soapVal, setSoapVal] = useState('');
+  const [payableRateVal, setPayableRateVal] = useState('');
+  const [payableSoapVal, setPayableSoapVal] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (initialConfig?.fixedSubscription) setSubVal(initialConfig.fixedSubscription.toString());
     if (initialConfig?.soapMlPerWash) setSoapVal(initialConfig.soapMlPerWash.toString());
+    if (initialConfig?.payableServiceRate) setPayableRateVal(initialConfig.payableServiceRate.toString());
+    if (initialConfig?.payableSoapMlPerWash) setPayableSoapVal(initialConfig.payableSoapMlPerWash.toString());
   }, [initialConfig]);
 
   const handleSave = () => {
@@ -1037,7 +1053,9 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
     const docRef = doc(firestore, 'companies', companyId, 'laundryConfig', 'global');
     const updateData = { 
       fixedSubscription: Number(subVal),
-      soapMlPerWash: Number(soapVal) || 50
+      soapMlPerWash: Number(soapVal) || 50,
+      payableServiceRate: Number(payableRateVal),
+      payableSoapMlPerWash: Number(payableSoapVal) || 50
     };
     setDoc(docRef, updateData, { merge: true })
       .then(() => toast({ title: "Global Policies Updated", description: `Financial and consumption benchmarks applied.` }))
@@ -1048,7 +1066,7 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
   };
 
   return (
-    <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden max-w-4xl mx-auto">
+    <Card className="border-none shadow-sm rounded-[32px] bg-white overflow-hidden max-w-5xl mx-auto">
        <CardHeader className="bg-primary/5 p-8 border-b">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
@@ -1061,22 +1079,36 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
           </div>
        </CardHeader>
        <CardContent className="p-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Initial Subscription ($)</Label>
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Subscriber Fee ($)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><Banknote className="w-full h-full" /></div>
                    <Input type="number" step="0.01" value={subVal} onChange={(e) => setSubVal(e.target.value)} placeholder="0.00" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Fixed Soap per Wash (ml)</Label>
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Subscriber Soap/Wash (ml)</Label>
                 <div className="relative">
                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
                    <Input type="number" value={soapVal} onChange={(e) => setSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
                 </div>
              </div>
-             <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-2">
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Rate/Wash ($)</Label>
+                <div className="relative">
+                   <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><HandCoins className="w-full h-full" /></div>
+                   <Input type="number" step="0.01" value={payableRateVal} onChange={(e) => setPayableRateVal(e.target.value)} placeholder="5.00" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                </div>
+             </div>
+             <div className="space-y-1.5">
+                <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Payable Soap/Wash (ml)</Label>
+                <div className="relative">
+                   <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary"><FlaskConical className="w-full h-full" /></div>
+                   <Input type="number" value={payableSoapVal} onChange={(e) => setPayableSoapVal(e.target.value)} placeholder="50" className="h-12 pl-10 rounded-xl bg-secondary/10 border-none font-black text-lg" />
+                </div>
+             </div>
+             <Button onClick={handleSave} disabled={isSaving || !subVal || !soapVal || !payableRateVal} className="h-12 rounded-xl px-8 font-black shadow-lg md:col-span-4">
                 {isSaving ? "Applying Benchmarks..." : "Set Strategic Policy"}
              </Button>
           </div>
@@ -1085,12 +1117,32 @@ function GlobalPolicyConfig({ companyId, initialConfig }: { companyId?: string, 
   );
 }
 
-function LaundryConfigurator({ levelQuotas, benchmarkSubscription, studentSoap, soapMlPerWash }: { levelQuotas: Record<number, number>, benchmarkSubscription: number, studentSoap?: LaundryInventory, soapMlPerWash: number }) {
+function LaundryConfigurator({ 
+  levelQuotas, 
+  benchmarkSubscription, 
+  studentSoap, 
+  soapMlPerWash,
+  payableSoap,
+  payableServiceRate,
+  payableSoapMlPerWash
+}: { 
+  levelQuotas: Record<number, number>, 
+  benchmarkSubscription: number, 
+  studentSoap?: LaundryInventory, 
+  soapMlPerWash: number,
+  payableSoap?: LaundryInventory,
+  payableServiceRate: number,
+  payableSoapMlPerWash: number
+}) {
   const soapCostPerMl = (studentSoap?.soapCostPerLitre || 0) / 1000;
   const subscriberCostPrice = soapCostPerMl * soapMlPerWash;
 
+  const payableSoapCostPerMl = (payableSoap?.soapCostPerLitre || 0) / 1000;
+  const payableCostPrice = payableSoapCostPerMl * payableSoapMlPerWash;
+  const payableProfit = payableServiceRate - payableCostPrice;
+
   return (
-    <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
+    <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-5xl mx-auto">
        <div className="mb-10 text-center">
           <h3 className="text-2xl font-black">Strategic Yield Analysis</h3>
           <p className="text-sm font-bold text-muted-foreground">Dynamic profitability derived from quota scheduling and consumable benchmarks.</p>
@@ -1138,6 +1190,41 @@ function LaundryConfigurator({ levelQuotas, benchmarkSubscription, studentSoap, 
               </div>
             );
           })}
+
+          <div className="bg-primary/10 p-6 rounded-3xl space-y-6 border-2 border-primary/20 transition-all col-span-1 md:col-span-2">
+             <div className="flex justify-between items-center">
+                <Badge className="h-8 px-4 font-black bg-primary">Walk-in (Payable)</Badge>
+                <div className="text-right">
+                   <p className="text-[10px] font-black uppercase text-primary leading-none mb-1">Market Logic</p>
+                   <p className="font-black text-foreground">Non-Subscriber Entry</p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                   <p className="text-[9px] font-black uppercase text-primary tracking-widest mb-1">Payable Rate</p>
+                   <p className="text-xl font-black text-foreground">${payableServiceRate.toFixed(2)}</p>
+                   <p className="text-[8px] font-bold text-muted-foreground uppercase mt-1">Market Price / Wash</p>
+                </div>
+                <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                   <p className="text-[9px] font-black uppercase text-destructive tracking-widest mb-1">Cost Price</p>
+                   <p className="text-xl font-black text-foreground">${payableCostPrice.toFixed(2)}</p>
+                   <p className="text-[8px] font-bold text-muted-foreground uppercase mt-1">Expense / Wash</p>
+                </div>
+             </div>
+
+             <div className="bg-primary p-6 rounded-2xl flex justify-between items-center text-primary-foreground shadow-lg">
+                <div>
+                   <p className="text-[10px] font-black uppercase opacity-80 leading-none mb-1">Net Realized Profit</p>
+                   <p className="text-xs font-bold uppercase">Margin per walk-in</p>
+                </div>
+                <div className="text-right">
+                   <p className="text-4xl font-black tracking-tighter">
+                      ${payableProfit.toFixed(2)}
+                   </p>
+                </div>
+             </div>
+          </div>
        </div>
        <div className="mt-8 p-6 bg-secondary/10 rounded-2xl space-y-4">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-muted-foreground">
