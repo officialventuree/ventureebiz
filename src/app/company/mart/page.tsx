@@ -615,7 +615,6 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
   useEffect(() => {
     if (selectedProduct) {
       setItemsPerUnit(selectedProduct.itemsPerUnit?.toString() || '1');
-      // Pre-calculate current total cost based on the unit buying pattern
       const currentUnitCost = selectedProduct.costPrice * (selectedProduct.itemsPerUnit || 1);
       setCostPerUnit(currentUnitCost.toFixed(2));
       setRetailPrice(selectedProduct.sellingPrice.toFixed(2));
@@ -695,20 +694,25 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
     const formData = new FormData(e.currentTarget);
     const id = editingProduct?.id || crypto.randomUUID();
     
-    const cost = Number(formData.get('cost'));
-    const stock = Number(formData.get('stock'));
+    // When editing, preserve locked fields
+    const cost = editingProduct ? editingProduct.costPrice : Number(formData.get('cost'));
+    const stock = editingProduct ? editingProduct.stock : Number(formData.get('stock'));
+    const unit = editingProduct ? editingProduct.unit : formData.get('unit') as string;
+    const price = editingProduct ? editingProduct.sellingPrice : Number(formData.get('price'));
+    const ipu = editingProduct ? editingProduct.itemsPerUnit : Number(formData.get('ipu') || 1);
+    
     const totalInitialCost = cost * stock;
 
     const productData: Product = {
       id,
       companyId,
       name: formData.get('name') as string,
-      unit: formData.get('unit') as string,
+      unit,
       barcode: formData.get('barcode') as string,
       costPrice: cost,
-      sellingPrice: Number(formData.get('price')),
+      sellingPrice: price,
       stock: stock,
-      itemsPerUnit: Number(formData.get('ipu') || 1)
+      itemsPerUnit: ipu
     };
 
     const docRef = doc(firestore, 'companies', companyId, 'products', id);
@@ -910,7 +914,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
             </DialogTrigger>
             <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden">
                <div className="bg-primary p-8 text-primary-foreground">
-                 <DialogTitle className="text-2xl font-black">{editingProduct ? 'Edit Product' : 'New Registration'}</DialogTitle>
+                 <DialogTitle className="text-2xl font-black">{editingProduct ? 'Edit Product Metadata' : 'New Registration'}</DialogTitle>
                </div>
                <form onSubmit={handleAddNew} className="p-8 space-y-6">
                  <div className="space-y-1.5">
@@ -920,7 +924,7 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                  <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Unit</Label>
-                     <Input name="unit" defaultValue={editingProduct?.unit} required className="h-12 rounded-xl" />
+                     <Input name="unit" defaultValue={editingProduct?.unit} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Barcode</Label>
@@ -930,25 +934,35 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                  <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Unit Cost ($)</Label>
-                     <Input name="cost" type="number" step="0.01" defaultValue={editingProduct?.costPrice} required className="h-12 rounded-xl" />
+                     <Input name="cost" type="number" step="0.01" defaultValue={editingProduct?.costPrice} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Selling Price ($)</Label>
-                     <Input name="price" type="number" step="0.01" defaultValue={editingProduct?.sellingPrice} required className="h-12 rounded-xl" />
+                     <Input name="price" type="number" step="0.01" defaultValue={editingProduct?.sellingPrice} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Active Stock</Label>
-                     <Input name="stock" type="number" defaultValue={editingProduct?.stock} required className="h-12 rounded-xl" />
+                     <Input name="stock" type="number" defaultValue={editingProduct?.stock} required disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                    <div className="space-y-1.5">
                      <Label className="text-[10px] font-black uppercase">Qty/Unit</Label>
-                     <Input name="ipu" type="number" defaultValue={editingProduct?.itemsPerUnit} className="h-12 rounded-xl" />
+                     <Input name="ipu" type="number" defaultValue={editingProduct?.itemsPerUnit} disabled={!!editingProduct} className="h-12 rounded-xl" />
                    </div>
                  </div>
+                 
+                 {editingProduct && (
+                   <div className="p-4 bg-secondary/10 rounded-2xl flex items-start gap-3">
+                      <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                      <p className="text-[10px] font-bold text-muted-foreground leading-tight">
+                        Note: Cost, Price, and Stock levels are locked during metadata edits. Use the <strong>Stock Refill</strong> panel to adjust inventory or economic values.
+                      </p>
+                   </div>
+                 )}
+
                  <Button type="submit" className="w-full h-14 rounded-2xl font-black" disabled={(!isBudgetActive && !editingProduct) || isProcessing}>
-                   {isProcessing ? "Saving..." : editingProduct ? "Update Product" : "Save Product"}
+                   {isProcessing ? "Saving..." : editingProduct ? "Update Metadata" : "Save Product"}
                  </Button>
                </form>
             </DialogContent>
@@ -1065,7 +1079,7 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
             expiryDate: expiry, 
             status: 'active',
             customerName,
-            customerCompany: customerCompany || null,
+            customerCompany: customerCompany || undefined,
             createdAt: new Date().toISOString(),
             paymentMethod: purchaseMethod 
           };
@@ -1220,6 +1234,12 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
 
                 {(purchaseMethod === 'card' || purchaseMethod === 'duitnow') && (
                   <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                     {purchaseMethod === 'duitnow' && companyDoc?.duitNowQr && (
+                       <div className="p-4 bg-white border-2 border-dashed border-primary/20 rounded-2xl text-center">
+                          <Image src={companyDoc.duitNowQr} alt="QR" width={120} height={120} className="mx-auto mb-2 opacity-80" />
+                          <p className="text-[8px] font-black text-primary uppercase">Scan for Liability Deposit</p>
+                       </div>
+                     )}
                      <div className="space-y-1">
                         <Label className="text-[9px] font-black uppercase">Trace ID / Ref No.</Label>
                         <Input placeholder="Enter reference..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-10 rounded-lg font-bold" />
