@@ -252,9 +252,12 @@ export default function LaundryPage() {
 
   const handleDeleteStudent = (studentId: string) => {
     if (!firestore || !user?.companyId) return;
+    
+    // Explicit confirmation dialog added here
     if (!confirm("Are you sure you want to delete this subscriber information? This action is permanent and will remove all associated bank records.")) {
       return;
     }
+
     const docRef = doc(firestore, 'companies', user.companyId, 'laundryStudents', studentId);
     deleteDocumentNonBlocking(docRef);
     toast({ title: "Subscriber Expelled" });
