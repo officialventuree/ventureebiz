@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, History, Settings, ArrowUpRight, ShieldCheck, Zap, Lock, Calendar, RefreshCw, Key } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { CapitalPurchase, Company, CapitalPeriod } from '@/lib/types';
@@ -17,12 +17,17 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 export default function CapitalControlPage() {
   const { user } = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
 
   // Form states for live calculation
   const [formLimit, setFormLimit] = useState<number>(0);
@@ -109,6 +114,41 @@ export default function CapitalControlPage() {
       });
   };
 
+  const handleResetCycle = async () => {
+    if (!firestore || !user?.companyId || !companyDoc) return;
+    
+    if (resetPassword !== companyDoc.cancellationPassword) {
+      toast({ title: "Invalid Credential", description: "The cancellation password provided is incorrect.", variant: "destructive" });
+      return;
+    }
+
+    setIsResetting(true);
+    const docRef = doc(firestore, 'companies', user.companyId);
+    const resetData = {
+      capitalLimit: 0,
+      capitalPeriod: null,
+      capitalStartDate: null,
+      capitalEndDate: null
+    };
+
+    updateDoc(docRef, resetData)
+      .then(() => {
+        toast({ title: "Cycle Terminated", description: "Capital configuration has been successfully reset." });
+        setIsResetDialogOpen(false);
+        setResetPassword('');
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: resetData
+        }));
+      })
+      .finally(() => {
+        setIsResetting(false);
+      });
+  };
+
   return (
     <div className="flex h-screen bg-background text-foreground font-body">
       <Sidebar />
@@ -119,12 +159,48 @@ export default function CapitalControlPage() {
               <h1 className="text-3xl font-black font-headline tracking-tight">Capital Control</h1>
               <p className="text-muted-foreground font-medium">Strategic Spending Limits & Procurement Guardrails</p>
             </div>
-            {isLocked && (
-              <div className="bg-primary/10 border-2 border-primary/20 rounded-2xl px-6 py-2 flex items-center gap-3 animate-in fade-in slide-in-from-right-4">
-                <Lock className="w-4 h-4 text-primary" />
-                <p className="text-[10px] font-black uppercase text-primary tracking-widest leading-none">Configuration Locked</p>
-              </div>
-            )}
+            {isLocked ? (
+              <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="rounded-2xl h-12 px-6 font-black gap-2 border-primary/20 bg-white hover:bg-primary/5 text-primary shadow-sm transition-all">
+                    <RefreshCw className="w-4 h-4" /> Request Cycle Reset
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="rounded-[32px] border-none shadow-2xl max-w-md p-0 overflow-hidden bg-white">
+                  <div className="bg-destructive p-10 text-destructive-foreground">
+                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <DialogTitle className="text-2xl font-black tracking-tight leading-tight">Cycle Cancellation</DialogTitle>
+                    <DialogDescription className="text-destructive-foreground/80 font-bold mt-2">
+                      A unique 8-character Cancellation Password provided by the platform admin is required to terminate a locked cycle.
+                    </DialogDescription>
+                  </div>
+                  <div className="p-8 space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Cancellation Password</Label>
+                      <div className="relative">
+                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          type="password"
+                          placeholder="ENTER 8-CHAR KEY" 
+                          value={resetPassword}
+                          onChange={(e) => setResetPassword(e.target.value)}
+                          className="h-14 rounded-2xl bg-secondary/10 border-none pl-12 font-mono font-bold tracking-widest text-lg" 
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={handleResetCycle} 
+                      disabled={isResetting || resetPassword.length < 1}
+                      className="w-full h-14 rounded-2xl font-black text-lg shadow-xl bg-destructive hover:bg-destructive/90"
+                    >
+                      {isResetting ? "Authenticating..." : "Confirm & Unlock Budget"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

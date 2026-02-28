@@ -10,6 +10,7 @@
         "name": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "password": { "type": "string" },
+        "cancellationPassword": { "type": "string", "description": "8-character alphanumeric ID for resetting locked configurations." },
         "createdAt": { "type": "string", "format": "date-time" },
         "capitalLimit": { "type": "number" },
         "capitalPeriod": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
@@ -17,7 +18,7 @@
         "capitalEndDate": { "type": "string", "format": "date" },
         "duitNowQr": { "type": "string" }
       },
-      "required": ["id", "name", "email", "createdAt"]
+      "required": ["id", "name", "email", "createdAt", "cancellationPassword"]
     },
     "User": {
       "title": "User",

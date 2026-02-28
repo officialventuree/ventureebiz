@@ -22,6 +22,7 @@ export interface Company {
   name: string;
   email: string;
   password?: string;
+  cancellationPassword: string;
   createdAt: string;
   capitalLimit?: number;
   capitalPeriod?: CapitalPeriod;

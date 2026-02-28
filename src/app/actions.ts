@@ -12,14 +12,20 @@ export async function createCompanyAction(formData: FormData) {
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
   const email = `${cleanName}@ventureebiz.com`;
   
-  const { uniqueId } = await generateCompanyPasswordId({});
-  const password = `${cleanName}.venturee.${uniqueId}`;
+  // Generate Login Password ID
+  const { uniqueId: loginId } = await generateCompanyPasswordId({});
+  const password = `${cleanName}.venturee.${loginId}`;
+
+  // Generate Cancellation Password ID
+  const { uniqueId: cancelId } = await generateCompanyPasswordId({});
+  const cancellationPassword = cancelId;
 
   const company: Company = {
     id: crypto.randomUUID(),
     name,
     email,
     password,
+    cancellationPassword,
     createdAt: new Date().toISOString(),
     capitalLimit: 10000,
     capitalPeriod: 'monthly'
