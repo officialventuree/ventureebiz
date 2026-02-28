@@ -114,11 +114,6 @@ export default function LaundryPage() {
     return collection(firestore, 'companies', user.companyId, 'laundryInventory');
   }, [firestore, user?.companyId]);
 
-  const configQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.companyId) return null;
-    return collection(firestore, 'companies', user.companyId, 'laundryLevelConfigs');
-  }, [firestore, user?.companyId]);
-
   const scheduleQuery = useMemoFirebase(() => {
     if (!firestore || !user?.companyId) return null;
     return collection(firestore, 'companies', user.companyId, 'laundrySchedules');
@@ -137,7 +132,6 @@ export default function LaundryPage() {
   const { data: students } = useCollection<LaundryStudent>(studentsQuery);
   const { data: transactions } = useCollection<SaleTransaction>(transactionsQuery);
   const { data: inventoryItems } = useCollection<LaundryInventory>(inventoryQuery);
-  const { data: levelConfigs } = useCollection<LaundryLevelConfig>(configQuery);
   const { data: schedules } = useCollection<LaundrySchedule>(scheduleQuery);
   const { data: globalConfig } = useDoc<any>(globalConfigRef);
   const { data: companyDoc } = useDoc<Company>(companyRef);
@@ -204,7 +198,7 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialFee = editingStudent ? (editingStudent.initialAmount ?? 0) : benchmarkSubscription;
+    const initialFee = benchmarkSubscription;
     const currentBal = editingStudent ? (editingStudent.balance ?? 0) : 0;
     const currentSpent = editingStudent ? (editingStudent.totalSpent ?? 0) : 0;
 
@@ -414,13 +408,11 @@ export default function LaundryPage() {
   const handleConfirmTopUp = () => {
     if (!foundTopUpStudent || !firestore || !user?.companyId || !topUpAmount) return;
     
-    // Validate cash received
     if (topUpPaymentMethod === 'cash' && (Number(amountReceived) || 0) < Number(topUpAmount)) {
       toast({ title: "Insufficient Cash Received", variant: "destructive" });
       return;
     }
 
-    // Validate reference for digital
     if ((topUpPaymentMethod === 'card' || topUpPaymentMethod === 'duitnow') && !transactionNo) {
       toast({ title: "Transaction Reference Required", variant: "destructive" });
       return;
@@ -541,7 +533,6 @@ export default function LaundryPage() {
                         </RadioGroup>
                       </div>
 
-                      {/* Verification Section */}
                       {topUpPaymentMethod === 'cash' ? (
                         <div className="space-y-4 p-6 bg-secondary/10 rounded-3xl border-2 border-dashed border-primary/20 animate-in fade-in slide-in-from-top-2">
                           <div className="space-y-2">
@@ -817,7 +808,7 @@ export default function LaundryPage() {
                          <div className="space-y-1.5">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground">Fixed Initial Subscription ($)</Label>
                             <div className="h-11 rounded-xl bg-secondary/10 border-none font-black flex items-center px-4 text-primary">
-                               ${editingStudent ? (editingStudent.initialAmount ?? 0).toFixed(2) : benchmarkSubscription.toFixed(2)}
+                               ${benchmarkSubscription.toFixed(2)}
                             </div>
                             <p className="text-[9px] font-bold text-muted-foreground italic mt-1">Benchmark is fixed per policy settings.</p>
                          </div>
@@ -888,11 +879,11 @@ export default function LaundryPage() {
           </TabsContent>
 
           <TabsContent value="schedule">
-             <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelConfigs={levelConfigs} levelQuotas={levelQuotas} />
+             <LaundryScheduler companyId={user?.companyId} schedules={schedules} levelQuotas={levelQuotas} />
           </TabsContent>
 
           <TabsContent value="config">
-             <LaundryConfigurator companyId={user?.companyId} levelConfigs={levelConfigs} levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} />
+             <LaundryConfigurator levelQuotas={levelQuotas} benchmarkSubscription={benchmarkSubscription} />
           </TabsContent>
 
           <TabsContent value="consumables">
@@ -1069,32 +1060,15 @@ function GlobalSubscriptionConfig({ companyId, initialConfig }: { companyId?: st
   );
 }
 
-function LaundryConfigurator({ companyId, levelConfigs, levelQuotas, benchmarkSubscription }: { companyId?: string, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number>, benchmarkSubscription: number }) {
-  const firestore = useFirestore();
-  const { toast } = useToast();
-
-  const saveConfig = (level: number, rate: number) => {
-    if (!firestore || !companyId) return;
-    const id = `LV${level}_CONFIG`;
-    const docRef = doc(firestore, 'companies', companyId, 'laundryLevelConfigs', id);
-    const quota = levelQuotas[level] || 0;
-    const data = { id, companyId, level, serviceRate: rate, subscriptionFee: rate * quota, totalWashesAllowed: quota };
-    setDoc(docRef, data)
-      .then(() => toast({ title: `Level ${level} Policy Updated` }))
-      .catch(async (err) => {
-        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write', requestResourceData: data }));
-      });
-  };
-
+function LaundryConfigurator({ levelQuotas, benchmarkSubscription }: { levelQuotas: Record<number, number>, benchmarkSubscription: number }) {
   return (
     <Card className="border-none shadow-sm bg-white rounded-3xl p-10 max-w-4xl mx-auto">
        <div className="mb-10 text-center">
           <h3 className="text-2xl font-black">Service Rate & Strategic Policy</h3>
-          <p className="text-sm font-bold text-muted-foreground">Define departmental wash rates based on the ${benchmarkSubscription.toFixed(2)} fixed subscription.</p>
+          <p className="text-sm font-bold text-muted-foreground">Automatic per-wash rate derivation based on benchmark policy and turn quotas.</p>
        </div>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {LEVELS.map(lv => {
-            const config = levelConfigs?.find(c => c.level === lv);
             const quota = levelQuotas[lv] || 0;
             const currentRate = quota > 0 ? (benchmarkSubscription / quota) : 0;
             return (
@@ -1119,7 +1093,7 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas, benchmarkSu
                  </div>
                  <div className="pt-2 border-t border-white/50">
                     <div className="flex justify-between items-center px-1">
-                       <span className="text-[9px] font-black text-muted-foreground uppercase">Fixed Initial Subscription</span>
+                       <span className="text-[9px] font-black text-muted-foreground uppercase">Fixed Policy Target</span>
                        <span className="text-sm font-black text-foreground">${benchmarkSubscription.toFixed(2)}</span>
                     </div>
                  </div>
@@ -1127,11 +1101,17 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas, benchmarkSu
             );
           })}
        </div>
+       <div className="mt-8 p-6 bg-primary/5 rounded-2xl flex items-start gap-3 border border-primary/10">
+          <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+          <p className="text-xs font-bold text-muted-foreground leading-relaxed">
+            Note: The <strong>Service Rate</strong> is an autocalculated value derived from the Benchmark Policy ($) divided by the total number of turns in the Schedule. To adjust these rates, modify the fixed subscription or change the number of scheduled wash days.
+          </p>
+       </div>
     </Card>
   );
 }
 
-function LaundryScheduler({ companyId, schedules, levelConfigs, levelQuotas }: { companyId?: string, schedules: LaundrySchedule[] | null, levelConfigs: LaundryLevelConfig[] | null, levelQuotas: Record<number, number> }) {
+function LaundryScheduler({ companyId, schedules, levelQuotas }: { companyId?: string, schedules: LaundrySchedule[] | null, levelQuotas: Record<number, number> }) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
