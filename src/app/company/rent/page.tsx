@@ -28,6 +28,7 @@ import {
   Lock,
   BarChart3,
   DollarSign,
+  TrendingUp,
   XCircle
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
@@ -324,7 +325,7 @@ export default function RentPage() {
             </div>
             
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
-              <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
+              <DialogContent className="rounded-[40px] max-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center"><DialogTitle className="text-xs font-black uppercase mb-2">Checkout Verification</DialogTitle><h2 className="text-7xl font-black tracking-tighter">{currencySymbol}{calculatedAgreement.totalAmount.toFixed(2)}</h2></div>
                 <div className="p-12 space-y-10">
                   {paymentMethod === 'cash' && (<div className="space-y-6"><div className="space-y-2"><Label className="text-[10px] font-black uppercase px-1">Amount Paid ({currencySymbol})</Label><Input type="number" className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none text-center" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} /></div>{Number(cashReceived) >= calculatedAgreement.totalAmount && (<div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center animate-in fade-in zoom-in-95"><span className="text-[10px] font-black uppercase text-primary">Balance</span><span className="text-5xl font-black">{currencySymbol}{changeAmount.toFixed(2)}</span></div>)}</div>)}
@@ -382,7 +383,7 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
     <div className="flex-1">
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
       <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer h-28 text-center">
-        <Icon className="mb-2 h-6 w-6 text-primary" />
+        <Icon className="mb-2 h-7 w-7 text-primary" />
         <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
     </div>
