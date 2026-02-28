@@ -42,7 +42,7 @@ import { Product, SaleTransaction, Coupon, Company, PaymentMethod, CapitalPurcha
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
@@ -825,7 +825,7 @@ function InventoryManager({ companyId, products, isBudgetActive, remainingBudget
                     disabled={!canProcure}
                     className="pl-10 h-10 rounded-xl bg-secondary/5 border-none text-xs font-bold"
                     value={refillSearch}
-                    onChange={(e) => setRegistrySearch(e.target.value)}
+                    onChange={(e) => setRefillSearch(e.target.value)}
                   />
                 </div>
                 <ScrollArea className="h-48 border rounded-xl p-2 bg-secondary/5">
