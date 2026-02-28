@@ -325,15 +325,15 @@ export default function RentPage() {
           </Alert>
         )}
 
-        <Tabs defaultValue="workflow" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start mb-6">
+        <Tabs defaultValue="workflow" className="flex-1 flex flex-col">
+          <TabsList className="bg-white/50 border p-1 rounded-2xl shadow-sm self-start mb-6 shrink-0">
             <TabsTrigger value="workflow" className="rounded-xl px-6 gap-2 font-black"><ArrowRightLeft className="w-4 h-4" /> Workflow</TabsTrigger>
             <TabsTrigger value="pos" className="rounded-xl px-6 gap-2 font-black"><CalendarDays className="w-4 h-4" /> Create Agreement</TabsTrigger>
             <TabsTrigger value="registry" className="rounded-xl px-6 gap-2 font-black"><LayoutGrid className="w-4 h-4" /> Asset Catalog</TabsTrigger>
             <TabsTrigger value="settings" className="rounded-xl px-6 gap-2 font-black"><Settings2 className="w-4 h-4" /> Gateway</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="workflow" className="flex-1 overflow-auto space-y-6">
+          <TabsContent value="workflow" className="flex-1 space-y-6">
             {activeRentals.length === 0 ? (
               <div className="py-24 text-center border-4 border-dashed rounded-[40px] bg-white/50">
                 <CalendarDays className="w-16 h-16 mx-auto mb-4 opacity-10" />
@@ -372,9 +372,9 @@ export default function RentPage() {
             ))}
           </TabsContent>
 
-          <TabsContent value="pos" className="flex-1 overflow-hidden">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
-              <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
+          <TabsContent value="pos" className="flex-1">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-4">
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-primary w-5 h-5" />
                   <Input 
@@ -384,7 +384,7 @@ export default function RentPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
                   {filteredItems?.filter(i => i.status === 'available').map(item => (
                     <Card 
                       key={item.id} 
@@ -414,26 +414,27 @@ export default function RentPage() {
                   ))}
                 </div>
               </div>
-              <div className="lg:col-span-1 h-full">
-                <Card className="h-full flex flex-col border-none shadow-2xl bg-white rounded-[40px] overflow-hidden">
-                  <CardHeader className="bg-secondary/20 p-8">
+              
+              <div className="lg:col-span-1">
+                <Card className="sticky top-8 border-none shadow-2xl bg-white rounded-[40px] overflow-hidden flex flex-col max-h-[calc(100vh-120px)]">
+                  <CardHeader className="bg-secondary/20 p-8 shrink-0">
                     <CardTitle className="flex items-center gap-3 font-black text-xl"><ArrowRightLeft className="w-6 h-6 text-primary" /> Agreement Creator</CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 p-8 overflow-y-auto space-y-8">
                     {selectedAssetForAgreement ? (
-                      <div className="space-y-8">
+                      <div className="space-y-8 pb-4">
                         <div className="p-6 bg-primary/5 border-2 border-primary/10 rounded-3xl relative overflow-hidden group">
                           <p className="text-[10px] font-black text-primary uppercase mb-1">Active Selection</p>
                           <p className="text-xl font-black text-foreground">{selectedAssetForAgreement.name}</p>
                         </div>
                         <div className="space-y-4">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Customer Full Name</Label>
-                           <Input placeholder="Alice Smith" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Customer Full Name</Label>
+                           <Input placeholder="Alice Smith" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none px-4" />
                         </div>
                         <div className="space-y-4">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Select Billing Period</Label>
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground px-1 tracking-widest">Select Billing Period</Label>
                            <Select value={selectedBillingPeriod} onValueChange={(v) => setSelectedBillingPeriod(v as any)}>
-                              <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="h-12 rounded-xl font-bold bg-secondary/10 border-none px-4"><SelectValue /></SelectTrigger>
                               <SelectContent className="rounded-xl font-bold">
                                 {selectedAssetForAgreement.hourlyRate && <SelectItem value="hour">Hourly Rate ({currencySymbol}{selectedAssetForAgreement.hourlyRate.toFixed(2)})</SelectItem>}
                                 {selectedAssetForAgreement.dailyRate && <SelectItem value="day">Daily Rate ({currencySymbol}{selectedAssetForAgreement.dailyRate.toFixed(2)})</SelectItem>}
@@ -446,68 +447,71 @@ export default function RentPage() {
                         
                         <div className="space-y-4">
                            <div className="flex justify-between items-center px-1">
-                              <Label className="text-[10px] font-black uppercase text-muted-foreground">Rental Duration</Label>
+                              <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Rental Duration</Label>
                               <Badge variant="secondary" className="font-black text-[10px] uppercase">{duration} {selectedBillingPeriod}{duration > 1 ? 's' : ''}</Badge>
                            </div>
-                           <div className="flex items-center gap-4">
-                              <Input 
-                                type="number" 
-                                min="1" 
-                                value={duration} 
-                                onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))} 
-                                className="w-20 h-12 rounded-xl font-bold bg-secondary/10 border-none text-center" 
-                              />
-                              <Slider 
-                                value={[duration]} 
-                                min={1} 
-                                max={sliderMax} 
-                                step={1} 
-                                onValueChange={(v) => setDuration(v[0])}
-                                className="flex-1"
-                              />
+                           <div className="space-y-6 p-4 bg-secondary/5 rounded-2xl">
+                              <div className="flex items-center gap-4">
+                                 <Input 
+                                   type="number" 
+                                   min="1" 
+                                   value={duration} 
+                                   onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))} 
+                                   className="w-20 h-12 rounded-xl font-black bg-white border-none text-center shadow-sm" 
+                                 />
+                                 <Slider 
+                                   value={[duration]} 
+                                   min={1} 
+                                   max={sliderMax} 
+                                   step={1} 
+                                   onValueChange={(v) => setDuration(v[0])}
+                                   className="flex-1"
+                                 />
+                              </div>
                            </div>
                         </div>
 
                         <div className="space-y-4">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Payment Method</Label>
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Method</Label>
                           <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
                             <PaymentOption value="cash" label="Cash" icon={Banknote} id="rent_cash_main" />
                             <PaymentOption value="card" label="Card" icon={CreditCard} id="rent_card_main" />
                             <PaymentOption value="duitnow" label="Digital" icon={QrCode} id="rent_qr_main" />
                           </RadioGroup>
                         </div>
-                        <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/20 space-y-2">
+                        <div className="bg-primary/5 p-8 rounded-[32px] border-2 border-primary/10 space-y-2">
                            <div className="flex justify-between items-end pt-2">
-                              <p className="text-xs font-black uppercase text-primary tracking-widest mb-1">Total Fee</p>
+                              <p className="text-xs font-black uppercase text-primary tracking-widest mb-1">Total Agreement Fee</p>
                               <p className="text-5xl font-black text-foreground tracking-tighter">{currencySymbol}{calculatedAgreement.totalAmount.toFixed(2)}</p>
                            </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="h-full flex flex-col items-center justify-center opacity-30 space-y-4 py-12">
+                      <div className="h-full flex flex-col items-center justify-center opacity-30 space-y-4 py-24 text-center">
                         <CalendarDays className="w-16 h-16" />
-                        <p className="font-black text-sm uppercase">Select asset to draft agreement</p>
+                        <p className="font-black text-sm uppercase tracking-widest">Select an available asset<br/>to draft a new agreement</p>
                       </div>
                     )}
                   </CardContent>
                   {selectedAssetForAgreement && (
-                    <CardFooter className="p-8 border-t bg-secondary/5">
+                    <CardFooter className="p-8 border-t bg-secondary/5 shrink-0">
                       <Button onClick={() => setShowCheckoutDialog(true)} disabled={!customerName} className="w-full h-16 text-xl font-black rounded-[24px] shadow-xl">Verify Settlement</Button>
                     </CardFooter>
                   )}
                 </Card>
               </div>
             </div>
+            
             <Dialog open={showCheckoutDialog} onOpenChange={setShowCheckoutDialog}>
               <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
                 <div className="bg-primary p-12 text-primary-foreground text-center">
-                   <DialogTitle className="text-xs font-black uppercase opacity-80 mb-2">Total Agreement Fee</DialogTitle>
+                   <DialogTitle className="text-xs font-black uppercase opacity-80 mb-2">Checkout Verification</DialogTitle>
                    <h2 className="text-7xl font-black tracking-tighter">{currencySymbol}{calculatedAgreement.totalAmount.toFixed(2)}</h2>
                 </div>
                 <div className="p-12 space-y-10">
                   {paymentMethod === 'cash' && (
                     <div className="space-y-6">
-                      <Label className="text-[10px] font-black uppercase">Received Amount ({currencySymbol})</Label>
+                      <Label className="text-[10px] font-black uppercase tracking-widest px-1">Received Amount ({currencySymbol})</Label>
                       <Input type="number" className="h-20 rounded-[28px] font-black text-4xl bg-secondary/20 border-none text-center" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} />
                       {Number(cashReceived) >= calculatedAgreement.totalAmount && (
                         <div className="bg-primary/5 p-8 rounded-[32px] border-4 border-primary/20 flex justify-between items-center">
@@ -525,7 +529,10 @@ export default function RentPage() {
                            <p className="text-[10px] font-black text-primary uppercase">Scan to Pay</p>
                          </div>
                        )}
-                       <Input placeholder="Transaction No / Trace ID" className="h-16 rounded-[24px] font-black text-xl bg-secondary/20 border-none px-8" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
+                       <div className="space-y-2">
+                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Transaction Ref / Trace ID</Label>
+                          <Input placeholder="Enter reference..." className="h-16 rounded-[24px] font-black text-xl bg-secondary/20 border-none px-8" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
+                       </div>
                     </div>
                   )}
                   <Button onClick={handleLaunchAgreement} className="w-full h-20 rounded-[32px] font-black text-2xl shadow-2xl group" disabled={isProcessing || isInsufficientCash || isMissingReference}>
@@ -550,7 +557,7 @@ export default function RentPage() {
                    <form onSubmit={handleSaveAsset} className="space-y-5">
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Asset Name</Label>
-                        <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold" />
+                        <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold px-4" />
                       </div>
                       <Separator />
                       <p className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Rate Configuration</p>
@@ -684,8 +691,8 @@ function PaymentOption({ value, label, icon: Icon, id }: any) {
   return (
     <div className="flex-1">
       <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-32 text-center">
-        <Icon className="mb-2 h-7 w-7 text-primary" />
+      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28 text-center">
+        <Icon className="mb-2 h-6 w-6 text-primary" />
         <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       </Label>
     </div>
