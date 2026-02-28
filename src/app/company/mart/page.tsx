@@ -1073,40 +1073,51 @@ function CouponManager({ companyId, companyDoc }: { companyId?: string, companyD
     return true;
   }, [batch, purchaseMethod, cashReceived, subtotal, referenceNumber]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!firestore || !companyId || !isPaymentValid) return;
     setIsProcessing(true);
 
-    try {
-      for (const item of batch) {
-        for (let i = 0; i < item.qty; i++) {
-          const id = crypto.randomUUID();
-          const shortId = id.split('-')[0].toUpperCase();
-          const data: Coupon = { 
-            id, 
-            companyId, 
-            code: `VAL${item.value}-${shortId}`, 
-            initialValue: item.value, 
-            balance: item.value, 
-            expiryDate: expiry, 
-            status: 'active',
-            customerName,
-            customerCompany: customerCompany || undefined,
-            createdAt: new Date().toISOString(),
-            paymentMethod: purchaseMethod 
-          };
-          await setDoc(doc(firestore, 'companies', companyId, 'coupons', id), data);
-        }
+    const creationBatch: {id: string, data: Coupon}[] = [];
+    for (const item of batch) {
+      for (let i = 0; i < item.qty; i++) {
+        const id = crypto.randomUUID();
+        const shortId = id.split('-')[0].toUpperCase();
+        const data: Coupon = { 
+          id, 
+          companyId, 
+          code: `VAL${item.value}-${shortId}`, 
+          initialValue: item.value, 
+          balance: item.value, 
+          expiryDate: expiry, 
+          status: 'active',
+          customerName,
+          customerCompany: customerCompany || undefined,
+          createdAt: new Date().toISOString(),
+          paymentMethod: purchaseMethod 
+        };
+        creationBatch.push({ id, data });
       }
-
-      toast({ title: "Liability Deposit Logged", description: `Stored value balances issued for ${customerName}.` });
-      setCustomerName(''); setCustomerCompany(''); setBatch([]); setCashReceived(''); setReferenceNumber('');
-    } catch (err) {
-      toast({ title: "Issue failed", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
     }
+
+    creationBatch.forEach(({ id, data }) => {
+      const docRef = doc(firestore, 'companies', companyId, 'coupons', id);
+      setDoc(docRef, data).catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'create',
+          requestResourceData: data
+        }));
+      });
+    });
+
+    toast({ title: "Liability Deposit Logged", description: `Stored value balances issued for ${customerName}.` });
+    setCustomerName(''); 
+    setCustomerCompany(''); 
+    setBatch([]); 
+    setCashReceived(''); 
+    setReferenceNumber('');
+    setIsProcessing(false);
   };
 
   const handleRevokeVoucher = (id: string) => {
