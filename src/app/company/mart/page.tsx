@@ -970,7 +970,17 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
         </div>
         <div className="bg-white rounded-[32px] border overflow-hidden">
           <table className="w-full text-sm text-left">
-            <thead className="bg-secondary/20"><tr><th className="p-6 font-black uppercase text-[10px]">Product</th><th className="p-6 font-black uppercase text-[10px]">Stock</th><th className="p-6 text-right font-black uppercase text-[10px]">Valuation</th><th className="p-6 text-center font-black uppercase text-[10px]">Action</th></tr></thead>
+            <thead className="bg-secondary/20">
+              <tr>
+                <th className="p-6 font-black uppercase text-[10px]">Product</th>
+                <th className="p-6 font-black uppercase text-[10px]">Stock</th>
+                <th className="p-6 font-black uppercase text-[10px]">Cost Price</th>
+                <th className="p-6 font-black uppercase text-[10px]">Selling Price</th>
+                <th className="p-6 font-black uppercase text-[10px]">Yield</th>
+                <th className="p-6 text-right font-black uppercase text-[10px]">Valuation</th>
+                <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
+              </tr>
+            </thead>
             <tbody className="divide-y">{products?.map(p => (
               <tr key={p.id} className="hover:bg-secondary/5 group">
                 <td className="p-6">
@@ -978,7 +988,10 @@ function InventoryManager({ companyId, products, isBudgetActive }: { companyId?:
                   <p className="text-[10px] font-bold text-muted-foreground uppercase">{p.barcode || 'NO BARCODE'}</p>
                 </td>
                 <td className="p-6"><Badge variant={p.stock < 10 ? "destructive" : "secondary"} className="font-bold">{p.stock} {p.unit}</Badge></td>
-                <td className="p-6 text-right font-black text-primary text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
+                <td className="p-6 font-bold text-muted-foreground">${p.costPrice.toFixed(2)}</td>
+                <td className="p-6 font-bold text-foreground">${p.sellingPrice.toFixed(2)}</td>
+                <td className="p-6 font-black text-primary">${(p.sellingPrice - p.costPrice).toFixed(2)}</td>
+                <td className="p-6 text-right font-black text-foreground text-lg">${(p.stock * p.costPrice).toFixed(2)}</td>
                 <td className="p-6 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(p); setIsAddDialogOpen(true); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
