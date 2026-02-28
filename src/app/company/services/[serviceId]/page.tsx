@@ -1,4 +1,3 @@
-
 'use client';
 
 import { use, useEffect } from 'react';
@@ -64,15 +63,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   
   const [activeTab, setActiveTab] = useState('pipeline');
 
-  // Booking Form State
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [selectedBundle, setSelectedBundle] = useState<ServicePriceBundle | null>(null);
-  const [customerName, setCustomerName] = useState('');
-  const [customerCompany, setCustomerCompany] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [referenceNumber, setReferenceNumber] = useState('');
-  const [cashReceived, setCashReceived] = useState<number | string>('');
-
   // Material Form State
   const [matQuantity, setMatQuantity] = useState<string>('1');
   const [matMeasure, setMatMeasure] = useState<string>('');
@@ -129,49 +119,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const activeOrder = transactions?.find(t => t.id === activeOrderId);
 
   // Handlers
-  const handlePlaceOrder = () => {
-    if (!firestore || !user?.companyId || !customerName || !selectedBundle) return;
-    
-    const transactionId = crypto.randomUUID();
-    const transactionRef = doc(firestore, 'companies', user.companyId, 'transactions', transactionId);
-    const transactionData: SaleTransaction = {
-      id: transactionId,
-      companyId: user.companyId,
-      module: 'services',
-      serviceTypeId: serviceId,
-      totalAmount: selectedBundle.price,
-      profit: selectedBundle.estimatedProfit,
-      timestamp: new Date().toISOString(),
-      customerName,
-      customerCompany: customerCompany || undefined,
-      paymentMethod,
-      referenceNumber: referenceNumber || undefined,
-      items: [{ name: selectedBundle.name, price: selectedBundle.price, quantity: 1 }],
-      status: 'pending'
-    };
-
-    setDoc(transactionRef, transactionData).catch(async (err) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: transactionRef.path,
-        operation: 'create',
-        requestResourceData: transactionData
-      }));
-    });
-
-    toast({ title: "Booking Logged", description: `Order for ${customerName} added to pipeline.` });
-    setIsBookingOpen(false);
-    resetBookingForm();
-  };
-
-  const resetBookingForm = () => {
-    setCustomerName('');
-    setCustomerCompany('');
-    setPaymentMethod('cash');
-    setReferenceNumber('');
-    setCashReceived('');
-    setSelectedBundle(null);
-  };
-
   const handleOpenStartWork = (orderId: string) => {
     setActiveOrderId(orderId);
     setSelectedMaterials([]);
@@ -341,8 +288,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
   const totalRevenue = transactions?.reduce((acc, t) => acc + t.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, t) => acc + t.profit, 0) || 0;
 
-  const changeAmount = paymentMethod === 'cash' ? Math.max(0, (Number(cashReceived) || 0) - (selectedBundle?.price || 0)) : 0;
-
   return (
     <div className="flex h-screen bg-background font-body">
       <Sidebar />
@@ -365,6 +310,11 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
             <div className="flex gap-4">
                <ReportStat label="Segment Revenue" value={`$${totalRevenue.toFixed(2)}`} />
                <ReportStat label="Net Yield" value={`$${totalProfit.toFixed(2)}`} color="text-primary" />
+               <Button asChild className="rounded-2xl h-14 px-8 font-black text-lg shadow-xl gap-2 bg-primary">
+                 <Link href={`/company/services/${serviceId}/book`}>
+                   <Plus className="w-5 h-5" /> New Booking
+                 </Link>
+               </Button>
             </div>
           </div>
 
@@ -430,11 +380,10 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
                             <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">Estimated Net Yield</p>
                             <p className="text-lg font-black text-foreground">${bundle.estimatedProfit.toFixed(2)}</p>
                          </div>
-                         <Button className="w-full h-12 rounded-xl font-black gap-2" onClick={() => {
-                           setSelectedBundle(bundle);
-                           setIsBookingOpen(true);
-                         }}>
-                           <Plus className="w-4 h-4" /> Book Service
+                         <Button asChild className="w-full h-12 rounded-xl font-black gap-2">
+                           <Link href={`/company/services/${serviceId}/book`}>
+                             <Plus className="w-4 h-4" /> Book Service
+                           </Link>
                          </Button>
                       </CardContent>
                     </Card>
@@ -638,84 +587,6 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
         </div>
       </main>
 
-      {/* Booking Dialog */}
-      <Dialog open={isBookingOpen} onOpenChange={setIsBookingOpen}>
-        <DialogContent className="rounded-[40px] max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl">
-          <div className="bg-primary p-12 text-primary-foreground text-center relative overflow-hidden">
-             <div className="absolute -top-4 -left-4 opacity-10 rotate-12"><Calculator className="w-24 h-24" /></div>
-             <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2 relative z-10">Service Settlement</p>
-             <h2 className="text-6xl font-black tracking-tighter relative z-10">${selectedBundle?.price.toFixed(2)}</h2>
-             <div className="mt-4 inline-flex items-center gap-2 bg-black/10 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm relative z-10">
-                {selectedBundle?.name}
-             </div>
-          </div>
-          
-          <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Customer Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input placeholder="John Doe" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="pl-10 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
-                  </div>
-               </div>
-               <div className="space-y-1.5">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Organization (Optional)</Label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input placeholder="Acme Corp" value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)} className="pl-10 h-12 rounded-xl font-bold bg-secondary/10 border-none" />
-                  </div>
-               </div>
-            </div>
-
-            <div className="space-y-4">
-               <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Settlement Method</Label>
-               <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="grid grid-cols-3 gap-3">
-                  <PaymentOption value="cash" label="Cash" icon={Banknote} id="service_cash" />
-                  <PaymentOption value="card" label="Card" icon={CreditCard} id="service_card" />
-                  <PaymentOption value="duitnow" label="DuitNow" icon={QrCode} id="service_qr" />
-               </RadioGroup>
-            </div>
-
-            {paymentMethod === 'cash' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                 <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black uppercase tracking-widest px-1">Cash Received ($)</Label>
-                    <Input type="number" placeholder="0.00" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-14 rounded-2xl font-black text-2xl text-center" />
-                 </div>
-                 {Number(cashReceived) >= (selectedBundle?.price || 0) && (
-                   <div className="p-6 bg-primary/5 rounded-[32px] border-2 border-primary/20 flex justify-between items-center">
-                      <span className="text-[10px] font-black uppercase text-primary">Balance to Return</span>
-                      <span className="text-4xl font-black">${changeAmount.toFixed(2)}</span>
-                   </div>
-                 )}
-              </div>
-            )}
-
-            {(paymentMethod === 'card' || paymentMethod === 'duitnow') && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-top-2 text-center">
-                 {paymentMethod === 'duitnow' && serviceType?.duitNowQr && (
-                   <div className="space-y-4">
-                      <Image src={serviceType.duitNowQr} alt="DuitNow" width={200} height={200} className="rounded-2xl mx-auto shadow-xl border-4 border-white" />
-                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Point to Scan & Pay</p>
-                   </div>
-                 )}
-                 <div className="space-y-1.5 text-left">
-                    <Label className="text-[10px] font-black uppercase tracking-widest px-1">Transaction Ref / Trace ID</Label>
-                    <Input placeholder="Enter trace ID..." value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} className="h-12 rounded-xl font-bold bg-secondary/10 border-none" />
-                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="p-10 pt-0">
-             <Button className="w-full h-18 rounded-[28px] font-black text-xl shadow-xl" onClick={handlePlaceOrder} disabled={!customerName}>
-                Log & Authorize Service
-             </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Start Service Workflow Dialog */}
       <Dialog open={isStartWorkOpen} onOpenChange={setIsStartWorkOpen}>
         <DialogContent className="rounded-[40px] max-w-4xl p-0 overflow-hidden bg-white border-none shadow-2xl">
@@ -915,18 +786,6 @@ function SelectedConsumptionRow({ item, onUpdate, isMart }: { item: { product: P
           <span className="text-xs font-black w-4 text-center">{item.qty}</span>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onUpdate(item.qty + 1)}><Plus className="w-3 h-3" /></Button>
        </div>
-    </div>
-  );
-}
-
-function PaymentOption({ value, label, icon: Icon, id }: any) {
-  return (
-    <div className="flex-1">
-      <RadioGroupItem value={value} id={id} className="peer sr-only" />
-      <Label htmlFor={id} className="flex flex-col items-center justify-center rounded-[24px] border-4 border-transparent bg-secondary/20 p-4 hover:bg-secondary/30 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-28 text-center">
-        <Icon className="mb-2 h-6 w-6 text-primary" />
-        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
-      </Label>
     </div>
   );
 }
