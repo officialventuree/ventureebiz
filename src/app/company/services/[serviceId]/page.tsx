@@ -28,7 +28,9 @@ import {
   Edit2,
   Wallet,
   XCircle,
-  BarChart3
+  BarChart3,
+  QrCode,
+  Upload
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
@@ -36,7 +38,7 @@ import { collection, doc, setDoc, updateDoc, query, where, addDoc, increment } f
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ServiceType, ServicePriceBundle, SaleTransaction, Product, Company } from '@/lib/types';
+import { ServiceType, ServicePriceBundle, SaleTransaction, Product, Company, CapitalPurchase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
@@ -124,16 +126,12 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
     if (!firestore || !user?.companyId || !activeOrderId) return;
 
     const transRef = doc(firestore, 'companies', user.companyId, 'transactions', activeOrderId);
-    
-    // 1. Calculate and record material usage
     const totalMaterials = [...selectedMaterials, ...selectedMartItems];
     const totalMaterialCost = totalMaterials.reduce((acc, item) => acc + (item.product.costPrice * item.qty), 0);
 
-    // 2. Update status and cost
     updateDoc(transRef, { 
       status: 'in-progress',
       totalCost: increment(totalMaterialCost),
-      // Recalculate profit based on actual material costs
       profit: increment(-totalMaterialCost)
     }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -142,12 +140,9 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       }));
     });
 
-    // 3. Deduct stock from inventory
     totalMaterials.forEach(item => {
       const productRef = doc(firestore, 'companies', user!.companyId!, 'products', item.product.id);
-      updateDoc(productRef, { 
-        stock: increment(-item.qty) 
-      }).catch(async (err) => {
+      updateDoc(productRef, { stock: increment(-item.qty) }).catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
           path: productRef.path,
           operation: 'update'
@@ -230,6 +225,20 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
       setEditingMaterial(null); 
       (e.target as HTMLFormElement).reset();
     });
+  };
+
+  const handleUploadGateway = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file || !firestore || !user?.companyId) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      updateDoc(doc(firestore, 'companies', user.companyId!, 'serviceTypes', serviceId), { 
+        duitNowQr: reader.result as string 
+      }).then(() => {
+        toast({ title: "Gateway Updated", description: "Departmental payment QR is now active." });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const activeOrder = transactions?.find(t => t.id === activeOrderId);
@@ -398,6 +407,36 @@ export default function ServiceDashboardPage({ params }: { params: Promise<{ ser
 
             <TabsContent value="profits">
               <ServiceAnalytics transactions={transactions || []} currencySymbol={currencySymbol} />
+            </TabsContent>
+
+            <TabsContent value="billing">
+               <div className="max-w-xl mx-auto py-12 text-center space-y-8">
+                  <Card className="border-none shadow-sm rounded-[40px] bg-white p-12 space-y-8">
+                     <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mx-auto">
+                        <QrCode className="w-10 h-10" />
+                     </div>
+                     <h2 className="text-3xl font-black tracking-tight">Departmental Gateway</h2>
+                     <p className="text-sm text-muted-foreground font-medium">
+                        Configure a specific DuitNow QR for this department. If not set, the global company QR will be used during booking.
+                     </p>
+                     
+                     {serviceType?.duitNowQr ? (
+                       <div className="relative group mx-auto w-fit">
+                         <Image src={serviceType.duitNowQr} alt="QR" width={250} height={250} className="rounded-3xl border-4" />
+                         <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-3xl cursor-pointer transition-opacity">
+                            <Upload className="text-white w-8 h-8" />
+                            <input type="file" className="hidden" accept="image/*" onChange={handleUploadGateway} />
+                         </label>
+                       </div>
+                     ) : (
+                       <label className="w-full h-64 border-4 border-dashed rounded-[40px] flex flex-col items-center justify-center cursor-pointer hover:bg-secondary/20 transition-all gap-4 border-secondary/30">
+                          <Plus className="w-10 h-10 text-primary" />
+                          <p className="text-xs font-black uppercase tracking-widest">Upload Department QR</p>
+                          <input type="file" className="hidden" accept="image/*" onChange={handleUploadGateway} />
+                       </label>
+                     )}
+                  </Card>
+               </div>
             </TabsContent>
           </Tabs>
         </div>
@@ -589,7 +628,7 @@ function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIco
             </div>
             <div className="flex justify-between items-start mb-4">
               <div>
-                <p className="font-black text-lg leading-tight">{order.items[0].name}</p>
+                <p className="font-black text-lg leading-tight">{order.items?.[0]?.name || 'Service Order'}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="outline" className="text-[9px] font-black uppercase">{order.customerName}</Badge>
                   <p className="text-[9px] font-bold text-muted-foreground">{new Date(order.timestamp).toLocaleDateString()}</p>
@@ -612,14 +651,5 @@ function PipelineColumn({ title, color, orders, onAction, actionLabel, actionIco
         )}
       </div>
     </div>
-  );
-}
-
-function ReportStat({ label, value, color = "text-foreground" }: any) {
-  return (
-    <Card className="p-4 px-6 bg-white rounded-2xl border-none shadow-sm">
-      <p className="text-[9px] font-black uppercase text-muted-foreground mb-1 tracking-widest">{label}</p>
-      <h4 className={cn("text-xl font-black", color)}>{value}</h4>
-    </Card>
   );
 }
