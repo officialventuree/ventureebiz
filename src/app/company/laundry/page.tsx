@@ -199,7 +199,6 @@ export default function LaundryPage() {
       return;
     }
 
-    const initialFee = benchmarkSubscription;
     const currentBal = editingStudent ? (editingStudent.balance ?? 0) : 0;
     const currentSpent = editingStudent ? (editingStudent.totalSpent ?? 0) : 0;
 
@@ -210,7 +209,7 @@ export default function LaundryPage() {
       matrixNumber: formData.get('matrix') as string,
       balance: currentBal, 
       totalSpent: currentSpent,
-      initialAmount: initialFee,
+      initialAmount: benchmarkSubscription,
       level: Number(selectedLevel),
       class: selectedClass,
     };
@@ -343,12 +342,16 @@ export default function LaundryPage() {
       items: [{ name: `Service Wash (Lv${selectedStudent.level})`, price: washRate, quantity: 1 }]
     };
 
+    // Deduct Wash Bank Balance by incrementing totalSpent
     updateDoc(studentRef, { totalSpent: increment(washRate) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: studentRef.path, operation: 'update' }));
     });
+
+    // Deduct Soap Stock Volume with consumed soap per wash
     updateDoc(invRef, { soapStockMl: increment(-soapMlPerWash) }).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: invRef.path, operation: 'update' }));
     });
+
     addDoc(transRef, transData).catch(async (err) => {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: transRef.path, operation: 'create', requestResourceData: transData }));
     });
