@@ -796,9 +796,9 @@ export default function LaundryPage() {
                       </div>
                       {!editingStudent && (
                         <div className="space-y-1.5">
-                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Amount Need to Pay ($)</Label>
+                           <Label className="text-[10px] font-black uppercase text-muted-foreground">Initial Subscription / Debt ($)</Label>
                            <Input name="amountDue" type="number" defaultValue="0" className="h-11 rounded-xl bg-secondary/10 border-none font-bold text-destructive" />
-                           <p className="text-[9px] font-bold text-muted-foreground italic">Balance will be negative until top-up.</p>
+                           <p className="text-[9px] font-bold text-muted-foreground italic">Balance will start negative until topped up.</p>
                         </div>
                       )}
                       <div className="flex gap-2">
@@ -820,35 +820,45 @@ export default function LaundryPage() {
                            <th className="p-6 font-black uppercase text-[10px]">Subscriber / Matrix</th>
                            <th className="p-6 font-black uppercase text-[10px]">Level</th>
                            <th className="p-6 font-black uppercase text-[10px]">Per Service Fee</th>
-                           <th className="p-6 font-black uppercase text-[10px]">Amount Need to Pay / Balance</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Current Bank Balance</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Balance After Wash</th>
                            <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y">
-                         {students?.map(s => (
-                           <tr key={s.id} className="hover:bg-secondary/5 group">
-                              <td className="p-6">
-                                 <p className="font-black text-lg">{s.name}</p>
-                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
-                              </td>
-                              <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
-                              <td className="p-6 font-bold text-muted-foreground">${getWashRateForLevel(s.level).toFixed(2)}</td>
-                              <td className="p-6">
-                                 <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-green-600")}>
-                                    ${Math.abs(s.balance).toFixed(2)}
-                                    <span className="text-[10px] ml-2 uppercase opacity-60">
-                                       {s.balance < 0 ? "(OWED)" : "(CREDIT)"}
-                                    </span>
-                                 </p>
-                              </td>
-                              <td className="p-6 text-center">
-                                 <div className="flex items-center justify-center gap-2">
-                                    <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
-                                 </div>
-                              </td>
-                           </tr>
-                         ))}
+                         {students?.map(s => {
+                           const serviceFee = getWashRateForLevel(s.level);
+                           const projectedBalance = s.balance - serviceFee;
+                           return (
+                             <tr key={s.id} className="hover:bg-secondary/5 group">
+                                <td className="p-6">
+                                   <p className="font-black text-lg">{s.name}</p>
+                                   <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.matrixNumber} • {s.class}</p>
+                                </td>
+                                <td className="p-6"><Badge variant="secondary" className="font-black">Level {s.level}</Badge></td>
+                                <td className="p-6 font-bold text-muted-foreground">${serviceFee.toFixed(2)}</td>
+                                <td className="p-6">
+                                   <p className={cn("font-black text-lg", s.balance < 0 ? "text-destructive" : "text-green-600")}>
+                                      ${s.balance.toFixed(2)}
+                                      <span className="text-[10px] ml-2 uppercase opacity-60 font-bold">
+                                         {s.balance < 0 ? "(OWED)" : "(CREDIT)"}
+                                      </span>
+                                   </p>
+                                </td>
+                                <td className="p-6">
+                                   <p className={cn("font-bold text-lg opacity-80", projectedBalance < 0 ? "text-destructive" : "text-primary")}>
+                                      ${projectedBalance.toFixed(2)}
+                                   </p>
+                                </td>
+                                <td className="p-6 text-center">
+                                   <div className="flex items-center justify-center gap-2">
+                                      <Button variant="ghost" size="icon" onClick={() => { setEditingStudent(s); setSelectedLevel(s.level.toString()); setSelectedClass(s.class); }} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleDeleteStudent(s.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                                   </div>
+                                </td>
+                             </tr>
+                           );
+                         })}
                       </tbody>
                    </table>
                 </div>
@@ -1051,11 +1061,11 @@ function LaundryConfigurator({ companyId, levelConfigs, levelQuotas }: { company
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <Label className="text-[10px] font-black uppercase px-1">Sub. Fee ($)</Label>
-                       <Input 
+                       <input 
                         type="number" 
                         defaultValue={config?.subscriptionFee || 0} 
                         onBlur={(e) => saveConfig(lv, Number(e.target.value))}
-                        className="h-11 rounded-xl font-bold bg-white border-none"
+                        className="h-11 rounded-xl font-bold bg-white border-none w-full px-4 outline-none focus:ring-2 focus:ring-primary/20"
                        />
                     </div>
                     <div className="space-y-1">
@@ -1230,7 +1240,7 @@ function InventoryGauge({ label, item }: { label: string, item?: LaundryInventor
     <Card className="border-none shadow-sm bg-white rounded-3xl p-8 relative overflow-hidden">
        <div className="absolute top-0 right-0 p-6 opacity-5"><Droplet className="w-24 h-24" /></div>
        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">{label}</p>
-       <h4 className="text-4xl font-black tracking-tighter">{(stock / 1000).toFixed(1)}L</h4>
+       <h4 className="text-4xl font-black tracking-tighter">{(stock / 1000).toFixed(1) || '0.0'}L</h4>
        <p className="text-xs font-bold opacity-60 mb-6">of {(capacity / 1000)}L Capacity</p>
        <Progress value={percentage} className="h-3 rounded-full" />
        {item?.soapCostPerLitre && <p className="text-[10px] font-black text-primary uppercase mt-4">Weighted Value: ${item.soapCostPerLitre.toFixed(2)}/L</p>}
