@@ -10,6 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, DollarSign, ShoppingBag, Wallet, Waves, AlertTriangle, Package, ShieldCheck } from 'lucide-react';
 import { SaleTransaction, CapitalPurchase, Product, Company } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useMemo } from 'react';
 
 export default function CompanyDashboard() {
   const { user } = useAuth();
@@ -42,7 +43,24 @@ export default function CompanyDashboard() {
 
   const totalRevenue = transactions?.reduce((acc, s) => acc + s.totalAmount, 0) || 0;
   const totalProfit = transactions?.reduce((acc, s) => acc + s.profit, 0) || 0;
-  const totalCapitalUsed = purchases?.reduce((acc, p) => acc + p.amount, 0) || 0;
+  
+  // Calculate capital used within the current active budget period
+  const totalCapitalUsed = useMemo(() => {
+    if (!purchases) return 0;
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases.reduce((acc, p) => acc + p.amount, 0);
+
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+
+    return purchases
+      .filter(p => {
+        const pDate = new Date(p.timestamp);
+        return pDate >= start && pDate <= end;
+      })
+      .reduce((acc, p) => acc + p.amount, 0);
+  }, [purchases, companyDoc]);
+
   const inventoryValue = products?.reduce((acc, p) => acc + (p.stock * p.costPrice), 0) || 0;
   
   const capitalLimit = companyDoc?.capitalLimit || 10000;
@@ -120,7 +138,7 @@ export default function CompanyDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <AlertItem label="Low Stock Warning" value={`${products?.filter(p => p.stock < 10).length || 0} items below threshold`} />
-                  <AlertItem label="Capital Consumption" value={`${((totalCapitalUsed / capitalLimit) * 100).toFixed(1)}% utilized`} />
+                  <AlertItem label="Cycle Consumption" value={`${((totalCapitalUsed / capitalLimit) * 100).toFixed(1)}% utilized`} />
                   <AlertItem label="Active Students" value={`${transactions?.filter(t => t.module === 'laundry').length || 0} laundry uses`} />
                 </CardContent>
               </Card>

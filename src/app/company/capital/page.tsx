@@ -56,7 +56,22 @@ export default function CapitalControlPage() {
     }
   }, [companyDoc]);
 
-  const totalSpent = purchases?.reduce((acc, p) => acc + p.amount, 0) || 0;
+  // Live Capital Calculation within active period
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!companyDoc?.capitalStartDate || !companyDoc?.capitalEndDate) return purchases;
+
+    const start = new Date(companyDoc.capitalStartDate);
+    const end = new Date(companyDoc.capitalEndDate);
+    end.setHours(23, 59, 59, 999);
+
+    return purchases.filter(p => {
+      const pDate = new Date(p.timestamp);
+      return pDate >= start && pDate <= end;
+    });
+  }, [purchases, companyDoc]);
+
+  const totalSpent = activePurchases.reduce((acc, p) => acc + p.amount, 0);
   const limit = companyDoc?.capitalLimit || 0;
   const remaining = Math.max(0, limit - totalSpent);
   const utilization = limit > 0 ? (totalSpent / limit) * 100 : 0;
@@ -241,7 +256,7 @@ export default function CapitalControlPage() {
                      <div className="bg-secondary/20 p-8 rounded-[32px] border-2 border-transparent hover:border-primary/20 transition-all group">
                         <Zap className="w-8 h-8 text-accent mb-4 group-hover:scale-125 transition-transform" />
                         <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Burn Rate</p>
-                        <p className="text-3xl font-black text-foreground tracking-tighter">${(totalSpent / (purchases?.length || 1)).toFixed(2)}/tx</p>
+                        <p className="text-3xl font-black text-foreground tracking-tighter">${(totalSpent / Math.max(activePurchases.length, 1)).toFixed(2)}/tx</p>
                      </div>
                      <div className={cn(
                        "p-8 rounded-[32px] border-2 md:col-span-1 col-span-2 flex items-center gap-6",
@@ -261,12 +276,12 @@ export default function CapitalControlPage() {
                  <CardHeader className="bg-secondary/10 p-8">
                     <CardTitle className="flex items-center gap-3 text-xl font-black">
                       <History className="w-6 h-6 text-primary" />
-                      Procurement Intelligence Log
+                      Procurement Intelligence Log (Active Cycle)
                     </CardTitle>
                  </CardHeader>
                  <CardContent className="p-0">
                     <div className="divide-y">
-                       {purchases?.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(p => (
+                       {activePurchases?.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(p => (
                          <div key={p.id} className="flex items-center justify-between p-6 hover:bg-secondary/10 transition-colors">
                             <div>
                                <p className="font-black text-foreground text-lg">{p.description}</p>
@@ -277,10 +292,10 @@ export default function CapitalControlPage() {
                             <p className="text-2xl font-black text-destructive tracking-tighter">-${p.amount.toFixed(2)}</p>
                          </div>
                        ))}
-                       {(!purchases || purchases.length === 0) && (
+                       {(activePurchases.length === 0) && (
                          <div className="py-24 text-center text-muted-foreground">
                             <History className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                            <p className="font-black uppercase tracking-widest text-sm">No transaction history found</p>
+                            <p className="font-black uppercase tracking-widest text-sm">No transaction history found for this cycle</p>
                          </div>
                        )}
                     </div>

@@ -494,20 +494,42 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
     if (!firestore || !companyId) return;
     const formData = new FormData(e.currentTarget);
     const id = crypto.randomUUID();
+    
+    const cost = Number(formData.get('cost'));
+    const stock = Number(formData.get('stock'));
+    const totalInitialCost = cost * stock;
+
     const productData: Product = {
       id,
       companyId,
       name: formData.get('name') as string,
       unit: formData.get('unit') as string,
       barcode: formData.get('barcode') as string,
-      costPrice: Number(formData.get('cost')),
+      costPrice: cost,
       sellingPrice: Number(formData.get('price')),
-      stock: Number(formData.get('stock')),
+      stock: stock,
       itemsPerUnit: Number(formData.get('ipu') || 1)
     };
-    setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
-    toast({ title: "Product Registered" });
-    setIsAddDialogOpen(false);
+
+    try {
+      await setDoc(doc(firestore, 'companies', companyId, 'products', id), productData);
+      
+      // Log as Capital Purchase for startup stock
+      if (totalInitialCost > 0) {
+        await addDoc(collection(firestore, 'companies', companyId, 'purchases'), {
+          id: crypto.randomUUID(),
+          companyId,
+          amount: totalInitialCost,
+          description: `Initial Stock Registry: ${stock}x ${productData.name}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      toast({ title: "Product Registered", description: `Registry and procurement log synchronized.` });
+      setIsAddDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "Registration failed", variant: "destructive" });
+    }
   };
 
   return (
@@ -594,7 +616,7 @@ function InventoryManager({ companyId, products }: { companyId?: string, product
           <h3 className="text-xl font-black">Stock Registry</h3>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild><Button className="rounded-xl font-black shadow-lg"><Plus className="w-4 h-4 mr-2" /> New Product</Button></DialogTrigger>
-            <DialogContent className="rounded-[32px] max-w-lg p-0 overflow-hidden">
+            <DialogContent className="rounded-[40px] max-w-lg p-0 overflow-hidden">
                <div className="bg-primary p-8 text-primary-foreground"><DialogTitle className="text-2xl font-black">New Registration</DialogTitle></div>
                <form onSubmit={handleAddNew} className="p-8 space-y-6">
                  <Input name="name" placeholder="Item Name" required className="h-12 rounded-xl" />
