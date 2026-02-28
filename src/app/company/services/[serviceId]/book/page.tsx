@@ -1,3 +1,4 @@
+
 'use client';
 
 import { use, useState, useMemo } from 'react';
@@ -83,10 +84,10 @@ export default function ServiceBookingPage({ params }: { params: Promise<{ servi
       totalAmount: selectedBundle.price,
       profit: selectedBundle.estimatedProfit,
       timestamp: new Date().toISOString(),
-      customerName,
-      customerCompany: customerCompany || undefined,
+      customerName: customerName || null,
+      customerCompany: customerCompany || null,
       paymentMethod,
-      referenceNumber: referenceNumber || undefined,
+      referenceNumber: referenceNumber || null,
       items: [{ name: selectedBundle.name, price: selectedBundle.price, quantity: 1 }],
       status: 'pending'
     };

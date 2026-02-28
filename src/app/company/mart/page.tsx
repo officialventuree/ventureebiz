@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -164,11 +165,11 @@ export default function MartPage() {
       profit: totalProfit, 
       totalCost: totalCost, // Recorded for capital claim loop
       discountApplied: voucherDiscount,
-      couponCode: selectedVoucher?.code || undefined,
+      couponCode: selectedVoucher?.code || null,
       customerName: customerName || selectedVoucher?.customerName || 'Walk-in Customer',
       timestamp: new Date().toISOString(),
       paymentMethod,
-      referenceNumber: referenceNumber || undefined,
+      referenceNumber: referenceNumber || null,
       status: 'completed',
       items: cart.map(item => ({
         productId: item.product.id,

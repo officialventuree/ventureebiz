@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -359,7 +360,7 @@ export default function LaundryPage() {
         timestamp: new Date().toISOString(),
         customerName: payableName,
         paymentMethod: payablePaymentMethod,
-        referenceNumber: payableRef || undefined,
+        referenceNumber: payableRef || null,
         status: 'completed',
         items: [{ name: 'Payable Service Wash', price: amount, quantity: 1 }]
       });
@@ -394,7 +395,7 @@ export default function LaundryPage() {
         timestamp: new Date().toISOString(),
         customerName: foundTopUpStudent.name,
         paymentMethod: topUpPaymentMethod,
-        referenceNumber: transactionNo || undefined,
+        referenceNumber: transactionNo || null,
         status: 'completed',
         items: [{ name: 'Account Deposit', price: amount, quantity: 1 }]
       });

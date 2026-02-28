@@ -75,12 +75,13 @@ export interface SaleTransaction {
   timestamp: string;
   items: any[];
   status?: TransactionStatus;
-  customerName?: string;
-  paymentMethod?: PaymentMethod;
-  referenceNumber?: string;
-  serviceTypeId?: string;
-  discountApplied?: number;
-  couponCode?: string;
+  customerName?: string | null;
+  customerCompany?: string | null;
+  paymentMethod?: PaymentMethod | null;
+  referenceNumber?: string | null;
+  serviceTypeId?: string | null;
+  discountApplied?: number | null;
+  couponCode?: string | null;
 }
 
 export interface Product {

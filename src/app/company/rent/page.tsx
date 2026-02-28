@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -176,9 +177,10 @@ export default function RentPage() {
       profit: calculatedAgreement.totalAmount - costPortion, 
       totalCost: costPortion, // Capital to recover
       timestamp: new Date().toISOString(),
-      customerName: customerCompany ? `${customerName} (${customerCompany})` : customerName,
+      customerName: customerName || null,
+      customerCompany: customerCompany || null,
       paymentMethod,
-      referenceNumber: referenceNumber || undefined,
+      referenceNumber: referenceNumber || null,
       status: 'in-progress',
       items: [{ 
         name: selectedAssetForAgreement.name, 
