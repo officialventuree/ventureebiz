@@ -108,6 +108,8 @@ export interface RentalItem {
   yearlyRate?: number | null;
   unit: 'hour' | 'day' | 'week' | 'month' | 'year';
   status: RentalStatus;
+  costPrice?: number;
+  accumulatedRevenue?: number;
 }
 
 export interface ServiceType {

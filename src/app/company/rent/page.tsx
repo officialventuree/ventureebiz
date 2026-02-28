@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -38,7 +39,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/auth-context';
 import { useFirestore, useCollection, useMemoFirebase, useDoc, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, addDoc, increment } from 'firebase/firestore';
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -132,7 +133,6 @@ export default function RentPage() {
       if (rental.items && rental.items[0] && rental.items[0].endDate) {
         const leaseEndDate = new Date(rental.items[0].endDate);
         if (now > leaseEndDate) {
-          // Automated return execution
           const transactionRef = doc(firestore, 'companies', user.companyId!, 'transactions', rental.id);
           updateDoc(transactionRef, { status: 'completed' });
 
@@ -200,15 +200,23 @@ export default function RentPage() {
     if (!selectedAssetForAgreement || !firestore || !user?.companyId) return;
     setIsProcessing(true);
 
+    const accumulated = selectedAssetForAgreement.accumulatedRevenue || 0;
+    const cost = selectedAssetForAgreement.costPrice || 0;
+    const remainingCostBefore = Math.max(0, cost - accumulated);
+    
+    // Profit logic: Only revenue exceeding the remaining cost price is profit
+    const currentTotal = calculatedAgreement.totalAmount;
+    const profitForThisTrans = Math.max(0, currentTotal - remainingCostBefore);
+    const costForThisTrans = currentTotal - profitForThisTrans;
+
     const transactionId = crypto.randomUUID();
-    const costPortion = calculatedAgreement.totalAmount * 0.05; 
     const transactionData: SaleTransaction = {
       id: transactionId,
       companyId: user.companyId,
       module: 'rent',
-      totalAmount: calculatedAgreement.totalAmount,
-      profit: calculatedAgreement.totalAmount - costPortion, 
-      totalCost: costPortion, 
+      totalAmount: currentTotal,
+      profit: profitForThisTrans, 
+      totalCost: costForThisTrans, 
       timestamp: new Date().toISOString(),
       customerName: customerName || null,
       customerCompany: customerCompany || null,
@@ -231,7 +239,10 @@ export default function RentPage() {
 
     setDoc(transactionRef, transactionData)
       .then(() => {
-        updateDoc(itemRef, { status: 'rented' }).catch(async (err) => {
+        updateDoc(itemRef, { 
+          status: 'rented',
+          accumulatedRevenue: increment(currentTotal)
+        }).catch(async (err) => {
           errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { status: 'rented' } }));
         });
         toast({ title: "Agreement Launched" });
@@ -285,7 +296,9 @@ export default function RentPage() {
       weeklyRate: formData.get('weeklyEnabled') === 'on' ? Number(formData.get('weeklyRate')) : null,
       monthlyRate: formData.get('monthlyEnabled') === 'on' ? Number(formData.get('monthlyRate')) : null,
       yearlyRate: formData.get('yearlyEnabled') === 'on' ? Number(formData.get('yearlyRate')) : null,
-      status: editingAsset?.status || 'available'
+      status: editingAsset?.status || 'available',
+      costPrice: Number(formData.get('costPrice')) || 0,
+      accumulatedRevenue: editingAsset?.accumulatedRevenue || 0
     };
 
     const itemRef = doc(firestore, 'companies', user.companyId, 'rentalItems', itemId);
@@ -605,6 +618,11 @@ export default function RentPage() {
                         <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">Asset Name</Label>
                         <Input name="name" defaultValue={editingAsset?.name} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold px-4" />
                       </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black uppercase text-muted-foreground px-1">One-time Cost Price ($)</Label>
+                        <Input name="costPrice" type="number" step="0.01" defaultValue={editingAsset?.costPrice} required className="h-11 rounded-xl bg-secondary/10 border-none font-bold px-4 text-primary" />
+                        <p className="text-[9px] font-bold text-muted-foreground italic px-1 mt-1">Acquisition cost for ROI calculation.</p>
+                      </div>
                       <Separator />
                       <p className="text-[10px] font-black uppercase text-primary tracking-widest px-1">Rate Configuration</p>
                       <div className="space-y-4">
@@ -632,43 +650,60 @@ export default function RentPage() {
                          <tr>
                            <th className="p-6 font-black uppercase text-[10px]">Asset Name</th>
                            <th className="p-6 font-black uppercase text-[10px]">Active Rates</th>
+                           <th className="p-6 font-black uppercase text-[10px]">Investment Recovery</th>
                            <th className="p-6 font-black uppercase text-[10px]">Status</th>
                            <th className="p-6 text-center font-black uppercase text-[10px]">Action</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y">
-                         {rentalItems?.map(item => (
-                           <tr key={item.id} className="hover:bg-secondary/5 group">
-                              <td className="p-6">
-                                 <p className="font-black text-lg">{item.name}</p>
-                                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Inventory ID: {item.id.split('-')[0]}</p>
-                              </td>
-                              <td className="p-6">
-                                 <div className="flex wrap gap-1">
-                                    {item.hourlyRate && <Badge variant="outline" className="text-[9px] font-bold">H: {currencySymbol}{item.hourlyRate}</Badge>}
-                                    {item.dailyRate && <Badge variant="outline" className="text-[9px] font-bold">D: {currencySymbol}{item.dailyRate}</Badge>}
-                                    {item.weeklyRate && <Badge variant="outline" className="text-[9px] font-bold">W: {currencySymbol}{item.weeklyRate}</Badge>}
-                                    {item.monthlyRate && <Badge variant="outline" className="text-[9px] font-bold">M: {currencySymbol}{item.monthlyRate}</Badge>}
-                                    {item.yearlyRate && <Badge variant="outline" className="text-[9px] font-bold">Y: {currencySymbol}{item.yearlyRate}</Badge>}
-                                 </div>
-                              </td>
-                              <td className="p-6">
-                                 <Badge className={cn(
-                                   "font-black uppercase text-[9px]",
-                                   item.status === 'available' ? "bg-green-600" : item.status === 'rented' ? "bg-primary" : "bg-orange-500"
-                                 )}>{item.status}</Badge>
-                              </td>
-                              <td className="p-6 text-center">
-                                 <div className="flex items-center justify-center gap-2">
-                                    <Button variant="ghost" size="icon" onClick={() => setEditingAsset(item)} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
-                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
-                                 </div>
-                              </td>
-                           </tr>
-                         ))}
+                         {rentalItems?.map(item => {
+                           const cost = item.costPrice || 0;
+                           const rev = item.accumulatedRevenue || 0;
+                           const isPaidOff = rev >= cost;
+                           return (
+                             <tr key={item.id} className="hover:bg-secondary/5 group">
+                                <td className="p-6">
+                                   <p className="font-black text-lg">{item.name}</p>
+                                   <p className="text-[10px] font-bold text-muted-foreground uppercase">Inventory ID: {item.id.split('-')[0]}</p>
+                                </td>
+                                <td className="p-6">
+                                   <div className="flex wrap gap-1">
+                                      {item.hourlyRate && <Badge variant="outline" className="text-[9px] font-bold">H: {currencySymbol}{item.hourlyRate}</Badge>}
+                                      {item.dailyRate && <Badge variant="outline" className="text-[9px] font-bold">D: {currencySymbol}{item.dailyRate}</Badge>}
+                                      {item.weeklyRate && <Badge variant="outline" className="text-[9px] font-bold">W: {currencySymbol}{item.weeklyRate}</Badge>}
+                                      {item.monthlyRate && <Badge variant="outline" className="text-[9px] font-bold">M: {currencySymbol}{item.monthlyRate}</Badge>}
+                                      {item.yearlyRate && <Badge variant="outline" className="text-[9px] font-bold">Y: {currencySymbol}{item.yearlyRate}</Badge>}
+                                   </div>
+                                </td>
+                                <td className="p-6">
+                                   <div className="space-y-1">
+                                      <p className="text-[10px] font-black text-muted-foreground uppercase">Cost: {currencySymbol}{cost.toFixed(2)}</p>
+                                      <p className={cn("text-sm font-black", isPaidOff ? "text-primary" : "text-orange-600")}>
+                                         Earned: {currencySymbol}{rev.toFixed(2)}
+                                      </p>
+                                      <Badge variant={isPaidOff ? "default" : "secondary"} className="text-[8px] font-black h-4 px-2">
+                                         {isPaidOff ? "ROI ACHIEVED" : `${((rev / (cost || 1)) * 100).toFixed(0)}% RECOVERED`}
+                                      </Badge>
+                                   </div>
+                                </td>
+                                <td className="p-6">
+                                   <Badge className={cn(
+                                     "font-black uppercase text-[9px]",
+                                     item.status === 'available' ? "bg-green-600" : item.status === 'rented' ? "bg-primary" : "bg-orange-500"
+                                   )}>{item.status}</Badge>
+                                </td>
+                                <td className="p-6 text-center">
+                                   <div className="flex items-center justify-center gap-2">
+                                      <Button variant="ghost" size="icon" onClick={() => setEditingAsset(item)} className="text-primary hover:bg-primary/10"><Edit2 className="w-4 h-4" /></Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleDeleteItem(item.id)} className="text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                                   </div>
+                                </td>
+                             </tr>
+                           );
+                         })}
                          {(!rentalItems || rentalItems.length === 0) && (
                            <tr>
-                             <td colSpan={4} className="py-24 text-center opacity-30">
+                             <td colSpan={5} className="py-24 text-center opacity-30">
                                <Package className="w-16 h-16 mx-auto mb-4" />
                                <p className="font-black uppercase tracking-widest">Asset Registry Empty</p>
                              </td>
