@@ -1,39 +1,15 @@
 
-import { Company, User, Sale } from './types';
-
-// In-memory store for simulation purposes
-let companies: Company[] = [];
-let users: User[] = [
-  {
-    id: 'admin-1',
-    name: 'Platform Owner',
-    email: 'officialadmin@ventureebiz.com',
-    password: 'officialadmin.venturee.300609',
-    role: 'admin'
-  }
-];
-let sales: Sale[] = [];
-
+/**
+ * DEPRECATED: This file is no longer used. 
+ * The application has migrated to a real-time Firestore architecture.
+ * This is maintained as a placeholder to prevent import errors during transition.
+ */
 export const db = {
-  getCompanies: () => companies,
-  addCompany: (company: Company) => {
-    companies.push(company);
-    users.push({
-      id: `user-${company.id}`,
-      name: company.name,
-      email: company.email,
-      password: company.password,
-      role: 'company',
-      companyId: company.id
-    });
-  },
-  getUsers: () => users,
-  addUser: (user: User) => {
-    users.push(user);
-  },
-  getSales: (companyId: string) => sales.filter(s => s.companyId === companyId),
-  addSale: (sale: Sale) => {
-    sales.push(sale);
-  },
-  getCompanyById: (id: string) => companies.find(c => c.id === id)
+  getCompanies: () => [],
+  addCompany: () => {},
+  getUsers: () => [],
+  addUser: () => {},
+  getSales: () => [],
+  addSale: () => {},
+  getCompanyById: () => null
 };
